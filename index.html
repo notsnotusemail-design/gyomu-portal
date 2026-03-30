@@ -129,6 +129,19 @@ body {
 .ev-その他     { background: #f3f4f6; color: #6b7280; }
 .ev-more      { font-size: 10px; color: #aaa; padding: 0 5px; }
 
+/* 予定ピンバッジ（バイト・会議等の件数） */
+.ev-pin {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  background: #6366f1; color: white;
+  border-radius: 999px; font-size: 10px; font-weight: 700;
+  padding: 0 5px;
+  margin-top: 2px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ev-pin:hover { background: #4f46e5; }
+
 /* カレンダーローディング */
 .cal-loading {
   text-align: center; padding: 40px; color: #aaa; font-size: 13px;
@@ -622,10 +635,11 @@ function makeCell(year, month, day, otherMonth, isToday) {
   dayEl.textContent = day;
   cell.appendChild(dayEl);
 
-  // 案件納期のみ表示
-  const dayEvents = calEvents.filter(e => e.date === dateStr && e.type === 'deadline');
+  // 案件納期チップ表示
+  const deadlineEvs = calEvents.filter(e => e.date === dateStr && e.type === 'deadline');
+  const schedEvs    = calEvents.filter(e => e.date === dateStr && e.type === 'schedule');
   const MAX = 3;
-  dayEvents.slice(0, MAX).forEach(ev => {
+  deadlineEvs.slice(0, MAX).forEach(ev => {
     const chip = document.createElement('span');
     chip.className = 'ev-chip ' + chipClass(ev);
     chip.textContent = chipLabel(ev);
@@ -633,11 +647,22 @@ function makeCell(year, month, day, otherMonth, isToday) {
     chip.onclick = (e) => { e.stopPropagation(); openDetailModal(ev); };
     cell.appendChild(chip);
   });
-  if (dayEvents.length > MAX) {
+  if (deadlineEvs.length > MAX) {
     const more = document.createElement('span');
     more.className = 'ev-more';
-    more.textContent = `+${dayEvents.length - MAX}`;
+    more.textContent = `+${deadlineEvs.length - MAX}`;
     cell.appendChild(more);
+  }
+
+  // 予定ピンバッジ（バイト・会議等の件数）
+  if (schedEvs.length > 0) {
+    const CIRCLED = ['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    const pin = document.createElement('div');
+    pin.className = 'ev-pin';
+    pin.textContent = CIRCLED[Math.min(schedEvs.length, 10)] || `${schedEvs.length}`;
+    pin.title = schedEvs.map(e => e.title + (e.startTime ? ` ${e.startTime}` : '')).join('\n');
+    pin.onclick = (e) => { e.stopPropagation(); window.location.href = `/日次スケジュール.html?date=${dateStr}`; };
+    cell.appendChild(pin);
   }
 
   return cell;

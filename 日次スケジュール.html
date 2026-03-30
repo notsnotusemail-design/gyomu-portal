@@ -131,6 +131,26 @@ body {
   display: none;
 }
 .sched-block:hover .blk-del { display: block; }
+/* Notion固定ブロック（バイト・会議等 — 移動・削除不可） */
+.notion-block {
+  position: absolute; top: 0; bottom: 0;
+  background: linear-gradient(135deg,#374151,#4b5563);
+  opacity: 0.82;
+  border-radius: 0;
+  display: flex; align-items: center;
+  padding: 0 8px;
+  font-size: 12px; font-weight: 700;
+  color: rgba(255,255,255,0.95);
+  z-index: 3;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+  border-left: 3px solid #9ca3af;
+}
+.notion-block .nb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.notion-block .nb-time { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.6); margin-left: 5px; white-space: nowrap; }
+.notion-block .nb-lock { font-size: 10px; margin-right: 5px; opacity: 0.6; flex-shrink: 0; }
+
 /* リサイズハンドル */
 .sched-block .blk-handle-l,
 .sched-block .blk-handle-r {
@@ -312,9 +332,10 @@ function changeDate(delta) {
 }
 
 // ===== データ =====
-let schedBlocks = [];
+let schedBlocks   = [];
 let handoverItems = [];
-let deadlineItems = [];
+let deadlineItems = [];  // 納期クリップ用
+let notionEvents  = [];  // Notionの固定予定（バイト・会議など）
 
 // ===== タイムライン構築 =====
 function buildTimeline() {
@@ -408,6 +429,40 @@ function refreshBlockEl(b) {
   const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
   const ts = el.querySelector('.blk-time');
   if (ts) ts.textContent = timeStr;
+}
+
+// ===== Notion固定ブロック描画（バイト・会議） =====
+function renderNotionBlocks() {
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.notion-block').forEach(el => el.remove());
+  notionEvents.forEach(ev => {
+    if (!ev.startTime) return; // 時刻なしはスキップ（クリップ側で表示）
+    const startMin = timeToMin(ev.startTime);
+    const endMin   = ev.endTime ? timeToMin(ev.endTime) : startMin + 60;
+    const x = minToX(startMin);
+    const w = Math.max(8, minToX(endMin) - x);
+    const timeStr = `${ev.startTime}${ev.endTime ? '〜'+ev.endTime : ''}`;
+
+    const el = document.createElement('div');
+    el.className = 'notion-block';
+    el.id = `notion-${ev.id}`;
+    el.style.left  = `${x}px`;
+    el.style.width = `${w}px`;
+    el.title = `${ev.title}${ev.memo ? '\n'+ev.memo : ''}\n（Notionから同期）`;
+    el.innerHTML = `
+      <span class="nb-lock">🔒</span>
+      <span class="nb-text">${esc(ev.title)}</span>
+      <span class="nb-time">${timeStr}</span>`;
+    lane.appendChild(el);
+  });
+}
+
+function timeToMin(timeStr) {
+  // "07:30" → 450
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
 }
 
 // ===== 現在時刻ライン =====
@@ -745,18 +800,24 @@ function renderClips() {
 
 function renderDeadlines() {
   const body = document.getElementById('deadlineBody');
-  document.getElementById('deadlineCount').textContent = `${deadlineItems.length}件`;
-  if (!deadlineItems.length) {
+  // 納期 + 時刻なし予定（時刻なしNotionイベントはクリップとして表示）
+  const noTimeEvents = notionEvents.filter(e => !e.startTime);
+  const allItems = [...deadlineItems, ...noTimeEvents];
+  document.getElementById('deadlineCount').textContent = `${allItems.length}件`;
+  if (!allItems.length) {
     body.innerHTML = '<div class="clips-empty">今日の締切はありません</div>';
     return;
   }
-  body.innerHTML = deadlineItems.map(item => {
+  body.innerHTML = allItems.map(item => {
+    const isDeadline = item.type === 'deadline';
     const did = `dl-${item.id||item.title}`;
     const title = item.title || item.name || '';
-    return `<div class="clip-item cc-deadline" data-src="${esc(did)}"
-                 onmousedown="startClipDrag(event,'${esc(did)}','deadline','${esc(title)}')"
+    const badge = isDeadline ? '納期' : '予定';
+    const cc    = isDeadline ? 'cc-deadline' : 'cc-medium';
+    return `<div class="clip-item ${cc}" data-src="${esc(did)}"
+                 onmousedown="startClipDrag(event,'${esc(did)}','${isDeadline?'deadline':'schedule'}','${esc(title)}')"
             >
-      <span class="clip-badge">納期</span>
+      <span class="clip-badge">${badge}</span>
       <span class="clip-text" title="${esc(title)}">${esc(title)}</span>
     </div>`;
   }).join('');
@@ -811,12 +872,16 @@ async function loadHandover() {
     handoverItems = d.items || [];
   } catch(e) { handoverItems = []; }
 }
-async function loadDeadlines() {
+async function loadCalendarEvents() {
   try {
-    const r = await fetch(`${SERVER}/api/calendar?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`${SERVER}/api/calendar/day?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
     const d = await r.json();
-    deadlineItems = (d.cases || []).filter(c => c.deadline === currentDate || c.date === currentDate).slice(0,20);
-  } catch(e) { deadlineItems = []; }
+    const events = d.events || [];
+    // 納期 → クリップパネル用
+    deadlineItems = events.filter(e => e.type === 'deadline');
+    // 予定（バイト・会議等） → タイムライン固定ブロック用
+    notionEvents  = events.filter(e => e.type === 'schedule');
+  } catch(e) { deadlineItems = []; notionEvents = []; }
 }
 async function saveBlock(b) {
   try {
@@ -834,7 +899,8 @@ function genId() { return Math.random().toString(36).slice(2,10); }
 async function init() {
   document.getElementById('headerDate').textContent = formatDateJP(currentDate);
   buildTimeline();
-  await Promise.all([loadBlocks(), loadHandover(), loadDeadlines()]);
+  await Promise.all([loadBlocks(), loadHandover(), loadCalendarEvents()]);
+  renderNotionBlocks();  // 固定ブロックを先に描画（背景扱い）
   renderBlocks();
   renderClips();
   renderDeadlines();

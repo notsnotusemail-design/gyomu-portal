@@ -281,6 +281,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_all_customers()
         elif path.startswith("/api/invoice-data"):
             self.handle_get_invoice_data()
+        elif path.startswith("/api/calendar/day"):
+            self.handle_get_calendar_day()
         elif path.startswith("/api/calendar"):
             self.handle_get_calendar()
         elif path == "/api/handover/all":
@@ -532,15 +534,21 @@ class Handler(BaseHTTPRequestHandler):
                     memo     = memo_rt[0].get("plain_text","") if memo_rt else ""
                     if not dl:
                         continue
+                    date_only = dl[:10]
+                    # 時刻情報を抽出（例: "2026-03-30T07:30:00.000+09:00" → "07:30"）
+                    start_time = dl[11:16] if len(dl) > 10 else ""
+                    dl_end = (props["案件締切日・進行"]["date"] or {}).get("end","")
+                    end_time = dl_end[11:16] if dl_end and len(dl_end) > 10 else ""
                     if customer:
                         # お客様ありは案件締切
-                        events.append({"date": dl[:10], "title": number,
+                        events.append({"date": date_only, "title": number,
                                        "type": "deadline", "customer": customer,
                                        "status": status, "memo": memo, "id": page["id"]})
                     else:
-                        # お客様なしは予定エントリー
-                        events.append({"date": dl[:10], "title": number,
-                                       "type": "schedule", "memo": memo, "id": page["id"]})
+                        # お客様なしは予定エントリー（バイト・会議等）
+                        events.append({"date": date_only, "title": number,
+                                       "type": "schedule", "memo": memo, "id": page["id"],
+                                       "startTime": start_time, "endTime": end_time})
                 except Exception:
                     pass
             if not result.get("has_more"):
@@ -550,6 +558,46 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True,
                              "month": f"{year}-{month:02d}",
                              "events": events})
+
+    def handle_get_calendar_day(self):
+        """特定日の予定・案件をすべて返す（日次スケジュール用）"""
+        from urllib.parse import urlparse, parse_qs
+        qs   = parse_qs(urlparse(self.path).query)
+        date = (qs.get("date") or [None])[0]
+        if not date:
+            self.send_json(400, {"ok": False, "error": "dateが必要"}); return
+        print(f"\n📅 カレンダー日別取得: {date}")
+        next_day = str(datetime.date.fromisoformat(date) + datetime.timedelta(days=1))
+        q = {"filter": {"and": [
+                {"property": "案件締切日・進行", "date": {"on_or_after": date}},
+                {"property": "案件締切日・進行", "date": {"before": next_day}},
+             ]}, "page_size": 100}
+        result, _ = notion_request("POST", f"/databases/{CASE_DB_ID}/query", q)
+        events = []
+        for page in (result or {}).get("results", []):
+            try:
+                props    = page["properties"]
+                number   = (props["当方案件番号"]["title"] or [{}])[0].get("plain_text","").strip()
+                customer = (props["お客様no/名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
+                dl       = (props["案件締切日・進行"]["date"] or {}).get("start","")
+                dl_end   = (props["案件締切日・進行"]["date"] or {}).get("end","")
+                status   = (props["進捗"]["status"] or {}).get("name","")
+                memo_rt  = (props.get("備考") or {}).get("rich_text") or []
+                memo     = memo_rt[0].get("plain_text","") if memo_rt else ""
+                if not dl: continue
+                start_time = dl[11:16] if len(dl) > 10 else ""
+                end_time   = dl_end[11:16] if dl_end and len(dl_end) > 10 else ""
+                if customer:
+                    events.append({"date": dl[:10], "title": number,
+                                   "type": "deadline", "customer": customer,
+                                   "status": status, "memo": memo, "id": page["id"]})
+                else:
+                    events.append({"date": dl[:10], "title": number,
+                                   "type": "schedule", "memo": memo, "id": page["id"],
+                                   "startTime": start_time, "endTime": end_time})
+            except Exception:
+                pass
+        self.send_json(200, {"ok": True, "date": date, "events": events})
 
     # ========== 引き継ぎ CRUD（Notion DB）==========
     def handle_get_handover_all(self):
