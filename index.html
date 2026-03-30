@@ -91,7 +91,8 @@ body {
   transition: background 0.1s;
   position: relative;
 }
-.cal-cell:hover { background: #fafafa; }
+.cal-cell:hover { background: #eff3ff; }
+.cal-cell:hover .cal-day { color: #4f6ef7; }
 .cal-cell:nth-child(7n) { border-right: none; }
 
 .cal-day {
@@ -610,7 +611,11 @@ function makeCell(year, month, day, otherMonth, isToday) {
     + (isToday ? ' today' : '')
     + (dow === 6 ? ' sat' : '')
     + (dow === 0 ? ' sun' : '');
-  // セルクリック無効（納期チップのクリックのみ有効）
+  // セルクリック → 日次スケジュールページへ
+  cell.style.cursor = 'pointer';
+  cell.addEventListener('click', () => {
+    window.location.href = `/日次スケジュール.html?date=${dateStr}`;
+  });
 
   const dayEl = document.createElement('div');
   dayEl.className = 'cal-day';

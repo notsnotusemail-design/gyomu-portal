@@ -54,6 +54,22 @@ SCHEDULE_DB_ID = "4a2a3ad54b5b41a6b138420ee5841ee3"
 # 引き継ぎデータベースID（Notionで管理）
 HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 
+# 日次スケジュール保存ファイル（ローカルJSON）
+DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
+
+def load_daily_schedules():
+    if os.path.exists(DAILY_SCHEDULE_FILE):
+        try:
+            with open(DAILY_SCHEDULE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_daily_schedules(data):
+    with open(DAILY_SCHEDULE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 # 顧客ページID
 CUSTOMER_PAGES = {
     "201":       "3293288b-84b0-80dc-8adf-f83cb6b3b9a2",
@@ -247,6 +263,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("引き継ぎ一覧.html")
         elif path == "/引き継ぎ完了済み.html":
             self.send_html("引き継ぎ完了済み.html")
+        elif path == "/日次スケジュール.html":
+            self.send_html("日次スケジュール.html")
         elif path == "/api/health":
             self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
         elif path == "/api/next-customer-no":
@@ -269,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_handover_all()
         elif path == "/api/handover/done-list":
             self.handle_get_handover_done_list()
+        elif path.startswith("/api/daily-schedule"):
+            self.handle_get_daily_schedule()
         elif path.startswith("/api/handover"):
             self.handle_get_handover()
         else:
@@ -317,6 +337,10 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_handover_update_content(data)
         elif self.path == "/api/handover/restore":
             self.handle_handover_restore(data)
+        elif self.path == "/api/daily-schedule/save":
+            self.handle_save_daily_block(data)
+        elif self.path == "/api/daily-schedule/delete":
+            self.handle_delete_daily_block(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -659,6 +683,53 @@ class Handler(BaseHTTPRequestHandler):
             "properties": {"内容": {"title": [{"text": {"content": text}}]}}
         })
         print(f"  ✏️  内容更新: {item_id[:8]} → {text[:20]}")
+        self.send_json(200, {"ok": True})
+
+    def handle_get_daily_schedule(self):
+        """日次スケジュールブロックを返す"""
+        from urllib.parse import urlparse, parse_qs
+        qs   = parse_qs(urlparse(self.path).query)
+        date = qs.get("date", [None])[0]
+        if not date:
+            self.send_json(400, {"ok": False, "error": "dateが必要"}); return
+        schedules = load_daily_schedules()
+        blocks = schedules.get(date, [])
+        self.send_json(200, {"ok": True, "date": date, "blocks": blocks})
+
+    def handle_save_daily_block(self, data):
+        """日次スケジュールブロックを保存/更新"""
+        import uuid
+        date  = data.get("date", "")
+        block = data.get("block", {})
+        if not date or not block:
+            self.send_json(400, {"ok": False, "error": "dateとblockが必要"}); return
+        if not block.get("id"):
+            block["id"] = str(uuid.uuid4())[:8]
+        schedules = load_daily_schedules()
+        blocks = schedules.get(date, [])
+        # 同IDがあれば更新、なければ追加
+        updated = False
+        for i, b in enumerate(blocks):
+            if b.get("id") == block["id"]:
+                blocks[i] = block; updated = True; break
+        if not updated:
+            blocks.append(block)
+        schedules[date] = blocks
+        save_daily_schedules(schedules)
+        print(f"  📅 日次ブロック保存: {date} id={block['id']}")
+        self.send_json(200, {"ok": True, "block": block})
+
+    def handle_delete_daily_block(self, data):
+        """日次スケジュールブロックを削除"""
+        date     = data.get("date", "")
+        block_id = data.get("id", "")
+        if not date or not block_id:
+            self.send_json(400, {"ok": False, "error": "dateとidが必要"}); return
+        schedules = load_daily_schedules()
+        blocks = schedules.get(date, [])
+        schedules[date] = [b for b in blocks if b.get("id") != block_id]
+        save_daily_schedules(schedules)
+        print(f"  🗑️  日次ブロック削除: {date} id={block_id}")
         self.send_json(200, {"ok": True})
 
     def handle_add_schedule(self, data):
