@@ -21,12 +21,23 @@ except ImportError:
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# .envファイルから環境変数を読み込む（Macローカル用）
+_env_file = os.path.join(SCRIPT_DIR, ".env")
+if os.path.exists(_env_file):
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+
 # ============================================================
-# ★ ここにあなたのNotionトークンを貼り付けてください
-#    取得方法: https://www.notion.so/my-integrations
-#    → 「新しいインテグレーション」→ トークンをコピー
+# Notionトークンは環境変数 NOTION_TOKEN から読み込みます
+# Railway: Variables タブで設定
+# Mac ローカル: notion_server.py と同じフォルダに .env ファイルを作成し
+#              NOTION_TOKEN=ntn_xxxxx と記載
 # ============================================================
-NOTION_TOKEN = "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"
+NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
 
 # ポート番号（Railway等クラウドは$PORT環境変数を使用）
 PORT = int(os.environ.get("PORT", 8765))
