@@ -289,6 +289,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_handover_all()
         elif path == "/api/handover/done-list":
             self.handle_get_handover_done_list()
+        elif path.startswith("/api/daily-schedule/dates"):
+            self.handle_get_schedule_dates()
         elif path.startswith("/api/daily-schedule"):
             self.handle_get_daily_schedule()
         elif path.startswith("/api/handover"):
@@ -732,6 +734,18 @@ class Handler(BaseHTTPRequestHandler):
         })
         print(f"  ✏️  内容更新: {item_id[:8]} → {text[:20]}")
         self.send_json(200, {"ok": True})
+
+    def handle_get_schedule_dates(self):
+        """指定月に日次スケジュールが保存されている日付一覧を返す"""
+        from urllib.parse import urlparse, parse_qs
+        qs    = parse_qs(urlparse(self.path).query)
+        month = (qs.get("month") or [None])[0]  # "YYYY-MM"
+        if not month:
+            self.send_json(400, {"ok": False, "error": "monthが必要"}); return
+        schedules = load_daily_schedules()
+        # ブロックが1件以上ある日のみ返す
+        dates = [d for d in schedules if d.startswith(month) and len(schedules[d]) > 0]
+        self.send_json(200, {"ok": True, "dates": dates})
 
     def handle_get_daily_schedule(self):
         """日次スケジュールブロックを返す"""

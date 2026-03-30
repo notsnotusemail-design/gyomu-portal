@@ -298,6 +298,7 @@ body {
 </div>
 
 <div class="snap-toast" id="snapToast"></div>
+<div class="snap-toast" id="saveToast" style="bottom:120px;background:rgba(16,185,129,0.9);">✓ 保存しました</div>
 
 <script>
 const SERVER  = window.location.origin;
@@ -883,14 +884,23 @@ async function loadCalendarEvents() {
     notionEvents  = events.filter(e => e.type === 'schedule');
   } catch(e) { deadlineItems = []; notionEvents = []; }
 }
+let saveToastTimer = null;
 async function saveBlock(b) {
   try {
-    await fetch(`${SERVER}/api/daily-schedule/save`, {
+    const r = await fetch(`${SERVER}/api/daily-schedule/save`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ date: currentDate, block: b }),
       signal: AbortSignal.timeout(5000),
     });
+    if (r.ok) showSaveToast();
   } catch(e) {}
+}
+function showSaveToast() {
+  const el = document.getElementById('saveToast');
+  if (!el) return;
+  el.classList.add('show');
+  clearTimeout(saveToastTimer);
+  saveToastTimer = setTimeout(() => el.classList.remove('show'), 1500);
 }
 
 function genId() { return Math.random().toString(36).slice(2,10); }
@@ -900,20 +910,29 @@ async function init() {
   document.getElementById('headerDate').textContent = formatDateJP(currentDate);
   buildTimeline();
   await Promise.all([loadBlocks(), loadHandover(), loadCalendarEvents()]);
-  renderNotionBlocks();  // 固定ブロックを先に描画（背景扱い）
-  renderBlocks();
+  renderNotionBlocks();  // Notion固定ブロックを先に（背景扱い）
+  renderBlocks();        // 保存済みブロックを描画
   renderClips();
   renderDeadlines();
   updateNowLine();
-  // 今の時間帯までスクロール
+
+  // スクロール位置：Notionブロックがあればその開始時刻へ、なければ現在時刻 or 8時
+  let scrollTarget = 8 * 60;
   if (currentDate === getTodayStr()) {
     const now = new Date();
-    const m = now.getHours() * 60 + now.getMinutes();
-    const wrap = document.getElementById('tlWrap');
-    wrap.scrollLeft = Math.max(0, minToX(m) - 120);
-  } else {
-    const wrap = document.getElementById('tlWrap');
-    wrap.scrollLeft = minToX(8 * 60); // 8時から表示
+    scrollTarget = now.getHours() * 60 + now.getMinutes();
+  }
+  // Notionブロックがある場合は最初のブロック開始時刻を優先
+  const firstNotion = notionEvents.filter(e => e.startTime).sort((a,b) => timeToMin(a.startTime) - timeToMin(b.startTime))[0];
+  if (firstNotion) scrollTarget = Math.min(scrollTarget, timeToMin(firstNotion.startTime));
+
+  const wrap = document.getElementById('tlWrap');
+  wrap.scrollLeft = Math.max(0, minToX(scrollTarget) - 120);
+
+  // 保存済みブロックがあればヘッダーに表示
+  if (schedBlocks.length > 0) {
+    const sub = document.querySelector('.header-sub');
+    if (sub) sub.textContent = `${schedBlocks.length}件のスケジュール保存済み — ドラッグで編集`;
   }
 }
 

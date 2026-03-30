@@ -142,6 +142,15 @@ body {
 }
 .ev-pin:hover { background: #4f46e5; }
 
+/* 日次スケジュール保存済みドット */
+.sched-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #10b981;
+  display: inline-block;
+  position: absolute; top: 5px; right: 5px;
+  box-shadow: 0 0 0 1.5px white;
+}
+
 /* カレンダーローディング */
 .cal-loading {
   text-align: center; padding: 40px; color: #aaa; font-size: 13px;
@@ -504,6 +513,7 @@ const SERVER = window.location.origin;
 let viewYear, viewMonth;
 let calEvents     = [];
 let fetchedMonths = new Set();
+let schedDates    = new Set(); // 日次スケジュール保存済み日付
 
 // ===== 初期化 =====
 (function init() {
@@ -665,6 +675,14 @@ function makeCell(year, month, day, otherMonth, isToday) {
     cell.appendChild(pin);
   }
 
+  // 日次スケジュール保存済みドット（緑）
+  if (schedDates.has(dateStr)) {
+    const dot = document.createElement('div');
+    dot.className = 'sched-dot';
+    dot.title = 'スケジュール保存済み';
+    cell.appendChild(dot);
+  }
+
   return cell;
 }
 
@@ -683,18 +701,31 @@ function chipLabel(ev) {
 async function fetchCalendar() {
   const monthStr = `${viewYear}-${String(viewMonth).padStart(2,'0')}`;
   try {
-    const r = await fetch(`${SERVER}/api/calendar?month=${monthStr}`,
-      { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return;
-    const d = await r.json();
-    if (!d.ok) return;
-    // 他の月のキャッシュを保持したまま今月分を上書き
-    calEvents = calEvents.filter(e => !e.date.startsWith(monthStr.slice(0,7)));
-    calEvents = calEvents.concat(d.events);
-    fetchedMonths.add(monthStr);
+    // カレンダーイベントと日次スケジュール保存日を並列取得
+    const [calRes, sdRes] = await Promise.all([
+      fetch(`${SERVER}/api/calendar?month=${monthStr}`, { signal: AbortSignal.timeout(8000) }),
+      fetch(`${SERVER}/api/daily-schedule/dates?month=${monthStr}`, { signal: AbortSignal.timeout(5000) }),
+    ]);
+    if (calRes.ok) {
+      const d = await calRes.json();
+      if (d.ok) {
+        calEvents = calEvents.filter(e => !e.date.startsWith(monthStr.slice(0,7)));
+        calEvents = calEvents.concat(d.events || []);
+        fetchedMonths.add(monthStr);
+        updateAlerts();
+      }
+    }
+    if (sdRes.ok) {
+      const sd = await sdRes.json();
+      if (sd.ok) {
+        // 今月分を更新（他の月は保持）
+        (sd.dates || []).forEach(d => schedDates.add(d));
+      }
+    }
     renderCalendar();
-    updateAlerts(); // 今日・明日のアラートを更新
-  } catch(e) {}
+  } catch(e) {
+    renderCalendar();
+  }
 }
 
 // ===== 引き継ぎ =====
