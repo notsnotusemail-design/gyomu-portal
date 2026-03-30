@@ -294,6 +294,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_handover_delete(data)
         elif self.path == "/api/handover/update-date":
             self.handle_handover_update_date(data)
+        elif self.path == "/api/handover/update-content":
+            self.handle_handover_update_content(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -609,6 +611,18 @@ class Handler(BaseHTTPRequestHandler):
         if props:
             notion_request("PATCH", f"/pages/{item_id}", {"properties": props})
         print(f"  📅 日付変更: {item_id[:8]}")
+        self.send_json(200, {"ok": True})
+
+    def handle_handover_update_content(self, data):
+        """引き継ぎ内容テキストを更新"""
+        item_id = data.get("id", "")
+        text    = data.get("text", "").strip()
+        if not item_id or not text:
+            self.send_json(400, {"ok": False, "error": "idとtextが必要"}); return
+        notion_request("PATCH", f"/pages/{item_id}", {
+            "properties": {"内容": {"title": [{"text": {"content": text}}]}}
+        })
+        print(f"  ✏️  内容更新: {item_id[:8]} → {text[:20]}")
         self.send_json(200, {"ok": True})
 
     def handle_add_schedule(self, data):

@@ -270,6 +270,8 @@ body {
 .ha-btn.btn-todo:hover  { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
 .ha-btn.btn-memo:hover  { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
 .ha-btn.btn-ext:hover   { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+.ha-btn.btn-edit-content { color: #888; }
+.ha-btn.btn-edit-content:hover { background: #f5f5f5; color: #333; }
 
 /* 引き継ぎ追加モーダル */
 .type-selector { display: flex; gap: 6px; }
@@ -454,6 +456,18 @@ body {
 </div>
 
 <!-- ===== 中期延長モーダル ===== -->
+<!-- ===== 引き継ぎ内容編集モーダル ===== -->
+<div class="modal-overlay" id="editContentModal" onclick="closeEditContent(event)">
+  <div class="modal">
+    <div class="modal-title">✏️ 内容を編集</div>
+    <textarea id="editContentText" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+    <div class="modal-btns" style="margin-top:14px;">
+      <button type="button" class="btn-cancel" onclick="closeEditContent()">キャンセル</button>
+      <button type="button" class="btn-submit" onclick="submitEditContent()">保存</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="extendModal" onclick="closeExtendModal(event)">
   <div class="modal">
     <div class="modal-title">📅 中期メモを延長</div>
@@ -711,12 +725,14 @@ function renderHandover() {
       actions = `
         <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
         <button class="ha-btn btn-ext"  onclick="openExtendModal('${iid}','${iend}','${itxt}')">延長</button>
+        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️</button>
       `;
     } else {
       actions = `
         <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
         <button class="ha-btn btn-todo" onclick="carryHandover('${iid}','todo')" title="TODOとして翌日へ">TODO</button>
         <button class="ha-btn btn-memo" onclick="carryHandover('${iid}','memo')" title="メモとして翌日へ">メモ</button>
+        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️</button>
       `;
     }
 
@@ -739,6 +755,36 @@ async function doneHandover(id) {
       body: JSON.stringify({id}), signal: AbortSignal.timeout(5000)
     });
     if (r.ok) { handoverItems = handoverItems.filter(i => i.id !== id); renderHandover(); }
+  } catch(e) {}
+}
+
+// ===== 引き継ぎ内容編集 =====
+let editContentId = '';
+function openEditContent(id, currentText) {
+  editContentId = id;
+  document.getElementById('editContentText').value = currentText;
+  document.getElementById('editContentModal').classList.add('open');
+  setTimeout(() => document.getElementById('editContentText').focus(), 100);
+}
+function closeEditContent(e) {
+  if (e && e.target !== document.getElementById('editContentModal')) return;
+  document.getElementById('editContentModal').classList.remove('open');
+}
+async function submitEditContent() {
+  const text = document.getElementById('editContentText').value.trim();
+  if (!text) return;
+  try {
+    const r = await fetch(`${SERVER}/api/handover/update-content`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: editContentId, text}),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      const item = handoverItems.find(i => i.id === editContentId);
+      if (item) item.text = text;
+      document.getElementById('editContentModal').classList.remove('open');
+      renderHandover();
+    }
   } catch(e) {}
 }
 
