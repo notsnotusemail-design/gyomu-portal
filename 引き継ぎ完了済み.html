@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>引き継ぎ完了済み</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef;
+  color: #1a1a1a;
+  min-height: 100vh;
+  padding: 28px 16px 60px;
+}
+.container { max-width: 640px; margin: 0 auto; }
+
+.page-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.back-btn {
+  font-size: 13px; color: #888; text-decoration: none;
+  padding: 6px 12px; border: 1.5px solid #ddd;
+  border-radius: 8px; background: white;
+  transition: all 0.15s; white-space: nowrap;
+}
+.back-btn:hover { background: #f5f5f5; color: #333; border-color: #bbb; }
+.page-title { font-size: 18px; font-weight: 700; }
+.page-count { font-size: 12px; color: #aaa; margin-left: auto; }
+
+.card {
+  background: white; border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  overflow: hidden; margin-bottom: 12px;
+}
+.card-header {
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px; font-weight: 600; color: #555;
+}
+.card-body { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.empty { font-size: 13px; color: #bbb; text-align: center; padding: 24px 0; }
+
+.item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: #fafafa; border: 1px solid #efefef;
+  opacity: 0.8;
+}
+.item-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 20px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+}
+.badge-todo   { background: #eff3ff; color: #4f6ef7; }
+.badge-memo   { background: #fffbeb; color: #d97706; }
+.badge-medium { background: #f5f3ff; color: #7c3aed; }
+
+.item-body { flex: 1; min-width: 0; }
+.item-text { font-size: 13px; line-height: 1.5; word-break: break-word; color: #777; text-decoration: line-through; }
+.item-meta { font-size: 10px; color: #ccc; margin-top: 3px; }
+
+.item-actions { display: flex; gap: 5px; flex-shrink: 0; align-items: flex-start; }
+.act-btn {
+  font-size: 11px; padding: 4px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 6px;
+  background: white; cursor: pointer; color: #555;
+  transition: all 0.15s; white-space: nowrap;
+}
+.act-btn:hover { background: #f5f5f5; }
+.btn-restore:hover { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.btn-del:hover     { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+
+/* 削除確認モーダル */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35); z-index: 100;
+  justify-content: center; align-items: center; padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 16px;
+  padding: 24px; width: 100%; max-width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.modal-desc  { font-size: 13px; color: #555; margin-bottom: 18px; line-height: 1.5; }
+.modal-btns  { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-cancel  { font-size: 13px; padding: 8px 16px; border: 1.5px solid #e2e2e2; border-radius: 8px; background: white; cursor: pointer; }
+.btn-delete  { font-size: 13px; padding: 8px 16px; border: none; border-radius: 8px; background: #dc2626; color: white; cursor: pointer; }
+.btn-delete:hover { background: #b91c1c; }
+
+.loading { text-align: center; padding: 40px 0; color: #bbb; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <a class="back-btn" href="/引き継ぎ一覧.html">← 一覧へ戻る</a>
+    <div class="page-title">✅ 完了済み引き継ぎ</div>
+    <div class="page-count" id="countLabel"></div>
+  </div>
+
+  <div id="content"><div class="loading">読み込み中…</div></div>
+</div>
+
+<!-- 削除確認モーダル -->
+<div class="modal-overlay" id="delModal" onclick="closeDelModal(event)">
+  <div class="modal">
+    <div class="modal-title">🗑️ 完全に削除しますか？</div>
+    <div class="modal-desc" id="delModalText"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeDelModal()">キャンセル</button>
+      <button class="btn-delete" onclick="confirmDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let items = [];
+let deleteTargetId = '';
+
+async function load() {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/done-list`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    items = d.items || [];
+    render();
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="empty">サーバーに接続できません</div>';
+  }
+}
+
+function fmtDate(s) {
+  if (!s) return '';
+  const [y,m,d] = s.split('-');
+  return `${parseInt(m)}/${parseInt(d)}`;
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function render() {
+  document.getElementById('countLabel').textContent = `${items.length}件`;
+  const content = document.getElementById('content');
+  if (!items.length) {
+    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty">完了済みの引き継ぎはありません</div></div></div>';
+    return;
+  }
+
+  const labels = {todo:'TODO', memo:'メモ', medium:'中期'};
+  const bclass  = {todo:'badge-todo', memo:'badge-memo', medium:'badge-medium'};
+
+  let html = '<div class="card"><div class="card-body">';
+  items.forEach(item => {
+    const txt  = esc(item.text);
+    const iid  = item.id;
+    let meta = '';
+    if (item.type === 'medium') {
+      meta = `${fmtDate(item.start_date)} 〜 ${fmtDate(item.end_date)}`;
+    } else {
+      meta = fmtDate(item.date);
+    }
+    if (item.created_at) meta += (meta ? ' ／ ' : '') + `作成: ${fmtDate(item.created_at)}`;
+
+    html += `
+      <div class="item" id="item-${iid}">
+        <span class="item-badge ${bclass[item.type]}">${labels[item.type]}</span>
+        <div class="item-body">
+          <div class="item-text">${txt}</div>
+          <div class="item-meta">${meta}</div>
+        </div>
+        <div class="item-actions">
+          <button class="act-btn btn-restore" onclick="restore('${iid}')">↩️ 元に戻す</button>
+          <button class="act-btn btn-del" onclick="openDel('${iid}','${txt}')">削除</button>
+        </div>
+      </div>`;
+  });
+  html += '</div></div>';
+  content.innerHTML = html;
+}
+
+async function restore(id) {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/restore`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      items = items.filter(i => i.id !== id);
+      document.getElementById('countLabel').textContent = `${items.length}件`;
+      const el = document.getElementById(`item-${id}`);
+      if (el) {
+        el.style.transition = 'opacity 0.3s';
+        el.style.opacity = '0';
+        setTimeout(() => { el.remove(); render(); }, 300);
+      }
+    }
+  } catch(e) {}
+}
+
+function openDel(id, text) {
+  deleteTargetId = id;
+  document.getElementById('delModalText').textContent = `「${text}」を完全に削除します。この操作は元に戻せません。`;
+  document.getElementById('delModal').classList.add('open');
+}
+function closeDelModal(e) {
+  if (e && e.target !== document.getElementById('delModal')) return;
+  document.getElementById('delModal').classList.remove('open');
+}
+async function confirmDelete() {
+  document.getElementById('delModal').classList.remove('open');
+  try {
+    const r = await fetch(`${SERVER}/api/handover/delete`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({id: deleteTargetId}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      items = items.filter(i => i.id !== deleteTargetId);
+      render();
+    }
+  } catch(e) {}
+}
+
+// 自動更新（30秒）
+setInterval(load, 30000);
+load();
+</script>
+</body>
+</html>

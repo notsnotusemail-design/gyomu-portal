@@ -123,6 +123,21 @@ def get_active_handover(date_str):
                 items.append(item)
     return items
 
+def get_done_handover():
+    """完了済みの引き継ぎをNotionから取得"""
+    body = {"filter": {"property": "ステータス", "select": {"equals": "done"}},
+            "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+            "page_size": 100}
+    result, _ = notion_request("POST", f"/databases/{HANDOVER_DB_ID}/query", body)
+    if not result:
+        return []
+    items = []
+    for page in result.get("results", []):
+        item = parse_handover_page(page)
+        if item:
+            items.append(item)
+    return items
+
 def notion_request(method, path, body=None):
     url = NOTION_API + path
     data = jsonlib.dumps(body).encode() if body else None
@@ -230,6 +245,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("顧客情報ツール.html")
         elif path == "/引き継ぎ一覧.html":
             self.send_html("引き継ぎ一覧.html")
+        elif path == "/引き継ぎ完了済み.html":
+            self.send_html("引き継ぎ完了済み.html")
         elif path == "/api/health":
             self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
         elif path == "/api/next-customer-no":
@@ -250,6 +267,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_calendar()
         elif path == "/api/handover/all":
             self.handle_get_handover_all()
+        elif path == "/api/handover/done-list":
+            self.handle_get_handover_done_list()
         elif path.startswith("/api/handover"):
             self.handle_get_handover()
         else:
@@ -296,6 +315,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_handover_update_date(data)
         elif self.path == "/api/handover/update-content":
             self.handle_handover_update_content(data)
+        elif self.path == "/api/handover/restore":
+            self.handle_handover_restore(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -611,6 +632,21 @@ class Handler(BaseHTTPRequestHandler):
         if props:
             notion_request("PATCH", f"/pages/{item_id}", {"properties": props})
         print(f"  📅 日付変更: {item_id[:8]}")
+        self.send_json(200, {"ok": True})
+
+    def handle_get_handover_done_list(self):
+        """完了済み引き継ぎ一覧を返す"""
+        items = get_done_handover()
+        self.send_json(200, {"ok": True, "items": items})
+
+    def handle_handover_restore(self, data):
+        """完了済み引き継ぎをアクティブに戻す"""
+        item_id = data.get("id", "")
+        if not item_id:
+            self.send_json(400, {"ok": False, "error": "idが必要"}); return
+        notion_request("PATCH", f"/pages/{item_id}",
+                       {"properties": {"ステータス": {"select": {"name": "active"}}}})
+        print(f"  🔄 引き継ぎ復元: {item_id[:8]}")
         self.send_json(200, {"ok": True})
 
     def handle_handover_update_content(self, data):
