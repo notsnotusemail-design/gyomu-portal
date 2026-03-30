@@ -141,8 +141,15 @@ body {
   <div class="page-header">
     <a class="back-btn" href="/">← ポータルへ戻る</a>
     <div class="page-title">📝 引き継ぎ一覧</div>
-    <a href="/引き継ぎ完了済み.html" style="margin-left:auto;font-size:11px;color:#aaa;text-decoration:none;padding:4px 9px;border:1.5px solid #ebebeb;border-radius:7px;white-space:nowrap;transition:all 0.15s;" onmouseover="this.style.color='#555';this.style.borderColor='#bbb'" onmouseout="this.style.color='#aaa';this.style.borderColor='#ebebeb'">✅ 完了済み</a>
   </div>
+  <a href="/引き継ぎ完了済み.html" style="display:flex;align-items:center;gap:8px;text-decoration:none;background:white;border:1.5px solid #e2e2e2;border-radius:12px;padding:12px 18px;margin-bottom:16px;color:#555;font-size:14px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,0.05);transition:all 0.15s;" onmouseover="this.style.background='#f5f5f5';this.style.borderColor='#bbb'" onmouseout="this.style.background='white';this.style.borderColor='#e2e2e2'">
+    <span style="font-size:20px;">✅</span>
+    <div>
+      <div>完了済みの引き継ぎを見る</div>
+      <div style="font-size:11px;color:#aaa;margin-top:2px;">間違えて完了した項目はここから復元できます</div>
+    </div>
+    <span style="margin-left:auto;color:#bbb;font-size:16px;">›</span>
+  </a>
 
   <div id="listRoot">
     <div class="loading">読み込み中…</div>
