@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求書データ出力ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+
+.card {
+  background: white; border-radius: 12px; padding: 18px 20px;
+  margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+}
+
+/* ヘッダー操作バー */
+.ctrl-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.month-sel {
+  padding: 9px 14px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa; cursor: pointer;
+}
+.month-sel:focus { outline: none; border-color: #4f6ef7; background: white; }
+.btn-fetch {
+  padding: 9px 20px; background: #1a1a1a; color: white;
+  border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.btn-fetch:hover:not(:disabled) { background: #333; }
+.btn-fetch:disabled { background: #aaa; cursor: default; }
+
+/* テーブル */
+.inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.inv-table th {
+  text-align: left; font-size: 11px; font-weight: 600; color: #999;
+  border-bottom: 1.5px solid #e5e5e5; padding: 6px 8px;
+}
+.inv-table td { padding: 10px 8px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
+.inv-table tr:last-child td { border-bottom: none; }
+.cust-no { font-weight: 700; color: #4f6ef7; font-size: 12px; white-space: nowrap; }
+.cust-name { font-size: 14px; font-weight: 500; }
+.case-list { font-size: 11px; color: #666; line-height: 1.8; margin-top: 2px; }
+.case-item { display: flex; gap: 6px; align-items: baseline; }
+.case-num { font-family: 'SF Mono', 'Courier New', monospace; font-size: 11px; }
+.case-note { color: #aaa; font-size: 10px; }
+.ref-total { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+.amount-input {
+  width: 120px; padding: 7px 10px; border: 1.5px solid #e2e2e2;
+  border-radius: 7px; font-size: 14px; font-family: inherit; text-align: right;
+  background: #fafafa;
+}
+.amount-input:focus { outline: none; border-color: #4f6ef7; background: white; }
+.yen-wrap { position: relative; display: inline-block; }
+.yen-wrap::before {
+  content: '¥'; position: absolute; left: 8px; top: 50%;
+  transform: translateY(-50%); color: #aaa; font-size: 13px; pointer-events: none;
+}
+.yen-wrap .amount-input { padding-left: 22px; }
+
+/* ステータスバッジ */
+.s-done  { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #dcfce7; color: #166534; }
+.s-wip   { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #dbeafe; color: #1e3a8a; }
+.s-todo  { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #f3f4f6; color: #666; }
+
+/* サマリーバー */
+.summary-bar {
+  display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  padding: 12px 16px; background: #f8f8f8; border-radius: 10px;
+  margin-bottom: 14px; font-size: 13px;
+}
+.summary-bar .lbl { color: #999; font-size: 11px; }
+.summary-bar .val { font-weight: 700; font-size: 16px; color: #1a1a1a; }
+
+/* 請求日 */
+.inv-date-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.inv-date-wrap label { font-size: 13px; font-weight: 500; color: #444; white-space: nowrap; }
+.inv-date-wrap input[type=date] {
+  padding: 8px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa;
+}
+.inv-date-wrap input[type=date]:focus { outline: none; border-color: #4f6ef7; background: white; }
+
+/* アクションボタン */
+.action-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-copy {
+  flex: 1; min-width: 180px; padding: 12px; background: white; color: #1a1a1a;
+  border: 1.5px solid #e2e2e2; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center;
+  justify-content: center; gap: 6px;
+}
+.btn-copy:hover:not(:disabled) { border-color: #4f6ef7; background: #f5f7ff; color: #4f6ef7; }
+.btn-copy:disabled { opacity: 0.5; cursor: default; }
+.btn-notion {
+  flex: 1; min-width: 180px; padding: 12px; background: #1a1a1a; color: white;
+  border: none; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s; display: flex; align-items: center;
+  justify-content: center; gap: 6px;
+}
+.btn-notion:hover:not(:disabled) { background: #333; }
+.btn-notion:disabled { background: #aaa; cursor: default; }
+.btn-xlsx {
+  padding: 5px 12px; background: #16a34a; color: white;
+  border: none; border-radius: 7px; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: background 0.15s;
+}
+.btn-xlsx:hover:not(:disabled) { background: #15803d; }
+.btn-xlsx:disabled { background: #aaa; cursor: default; }
+
+.msg-box {
+  display: none; padding: 12px 16px; border-radius: 10px;
+  font-size: 13px; margin-top: 12px; line-height: 1.6;
+}
+.msg-box.show { display: block; }
+.msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.msg-info    { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+
+/* 空状態 */
+.empty-state { text-align: center; padding: 40px 20px; color: #aaa; font-size: 14px; }
+.empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+
+/* サーバーバー */
+#serverBar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-radius: 10px; border: 1.5px solid #fde047; background: #fef9c3;
+  margin-bottom: 14px; font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📑 請求書データ出力ツール</h1>
+<p class="subtitle">Notionの案件表から月別データを取得 → 金額確認 → スプレッドシート出力 + Notion記録</p>
+
+<!-- サーバーステータス -->
+<div id="serverBar">
+  <span id="serverDot" style="width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0;transition:background 0.3s"></span>
+  <span id="serverTxt">サーバー確認中...</span>
+</div>
+
+<!-- 月選択 -->
+<div class="card">
+  <div class="card-title">対象月を選択</div>
+  <div class="ctrl-bar">
+    <select class="month-sel" id="monthSel"></select>
+    <button class="btn-fetch" id="btnFetch" onclick="fetchInvoice()">📥 案件データを取得</button>
+  </div>
+</div>
+
+<!-- 結果エリア -->
+<div id="resultArea" style="display:none">
+
+  <!-- サマリー -->
+  <div class="summary-bar" id="summaryBar"></div>
+
+  <!-- テーブル -->
+  <div class="card">
+    <div class="card-title" id="tableTitle">請求一覧</div>
+    <table class="inv-table" id="invTable">
+      <thead>
+        <tr>
+          <th style="width:140px">お客様</th>
+          <th>案件一覧</th>
+          <th style="width:130px;text-align:right">請求金額</th>
+          <th style="width:100px;text-align:center">請求書</th>
+        </tr>
+      </thead>
+      <tbody id="invBody"></tbody>
+    </table>
+  </div>
+
+  <!-- 請求日 + アクション -->
+  <div class="card">
+    <div class="card-title">出力・記録</div>
+    <div class="inv-date-wrap">
+      <label>請求日</label>
+      <input type="date" id="invoiceDate">
+    </div>
+    <div class="action-row">
+      <button class="btn-copy" id="btnCopy" onclick="copyForSheets()">
+        📋 Googleスプレッドシート用にコピー
+      </button>
+      <button class="btn-notion" id="btnNotion" onclick="recordToNotion()">
+        ✅ Notionの顧客情報に記録
+      </button>
+    </div>
+    <div class="msg-box" id="msgBox"></div>
+  </div>
+
+</div>
+
+<!-- 空状態 -->
+<div id="emptyState" class="empty-state">
+  <div class="icon">📅</div>
+  <div>月を選んで「案件データを取得」を押してください</div>
+</div>
+
+<div style="margin-top:14px;text-align:center;font-size:12px;color:#bbb">
+  <a href="http://localhost:8765/案件登録ツール.html" style="color:#bbb">案件登録ツール</a>
+  　|
+  <a href="http://localhost:8765/顧客登録ツール.html" style="color:#bbb">顧客登録ツール</a>
+</div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let invoiceData = null; // 現在取得中のデータ
+
+// ========== 月セレクター初期化 ==========
+(function initMonthSel() {
+  const sel = document.getElementById('monthSel');
+  const now = new Date();
+  // 当月〜6ヶ月前
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const opt = document.createElement('option');
+    opt.value = `${y}-${m}`;
+    opt.textContent = `${y}年${m}月${i === 0 ? '（今月）' : i === 1 ? '（先月）' : ''}`;
+    sel.appendChild(opt);
+  }
+  // デフォルト: 先月
+  sel.selectedIndex = 1;
+})();
+
+// 請求日: 当月末日
+(function initInvDate() {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  document.getElementById('invoiceDate').value = lastDay.toISOString().split('T')[0];
+})();
+
+// ========== サーバー確認 ==========
+async function checkServer() {
+  const bar = document.getElementById('serverBar');
+  const dot = document.getElementById('serverDot');
+  const txt = document.getElementById('serverTxt');
+  try {
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) {
+      bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
+      dot.style.background = '#22c55e';
+      txt.textContent = 'サーバー接続中';
+      document.getElementById('btnFetch').disabled = false;
+      return true;
+    }
+  } catch(e) {}
+  bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
+  dot.style.background = '#f59e0b';
+  txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリック';
+  document.getElementById('btnFetch').disabled = true;
+  return false;
+}
+checkServer();
+setInterval(checkServer, 4000);
+
+// ========== 案件データ取得 ==========
+async function fetchInvoice() {
+  const month = document.getElementById('monthSel').value;
+  const btn   = document.getElementById('btnFetch');
+  btn.disabled = true;
+  btn.textContent = '⏳ 取得中...';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultArea').style.display = 'none';
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    const r = await fetch(`${SERVER}/api/invoice-data?month=${month}`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + await r.text());
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || '取得失敗');
+    invoiceData = d;
+    renderTable(d);
+  } catch(e) {
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('emptyState').innerHTML =
+      `<div class="icon">⚠️</div><div style="color:#e53">取得失敗: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 案件データを取得';
+  }
+}
+
+// ========== テーブル描画 ==========
+function renderTable(d) {
+  const body     = document.getElementById('invBody');
+  const title    = document.getElementById('tableTitle');
+  const summary  = document.getElementById('summaryBar');
+  body.innerHTML = '';
+
+  title.textContent = `${d.label} 請求一覧`;
+
+  const totalCases = d.customers.reduce((s, c) => s + c.cases.length, 0);
+  const totalRef   = d.customers.reduce((s, c) => s + c.total, 0);
+  summary.innerHTML = `
+    <div><div class="lbl">お客様数</div><div class="val">${d.customers.length}社</div></div>
+    <div><div class="lbl">案件数</div><div class="val">${totalCases}件</div></div>
+    <div><div class="lbl">合計（参考）</div><div class="val">¥${totalRef.toLocaleString()}</div></div>
+    <div style="margin-left:auto;font-size:11px;color:#aaa">※金額は編集可。Notion登録値を参考表示</div>
+  `;
+
+  if (d.customers.length === 0) {
+    body.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:30px;color:#aaa">
+      この月の案件が見つかりませんでした</td></tr>`;
+  } else {
+    d.customers.forEach(cust => {
+      const refTotal = cust.total;
+      const caseHtml = cust.cases.map(c => {
+        const badge = c.status === '完了'  ? `<span class="s-done">完了</span>` :
+                      c.status === '進行中' ? `<span class="s-wip">進行中</span>` :
+                                             `<span class="s-todo">未着手</span>`;
+        const note = c.note ? `<span class="case-note">${escHtml(c.note)}</span>` : '';
+        return `<div class="case-item">${badge} <span class="case-num">${escHtml(c.number)}</span>${note}</div>`;
+      }).join('');
+
+      const tr = document.createElement('tr');
+      tr.dataset.customer = cust.customer;
+      tr.innerHTML = `
+        <td>
+          <div class="cust-no">${escHtml(cust.customer)}</div>
+          <div class="case-list">${caseHtml}</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;line-height:1.8">
+            ${cust.cases.length}件
+          </div>
+          ${refTotal > 0 ? `<div class="ref-total">参考: ¥${refTotal.toLocaleString()}</div>` : ''}
+        </td>
+        <td style="text-align:right">
+          <div class="yen-wrap">
+            <input type="number" class="amount-input" data-customer="${escHtml(cust.customer)}"
+              value="${refTotal}" min="0" step="100"
+              oninput="updateSummary()">
+          </div>
+        </td>
+        <td style="text-align:center">
+          <button class="btn-xlsx"
+            onclick="generateInvoice('${escHtml(cust.customer)}','${escHtml(cust.name||'')}')">
+            📄 作成
+          </button>
+        </td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('emptyState').style.display = 'none';
+  hideMsg();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateSummary() {
+  const inputs = document.querySelectorAll('.amount-input');
+  let total = 0;
+  inputs.forEach(el => { total += Number(el.value) || 0; });
+  // サマリー更新
+  const cells = document.querySelectorAll('#summaryBar .val');
+  if (cells.length >= 3) cells[2].textContent = '¥' + total.toLocaleString();
+}
+
+// ========== Googleスプレッドシート用コピー ==========
+function copyForSheets() {
+  if (!invoiceData) return;
+  const month     = invoiceData.label;
+  const invDate   = document.getElementById('invoiceDate').value;
+  const inputs    = document.querySelectorAll('.amount-input');
+  const amountMap = {};
+  inputs.forEach(el => { amountMap[el.dataset.customer] = Number(el.value) || 0; });
+
+  // TSV: お客様No/名 \t 請求月 \t 請求日 \t 案件数 \t 請求金額 \t 案件番号一覧
+  const lines = ['お客様No/名\t請求月\t請求日\t件数\t請求金額\t案件番号一覧'];
+  invoiceData.customers.forEach(c => {
+    const amt = amountMap[c.customer] || 0;
+    const nums = c.cases.map(x => x.number).join(', ');
+    lines.push([c.customer, month, invDate, c.cases.length, amt, nums].join('\t'));
+  });
+  const tsv = lines.join('\n');
+
+  navigator.clipboard.writeText(tsv).then(() => {
+    showMsg('✅ クリップボードにコピーしました！\nGoogleスプレッドシートを開いてCtrl+V（Mac: Cmd+V）で貼り付けてください。', 'success');
+    // シートを開くボタンを表示
+    const msg = document.getElementById('msgBox');
+    msg.innerHTML += `<br><a href="https://docs.google.com/spreadsheets/d/1JRcaO5sa0alkSlJwGqAz2T9I5Pz1LeK8oUQ27tenNSY/edit"
+      target="_blank" style="color:#1e3a8a;font-weight:600;text-decoration:underline">
+      📊 Googleスプレッドシートを開く →</a>`;
+  }).catch(() => {
+    // フォールバック: テキストエリアでコピー
+    const ta = document.createElement('textarea');
+    ta.value = tsv;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showMsg('✅ コピーしました（フォールバック）。スプレッドシートに貼り付けてください。', 'success');
+  });
+}
+
+// ========== Notionに記録 ==========
+async function recordToNotion() {
+  if (!invoiceData) return;
+  const invDate = document.getElementById('invoiceDate').value;
+  if (!invDate) { showMsg('請求日を入力してください', 'error'); return; }
+
+  const inputs    = document.querySelectorAll('.amount-input');
+  const amountMap = {};
+  inputs.forEach(el => { amountMap[el.dataset.customer] = Number(el.value) || 0; });
+
+  const records = invoiceData.customers.map(c => ({
+    customerNo:  c.customer,
+    month:       invoiceData.label,
+    amount:      amountMap[c.customer] || 0,
+    caseNumbers: c.cases.map(x => x.number),
+  }));
+
+  const btn = document.getElementById('btnNotion');
+  btn.disabled = true;
+  btn.textContent = '⏳ 記録中...';
+
+  try {
+    const r = await fetch(SERVER + '/api/record-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records, invoiceDate: invDate }),
+    });
+    const d = await r.json();
+    const ok    = d.results.filter(x => x.ok);
+    const fail  = d.results.filter(x => !x.ok);
+    let msg = `✅ ${ok.length}件のお客様にNotionへ記録しました。`;
+    if (fail.length) msg += `\n⚠️ ${fail.length}件失敗: ${fail.map(x=>x.customerNo+': '+x.error).join(', ')}`;
+    showMsg(msg, fail.length ? 'info' : 'success');
+  } catch(e) {
+    showMsg('❌ 記録失敗: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Notionの顧客情報に記録';
+  }
+}
+
+// ========== 請求書xlsx生成 ==========
+async function generateInvoice(customerNo, customerName) {
+  if (!invoiceData) return;
+  const invDate = document.getElementById('invoiceDate').value;
+  if (!invDate) { showMsg('請求日を入力してください', 'error'); return; }
+
+  // 対象顧客のデータを取得
+  const cust = invoiceData.customers.find(c => c.customer === customerNo);
+  if (!cust) return;
+
+  // 編集済み金額を取得
+  const input = document.querySelector(`.amount-input[data-customer="${CSS.escape(customerNo)}"]`);
+  const amount = input ? (Number(input.value) || 0) : cust.total;
+
+  // ボタンを一時無効化
+  const btn = document.querySelector(`button.btn-xlsx[onclick*="${CSS.escape(customerNo).replace(/'/g, "\\'")}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
+  try {
+    const r = await fetch(SERVER + '/api/generate-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerNo,
+        customerName: customerName || '',
+        invoiceDate:  invDate,
+        month:        invoiceData.month,
+        amount,
+        cases:        cust.cases,
+      }),
+    });
+
+    if (!r.ok) {
+      const errText = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + errText);
+    }
+
+    // Content-Disposition からファイル名を取得
+    const disp = r.headers.get('Content-Disposition') || '';
+    const match = disp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)/i);
+    const filename = match ? decodeURIComponent(match[1]) : `請求書_${customerNo}.xlsx`;
+
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+
+    showMsg(`✅ 請求書を作成しました: ${filename}`, 'success');
+  } catch(e) {
+    showMsg('❌ 請求書作成失敗: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📄 作成'; }
+  }
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('msgBox');
+  el.className = 'msg-box show msg-' + type;
+  el.innerHTML = text.replace(/\n/g, '<br>');
+}
+function hideMsg() {
+  const el = document.getElementById('msgBox');
+  el.className = 'msg-box';
+}
+</script>
+</body>
+</html>

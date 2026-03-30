@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>野津欧 ／ 業務ポータル</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef;
+  color: #1a1a1a;
+  min-height: 100vh;
+  padding: 32px 16px 60px;
+}
+.container { max-width: 780px; margin: 0 auto; }
+
+/* ヘッダー */
+.site-header {
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 24px;
+}
+.site-title { font-size: 20px; font-weight: 700; }
+.site-sub   { font-size: 13px; color: #aaa; }
+
+/* ===== 納期アラート ===== */
+.alert-wrap { margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+.alert-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; border-radius: 12px; font-size: 13px; font-weight: 500;
+}
+.alert-today {
+  background: #fef2f2; border: 1.5px solid #fca5a5; color: #7f1d1d;
+}
+.alert-tomorrow {
+  background: #fefce8; border: 1.5px solid #fde047; color: #713f12;
+}
+.alert-icon { font-size: 16px; flex-shrink: 0; }
+.alert-label { font-weight: 700; white-space: nowrap; margin-right: 4px; }
+.alert-cases { display: flex; flex-wrap: wrap; gap: 5px; }
+.alert-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500;
+  background: rgba(0,0,0,0.07);
+}
+
+/* ===== カレンダー ===== */
+.cal-card {
+  background: white; border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  margin-bottom: 16px; overflow: hidden;
+}
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.cal-nav { display: flex; align-items: center; gap: 6px; }
+.cal-nav button {
+  width: 30px; height: 30px; border: none; background: none;
+  border-radius: 8px; font-size: 16px; cursor: pointer;
+  color: #555; transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center;
+}
+.cal-nav button:hover { background: #f0f0f0; }
+.cal-month-label { font-size: 16px; font-weight: 700; min-width: 110px; text-align: center; }
+.cal-today-btn {
+  font-size: 12px; padding: 5px 12px; border: 1.5px solid #e0e0e0;
+  border-radius: 8px; background: white; cursor: pointer; color: #555;
+  transition: all 0.15s; font-family: inherit;
+}
+.cal-today-btn:hover { background: #f5f5f5; border-color: #bbb; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-dow {
+  text-align: center; font-size: 11px; font-weight: 600;
+  color: #aaa; padding: 8px 0 6px;
+  border-bottom: 1px solid #f4f4f4;
+}
+.cal-dow.sat { color: #60a5fa; }
+.cal-dow.sun { color: #f87171; }
+
+.cal-cell {
+  min-height: 82px;
+  border-right: 1px solid #f4f4f4;
+  border-bottom: 1px solid #f4f4f4;
+  padding: 5px 5px 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+.cal-cell:hover { background: #fafafa; }
+.cal-cell:nth-child(7n) { border-right: none; }
+
+.cal-day {
+  font-size: 12px; font-weight: 600;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; margin-bottom: 3px;
+  color: #333;
+}
+.cal-cell.other-month .cal-day { color: #ccc; }
+.cal-cell.other-month { background: #fafafa; }
+.cal-cell.today .cal-day {
+  background: #1a1a1a; color: white;
+}
+.cal-cell.sat .cal-day { color: #3b82f6; }
+.cal-cell.sun .cal-day { color: #ef4444; }
+.cal-cell.today .cal-day { background: #1a1a1a; color: white !important; }
+
+/* イベントチップ */
+.ev-chip {
+  font-size: 10px; line-height: 1.2;
+  padding: 2px 5px; border-radius: 4px;
+  margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer; display: block;
+  transition: opacity 0.1s;
+}
+.ev-chip:hover { opacity: 0.75; }
+.ev-deadline  { background: #dbeafe; color: #1e3a8a; }
+.ev-done      { background: #dcfce7; color: #166534; }
+.ev-予定       { background: #e0f2fe; color: #075985; }
+.ev-MTG       { background: #ede9fe; color: #5b21b6; }
+.ev-締切       { background: #fee2e2; color: #7f1d1d; }
+.ev-その他     { background: #f3f4f6; color: #6b7280; }
+.ev-more      { font-size: 10px; color: #aaa; padding: 0 5px; }
+
+/* カレンダーローディング */
+.cal-loading {
+  text-align: center; padding: 40px; color: #aaa; font-size: 13px;
+}
+
+/* ===== モーダル ===== */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.25); z-index: 500;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 16px;
+  padding: 24px; width: 340px; max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+.modal form { display: flex; flex-direction: column; gap: 10px; }
+.modal label { font-size: 12px; font-weight: 500; color: #666; margin-bottom: 2px; display: block; }
+.modal input, .modal select, .modal textarea {
+  width: 100%; padding: 8px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 13px; font-family: inherit; background: #fafafa;
+}
+.modal input:focus, .modal select:focus, .modal textarea:focus {
+  outline: none; border-color: #4f6ef7; background: white;
+}
+.modal textarea { resize: vertical; min-height: 52px; }
+.modal-btns { display: flex; gap: 8px; margin-top: 4px; }
+.modal-btns button {
+  flex: 1; padding: 10px; border-radius: 9px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: all 0.15s;
+}
+.btn-cancel { background: white; border: 1.5px solid #e0e0e0; color: #555; }
+.btn-cancel:hover { background: #f5f5f5; }
+.btn-submit { background: #1a1a1a; border: none; color: white; }
+.btn-submit:hover { background: #333; }
+.btn-submit:disabled { background: #aaa; cursor: default; }
+
+/* イベント詳細モーダル */
+.ev-detail-date { font-size: 12px; color: #999; margin-bottom: 12px; }
+.ev-detail-category {
+  display: inline-block; font-size: 11px;
+  padding: 2px 8px; border-radius: 20px; margin-bottom: 12px;
+}
+.ev-detail-memo { font-size: 13px; color: #555; margin-bottom: 16px; white-space: pre-wrap; }
+.btn-delete {
+  width: 100%; padding: 10px; border-radius: 9px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+  background: white; border: 1.5px solid #fca5a5; color: #dc2626;
+  transition: all 0.15s;
+}
+.btn-delete:hover { background: #fef2f2; }
+
+/* ===== ツールカード ===== */
+.tools-section { margin-top: 8px; }
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #bbb; margin-bottom: 10px; padding-left: 2px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.card {
+  background: white; border-radius: 14px;
+  padding: 20px 18px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  text-decoration: none; color: inherit;
+  display: flex; flex-direction: column; gap: 6px;
+  transition: box-shadow 0.18s, transform 0.18s;
+  border-top: 3px solid transparent;
+  position: relative;
+}
+.card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.1); transform: translateY(-1px); }
+.card:active { transform: translateY(0); }
+.accent-notion   { border-color: #1a1a1a; }
+.accent-case     { border-color: #4f6ef7; }
+.accent-invoice  { border-color: #16a34a; }
+.accent-customer { border-color: #f59e0b; }
+.card-wide { grid-column: 1 / -1; flex-direction: row; align-items: center; padding: 16px 20px; gap: 14px; }
+.card-wide .card-body { flex: 1; }
+
+.card-icon  { font-size: 22px; line-height: 1; }
+.card-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #ccc; }
+.card-title { font-size: 15px; font-weight: 700; }
+.card-desc  { font-size: 11px; color: #aaa; line-height: 1.5; }
+.card-arrow { font-size: 16px; color: #ddd; margin-left: auto; transition: transform 0.15s; }
+.card:hover .card-arrow { transform: translateX(3px); color: #aaa; }
+
+/* ===== 引き継ぎカード ===== */
+.handover-card {
+  background: white; border-radius: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  margin-bottom: 16px; overflow: hidden;
+}
+.handover-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.handover-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.handover-add-btn {
+  font-size: 12px; padding: 5px 12px; border: 1.5px solid #e0e0e0;
+  border-radius: 8px; background: white; cursor: pointer; color: #555;
+  transition: all 0.15s; font-family: inherit;
+}
+.handover-add-btn:hover { background: #f5f5f5; border-color: #bbb; }
+.handover-body { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+.handover-empty { font-size: 12px; color: #bbb; text-align: center; padding: 10px 0; }
+.handover-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 11px; border-radius: 10px;
+  background: #fafafa; border: 1px solid #f0f0f0;
+}
+.handover-item.todo-item   { border-left: 3px solid #4f6ef7; }
+.handover-item.memo-item   { border-left: 3px solid #f59e0b; }
+.handover-item.medium-item { border-left: 3px solid #8b5cf6; }
+.handover-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 6px;
+  border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+}
+.badge-todo   { background: #dbeafe; color: #1e3a8a; }
+.badge-memo   { background: #fef3c7; color: #78350f; }
+.badge-medium { background: #ede9fe; color: #5b21b6; }
+.handover-text { font-size: 13px; line-height: 1.5; word-break: break-word; }
+.handover-date-info { font-size: 10px; color: #bbb; margin-top: 2px; }
+.handover-actions { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.ha-btn {
+  font-size: 11px; padding: 3px 8px; border-radius: 6px;
+  cursor: pointer; font-family: inherit;
+  border: 1.5px solid #e0e0e0; background: white; color: #555;
+  transition: all 0.12s; white-space: nowrap;
+}
+.ha-btn:hover           { background: #f5f5f5; }
+.ha-btn.btn-done:hover  { background: #dcfce7; border-color: #86efac; color: #166534; }
+.ha-btn.btn-todo:hover  { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+.ha-btn.btn-memo:hover  { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
+.ha-btn.btn-ext:hover   { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+
+/* 引き継ぎ追加モーダル */
+.type-selector { display: flex; gap: 6px; }
+.type-btn {
+  flex: 1; padding: 7px 4px; border: 1.5px solid #e0e0e0;
+  border-radius: 8px; background: white; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  text-align: center; transition: all 0.15s;
+}
+.type-btn:hover { background: #f5f5f5; }
+.type-btn.t-todo   { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
+.type-btn.t-memo   { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
+.type-btn.t-medium { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+.date-pair { display: flex; gap: 8px; }
+.date-pair > div { flex: 1; }
+.date-pair label { font-size: 10px; color: #aaa; display: block; margin-bottom: 3px; }
+
+/* ステータスバー */
+.status-bar {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 20px; font-size: 11px; color: #bbb;
+  justify-content: center;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; transition: background 0.3s; }
+.dot.ok { background: #22c55e; }
+.dot.err { background: #ef4444; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="site-header">
+    <div class="site-title">野津　欧</div>
+    <div class="site-sub">業務ポータル</div>
+  </div>
+
+  <!-- ===== 納期アラート ===== -->
+  <div class="alert-wrap" id="alertWrap"></div>
+
+  <!-- ===== 引き継ぎ ===== -->
+  <div class="handover-card">
+    <div class="handover-header">
+      <div class="handover-title">📝 引き継ぎ</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <a href="/引き継ぎ一覧.html" style="font-size:11px;color:#aaa;text-decoration:none;padding:4px 9px;border:1.5px solid #ebebeb;border-radius:7px;transition:all 0.15s;" onmouseover="this.style.color='#555';this.style.borderColor='#bbb'" onmouseout="this.style.color='#aaa';this.style.borderColor='#ebebeb'">翌日以降はこちらへ →</a>
+        <button class="handover-add-btn" onclick="openHandoverModal()">＋ 追加</button>
+      </div>
+    </div>
+    <div class="handover-body" id="handoverBody">
+      <div class="handover-empty">読み込み中…</div>
+    </div>
+  </div>
+
+  <!-- ===== カレンダー ===== -->
+  <div class="cal-card">
+    <div class="cal-header">
+      <div class="cal-nav">
+        <button onclick="changeMonth(-1)" title="前月">‹</button>
+        <span class="cal-month-label" id="calMonthLabel"></span>
+        <button onclick="changeMonth(1)" title="翌月">›</button>
+      </div>
+      <button class="cal-today-btn" onclick="goToday()">今月</button>
+    </div>
+    <div class="cal-grid" id="calDow">
+      <div class="cal-dow">月</div>
+      <div class="cal-dow">火</div>
+      <div class="cal-dow">水</div>
+      <div class="cal-dow">木</div>
+      <div class="cal-dow">金</div>
+      <div class="cal-dow sat">土</div>
+      <div class="cal-dow sun">日</div>
+    </div>
+    <div class="cal-grid" id="calBody">
+      <div class="cal-loading">読み込み中…</div>
+    </div>
+  </div>
+
+  <!-- ===== ツール ===== -->
+  <div class="tools-section">
+    <div class="section-label">Tools</div>
+    <div class="grid">
+      <a class="card card-wide accent-notion" href="https://www.notion.so" target="_blank">
+        <div class="card-icon">𝙉</div>
+        <div class="card-body">
+          <div class="card-label">External</div>
+          <div class="card-title">Notion ワークスペース</div>
+          <div class="card-desc">案件表・顧客情報・請求書格納庫</div>
+        </div>
+        <div class="card-arrow">→</div>
+      </a>
+      <a class="card accent-case" href="/案件登録ツール.html">
+        <div class="card-icon">📋</div>
+        <div class="card-label">Tool</div>
+        <div class="card-title">案件登録</div>
+        <div class="card-desc">新規案件をNotionに登録。管理番号を自動生成。</div>
+        <div class="card-arrow">→</div>
+      </a>
+      <a class="card accent-invoice" href="/請求書ツール.html">
+        <div class="card-icon">📑</div>
+        <div class="card-label">Tool</div>
+        <div class="card-title">請求書発行</div>
+        <div class="card-desc">月別案件データを取得してxlsx請求書を作成。</div>
+        <div class="card-arrow">→</div>
+      </a>
+      <a class="card accent-customer" href="/顧客情報ツール.html">
+        <div class="card-icon">👥</div>
+        <div class="card-label">Tool</div>
+        <div class="card-title">顧客情報</div>
+        <div class="card-desc">一覧表示・取引状況の一括変更・並び替え</div>
+        <div class="card-arrow">→</div>
+      </a>
+      <a class="card accent-customer" href="/顧客登録ツール.html">
+        <div class="card-icon">👤</div>
+        <div class="card-label">Tool</div>
+        <div class="card-title">顧客登録</div>
+        <div class="card-desc">新規顧客をNotionに追加</div>
+        <div class="card-arrow">→</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusTxt">確認中…</span>
+  </div>
+</div>
+
+<!-- 案件詳細モーダル -->
+<div class="modal-overlay" id="detailModal" onclick="closeDetailModal(event)">
+  <div class="modal">
+    <div class="modal-title" id="detailTitle"></div>
+    <div class="ev-detail-date" id="detailDate"></div>
+    <span class="ev-detail-category ev-chip" id="detailCategory"></span>
+    <div class="ev-detail-memo" id="detailMemo"></div>
+    <div class="modal-btns">
+      <button type="button" class="btn-cancel" onclick="closeDetailModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 引き継ぎ追加モーダル ===== -->
+<div class="modal-overlay" id="handoverModal" onclick="closeHandoverModal(event)">
+  <div class="modal">
+    <div class="modal-title">📝 引き継ぎを追加</div>
+    <form id="handoverForm" onsubmit="submitHandover(event)">
+      <div>
+        <label>種別</label>
+        <div class="type-selector">
+          <button type="button" id="typeBtn-todo"   onclick="setHType('todo')">☐ TODO</button>
+          <button type="button" id="typeBtn-memo"   onclick="setHType('memo')">📋 メモ</button>
+          <button type="button" id="typeBtn-medium" onclick="setHType('medium')">📅 中期</button>
+        </div>
+      </div>
+      <div>
+        <label>内容</label>
+        <textarea id="handoverText" rows="2" placeholder="引き継ぎ内容を入力…" required></textarea>
+      </div>
+      <div id="hDateRow">
+        <label>日付</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="hDateSel" onchange="onHDateSel()" style="padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;cursor:pointer;">
+            <option value="tomorrow">明日</option>
+            <option value="today">今日</option>
+            <option value="custom">日付指定…</option>
+          </select>
+          <input type="date" id="hDateCustom" style="display:none;flex:1;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;">
+        </div>
+      </div>
+      <div id="hMediumRow" style="display:none;">
+        <label>表示期間</label>
+        <div class="date-pair">
+          <div><label>開始日</label><input type="date" id="hStartDate" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;"></div>
+          <div><label>終了日</label><input type="date" id="hEndDate"   style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;"></div>
+        </div>
+      </div>
+      <div class="modal-btns">
+        <button type="button" class="btn-cancel" onclick="closeHandoverModal()">キャンセル</button>
+        <button type="submit" class="btn-submit">追加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== 中期延長モーダル ===== -->
+<div class="modal-overlay" id="extendModal" onclick="closeExtendModal(event)">
+  <div class="modal">
+    <div class="modal-title">📅 中期メモを延長</div>
+    <div id="extendItemText" style="font-size:13px;color:#555;margin-bottom:14px;white-space:pre-wrap;"></div>
+    <div>
+      <label style="font-size:12px;font-weight:500;color:#666;display:block;margin-bottom:4px;">新しい終了日</label>
+      <input type="date" id="extendEndDate" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;">
+    </div>
+    <div class="modal-btns" style="margin-top:14px;">
+      <button type="button" class="btn-cancel" onclick="closeExtendModal()">キャンセル</button>
+      <button type="button" class="btn-submit" onclick="submitExtend()">延長する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+
+// ===== 状態 =====
+let viewYear, viewMonth;
+let calEvents     = [];
+let fetchedMonths = new Set();
+
+// ===== 初期化 =====
+(function init() {
+  const now = new Date();
+  viewYear  = now.getFullYear();
+  viewMonth = now.getMonth() + 1;
+  renderCalendar();
+  fetchCalendar();
+  fetchHandover();
+  pingServer();
+  setInterval(pingServer, 5000);
+  // 30秒ごとに引き継ぎ・カレンダーを自動更新
+  setInterval(fetchHandover, 30000);
+  setInterval(() => { fetchedMonths.clear(); fetchCalendar(); }, 30000);
+})();
+
+// ===== 月変更 =====
+function changeMonth(delta) {
+  viewMonth += delta;
+  if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+  if (viewMonth < 1)  { viewMonth = 12; viewYear--; }
+  renderCalendar();
+  if (!fetchedMonths.has(`${viewYear}-${String(viewMonth).padStart(2,'0')}`)) fetchCalendar();
+}
+function goToday() {
+  const now = new Date();
+  viewYear  = now.getFullYear();
+  viewMonth = now.getMonth() + 1;
+  renderCalendar();
+  if (!fetchedMonths.has(`${viewYear}-${String(viewMonth).padStart(2,'0')}`)) fetchCalendar();
+}
+
+// ===== アラート（今日・明日の納期）=====
+function updateAlerts() {
+  const wrap = document.getElementById('alertWrap');
+  wrap.innerHTML = '';
+  const toDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const now   = new Date();
+  const todayStr    = toDate(now);
+  const tomorrowStr = toDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()+1));
+
+  const deadlines = calEvents.filter(e => e.type === 'deadline' && e.status !== '完了');
+  const todays    = deadlines.filter(e => e.date === todayStr);
+  const tomorrows = deadlines.filter(e => e.date === tomorrowStr);
+
+  if (todays.length) {
+    const el = document.createElement('div');
+    el.className = 'alert-item alert-today';
+    el.innerHTML = `<span class="alert-icon">🚨</span>
+      <span class="alert-label">今日の納品</span>
+      <div class="alert-cases">${todays.map(e =>
+        `<span class="alert-chip">${esc(e.customer)} ${esc(e.title)}</span>`).join('')}
+      </div>`;
+    wrap.appendChild(el);
+  }
+  if (tomorrows.length) {
+    const el = document.createElement('div');
+    el.className = 'alert-item alert-tomorrow';
+    el.innerHTML = `<span class="alert-icon">⚠️</span>
+      <span class="alert-label">明日の納品</span>
+      <div class="alert-cases">${tomorrows.map(e =>
+        `<span class="alert-chip">${esc(e.customer)} ${esc(e.title)}</span>`).join('')}
+      </div>`;
+    wrap.appendChild(el);
+  }
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== カレンダー描画 =====
+function renderCalendar() {
+  const label = document.getElementById('calMonthLabel');
+  label.textContent = `${viewYear}年${viewMonth}月`;
+
+  const body = document.getElementById('calBody');
+  body.innerHTML = '';
+
+  const today  = new Date();
+  const tdY = today.getFullYear(), tdM = today.getMonth()+1, tdD = today.getDate();
+
+  // 月の最初の曜日（月=0, 日=6）
+  const firstDay = new Date(viewYear, viewMonth - 1, 1);
+  const lastDay  = new Date(viewYear, viewMonth, 0);
+  let startDow = firstDay.getDay(); // 0=日
+  startDow = startDow === 0 ? 6 : startDow - 1; // 月曜始まりに変換
+
+  // 前月の日を埋める
+  const prevLast = new Date(viewYear, viewMonth - 1, 0).getDate();
+  for (let i = startDow - 1; i >= 0; i--) {
+    const d = prevLast - i;
+    const date = new Date(viewYear, viewMonth - 2, d);
+    body.appendChild(makeCell(date.getFullYear(), date.getMonth()+1, d, true));
+  }
+
+  // 当月
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const isToday = (viewYear === tdY && viewMonth === tdM && d === tdD);
+    body.appendChild(makeCell(viewYear, viewMonth, d, false, isToday));
+  }
+
+  // 翌月で埋める
+  const totalCells = body.children.length;
+  const remaining  = (7 - (totalCells % 7)) % 7;
+  for (let d = 1; d <= remaining; d++) {
+    const date = new Date(viewYear, viewMonth, d);
+    body.appendChild(makeCell(date.getFullYear(), date.getMonth()+1, d, true));
+  }
+}
+
+function makeCell(year, month, day, otherMonth, isToday) {
+  const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const dow = new Date(year, month-1, day).getDay(); // 0=日,6=土
+
+  const cell = document.createElement('div');
+  cell.className = 'cal-cell'
+    + (otherMonth ? ' other-month' : '')
+    + (isToday ? ' today' : '')
+    + (dow === 6 ? ' sat' : '')
+    + (dow === 0 ? ' sun' : '');
+  // セルクリック無効（納期チップのクリックのみ有効）
+
+  const dayEl = document.createElement('div');
+  dayEl.className = 'cal-day';
+  dayEl.textContent = day;
+  cell.appendChild(dayEl);
+
+  // 案件納期のみ表示
+  const dayEvents = calEvents.filter(e => e.date === dateStr && e.type === 'deadline');
+  const MAX = 3;
+  dayEvents.slice(0, MAX).forEach(ev => {
+    const chip = document.createElement('span');
+    chip.className = 'ev-chip ' + chipClass(ev);
+    chip.textContent = chipLabel(ev);
+    chip.title = ev.title + (ev.memo ? '\n' + ev.memo : '');
+    chip.onclick = (e) => { e.stopPropagation(); openDetailModal(ev); };
+    cell.appendChild(chip);
+  });
+  if (dayEvents.length > MAX) {
+    const more = document.createElement('span');
+    more.className = 'ev-more';
+    more.textContent = `+${dayEvents.length - MAX}`;
+    cell.appendChild(more);
+  }
+
+  return cell;
+}
+
+function chipClass(ev) {
+  if (ev.type === 'deadline') return ev.status === '完了' ? 'ev-done' : 'ev-deadline';
+  return 'ev-予定';
+}
+function chipLabel(ev) {
+  if (ev.type === 'deadline') {
+    return (ev.customer || ev.title.split('-')[0]) + ' 納期';
+  }
+  return '📅 ' + ev.title;
+}
+
+// ===== データ取得 =====
+async function fetchCalendar() {
+  const monthStr = `${viewYear}-${String(viewMonth).padStart(2,'0')}`;
+  try {
+    const r = await fetch(`${SERVER}/api/calendar?month=${monthStr}`,
+      { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok) return;
+    // 他の月のキャッシュを保持したまま今月分を上書き
+    calEvents = calEvents.filter(e => !e.date.startsWith(monthStr.slice(0,7)));
+    calEvents = calEvents.concat(d.events);
+    fetchedMonths.add(monthStr);
+    renderCalendar();
+    updateAlerts(); // 今日・明日のアラートを更新
+  } catch(e) {}
+}
+
+// ===== 引き継ぎ =====
+let handoverItems = [];
+let hType = 'todo';
+let extendTargetId = null;
+
+function localDateStr(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function localTomorrow() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return localDateStr(d);
+}
+function localToday() { return localDateStr(new Date()); }
+
+async function fetchHandover() {
+  try {
+    const r = await fetch(`${SERVER}/api/handover?date=${localToday()}`,
+      {signal: AbortSignal.timeout(5000)});
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok) return;
+    handoverItems = d.items || [];
+    renderHandover();
+  } catch(e) {
+    document.getElementById('handoverBody').innerHTML =
+      '<div class="handover-empty">サーバーに接続できません</div>';
+  }
+}
+
+function renderHandover() {
+  const body = document.getElementById('handoverBody');
+  if (!handoverItems.length) {
+    body.innerHTML = '<div class="handover-empty">引き継ぎはありません</div>';
+    return;
+  }
+  body.innerHTML = '';
+  // 種別順: todo → memo → medium
+  const order = {todo:0, memo:1, medium:2};
+  const sorted = [...handoverItems].sort((a,b) => (order[a.type]||0)-(order[b.type]||0));
+  sorted.forEach(item => {
+    const el = document.createElement('div');
+    el.className = `handover-item ${item.type}-item`;
+
+    const labels  = {todo:'TODO', memo:'メモ', medium:'中期'};
+    const bclass  = {todo:'badge-todo', memo:'badge-memo', medium:'badge-medium'};
+    const dateInfo = item.type === 'medium'
+      ? `${item.start_date} 〜 ${item.end_date}`
+      : (item.date || '');
+
+    const iid = item.id.replace(/'/g,"\\'");
+    const itxt = esc(item.text);
+    const iend = (item.end_date||'').replace(/'/g,"\\'");
+
+    let actions;
+    if (item.type === 'medium') {
+      actions = `
+        <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
+        <button class="ha-btn btn-ext"  onclick="openExtendModal('${iid}','${iend}','${itxt}')">延長</button>
+      `;
+    } else {
+      actions = `
+        <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
+        <button class="ha-btn btn-todo" onclick="carryHandover('${iid}','todo')" title="TODOとして翌日へ">TODO</button>
+        <button class="ha-btn btn-memo" onclick="carryHandover('${iid}','memo')" title="メモとして翌日へ">メモ</button>
+      `;
+    }
+
+    el.innerHTML = `
+      <span class="handover-badge ${bclass[item.type]}">${labels[item.type]}</span>
+      <div style="flex:1;min-width:0;">
+        <div class="handover-text">${itxt}</div>
+        <div class="handover-date-info">${dateInfo}</div>
+      </div>
+      <div class="handover-actions">${actions}</div>
+    `;
+    body.appendChild(el);
+  });
+}
+
+async function doneHandover(id) {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/done`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) { handoverItems = handoverItems.filter(i => i.id !== id); renderHandover(); }
+  } catch(e) {}
+}
+
+async function carryHandover(id, asType) {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/carry`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id, as_type: asType, to_date: localTomorrow()}),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) { handoverItems = handoverItems.filter(i => i.id !== id); renderHandover(); }
+  } catch(e) {}
+}
+
+// ===== 引き継ぎ追加モーダル =====
+function openHandoverModal() {
+  hType = 'todo';
+  document.getElementById('handoverText').value = '';
+  document.getElementById('hDateSel').value = 'tomorrow';
+  document.getElementById('hDateCustom').style.display = 'none';
+  document.getElementById('hDateCustom').value = localTomorrow();
+  document.getElementById('hStartDate').value = localToday();
+  document.getElementById('hEndDate').value   = localTomorrow();
+  setHType('todo');
+  document.getElementById('handoverModal').classList.add('open');
+  setTimeout(() => document.getElementById('handoverText').focus(), 60);
+}
+function closeHandoverModal(e) {
+  if (e && e.target !== document.getElementById('handoverModal')) return;
+  document.getElementById('handoverModal').classList.remove('open');
+}
+function setHType(t) {
+  hType = t;
+  ['todo','memo','medium'].forEach(k => {
+    const btn = document.getElementById(`typeBtn-${k}`);
+    btn.className = 'type-btn' + (k === t ? ` t-${k}` : '');
+  });
+  document.getElementById('hDateRow').style.display   = t === 'medium' ? 'none' : '';
+  document.getElementById('hMediumRow').style.display = t === 'medium' ? '' : 'none';
+}
+function onHDateSel() {
+  const v = document.getElementById('hDateSel').value;
+  document.getElementById('hDateCustom').style.display = v === 'custom' ? '' : 'none';
+}
+async function submitHandover(e) {
+  e.preventDefault();
+  const text = document.getElementById('handoverText').value.trim();
+  if (!text) return;
+  const payload = {type: hType, text};
+  if (hType === 'medium') {
+    payload.start_date = document.getElementById('hStartDate').value;
+    payload.end_date   = document.getElementById('hEndDate').value;
+  } else {
+    const sel = document.getElementById('hDateSel').value;
+    payload.date = sel === 'today'  ? localToday()
+                 : sel === 'custom' ? document.getElementById('hDateCustom').value
+                 : localTomorrow();
+  }
+  try {
+    const r = await fetch(`${SERVER}/api/handover/add`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      document.getElementById('handoverModal').classList.remove('open');
+      await fetchHandover();
+    }
+  } catch(e) {}
+}
+
+// ===== 中期延長モーダル =====
+function openExtendModal(id, currentEnd, text) {
+  extendTargetId = id;
+  document.getElementById('extendItemText').textContent = text;
+  document.getElementById('extendEndDate').value = currentEnd;
+  document.getElementById('extendModal').classList.add('open');
+}
+function closeExtendModal(e) {
+  if (e && e.target !== document.getElementById('extendModal')) return;
+  document.getElementById('extendModal').classList.remove('open');
+}
+async function submitExtend() {
+  const newEnd = document.getElementById('extendEndDate').value;
+  if (!newEnd || !extendTargetId) return;
+  try {
+    const r = await fetch(`${SERVER}/api/handover/extend`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: extendTargetId, end_date: newEnd}),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      document.getElementById('extendModal').classList.remove('open');
+      await fetchHandover();
+    }
+  } catch(e) {}
+}
+
+// ===== 案件詳細モーダル =====
+function openDetailModal(ev) {
+  document.getElementById('detailTitle').textContent = ev.title;
+  document.getElementById('detailDate').textContent  = ev.date.replace(/-/g,'/');
+  const catEl = document.getElementById('detailCategory');
+  catEl.textContent = ev.status === '完了' ? '✅ 完了' : '⏰ 案件納期';
+  catEl.className = 'ev-detail-category ev-chip ' + chipClass(ev);
+  const memoLines = [];
+  if (ev.customer) memoLines.push(`お客様: ${ev.customer}`);
+  if (ev.status)   memoLines.push(`進捗: ${ev.status}`);
+  if (ev.memo)     memoLines.push(ev.memo);
+  document.getElementById('detailMemo').textContent = memoLines.join('\n');
+  document.getElementById('detailModal').classList.add('open');
+}
+function closeDetailModal(e) {
+  if (e && e.target !== document.getElementById('detailModal')) return;
+  document.getElementById('detailModal').classList.remove('open');
+}
+
+
+// ===== サーバー確認 =====
+async function pingServer() {
+  const dot = document.getElementById('dot');
+  const txt = document.getElementById('statusTxt');
+  try {
+    const r = await fetch(`${SERVER}/api/health`, { signal: AbortSignal.timeout(2000) });
+    if (r.ok) {
+      dot.className = 'dot ok';
+      txt.textContent = 'サーバー稼働中';
+      return;
+    }
+  } catch(e) {}
+  dot.className = 'dot err';
+  txt.textContent = 'サーバー未起動 ─ 起動.command をダブルクリック';
+}
+
+// ESCキーでモーダルを閉じる
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('addModal').classList.remove('open');
+    document.getElementById('detailModal').classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>

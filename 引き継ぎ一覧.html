@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>引き継ぎ一覧</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef;
+  color: #1a1a1a;
+  min-height: 100vh;
+  padding: 28px 16px 60px;
+}
+.container { max-width: 640px; margin: 0 auto; }
+
+/* ヘッダー */
+.page-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.back-btn {
+  font-size: 13px; color: #888; text-decoration: none;
+  padding: 6px 12px; border: 1.5px solid #ddd;
+  border-radius: 8px; background: white;
+  transition: all 0.15s; white-space: nowrap;
+}
+.back-btn:hover { background: #f5f5f5; color: #333; border-color: #bbb; }
+.page-title { font-size: 18px; font-weight: 700; }
+
+/* セクション */
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  color: #bbb; text-transform: uppercase;
+  margin-bottom: 8px; padding-left: 2px;
+}
+
+/* グループ（日付別） */
+.date-group { margin-bottom: 16px; }
+.date-header {
+  font-size: 12px; font-weight: 700; color: #666;
+  padding: 6px 12px; background: #f0f0ee;
+  border-radius: 8px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.date-header .date-tag {
+  font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 4px; background: #e0e0e0; color: #555;
+}
+.date-header .date-tag.is-today    { background: #dbeafe; color: #1e3a8a; }
+.date-header .date-tag.is-tomorrow { background: #dcfce7; color: #166534; }
+.date-header .date-tag.is-past     { background: #fee2e2; color: #7f1d1d; }
+
+/* アイテム */
+.item-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 14px; background: white; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  margin-bottom: 6px;
+  border-left: 3px solid #e0e0e0;
+}
+.item-card.todo-item   { border-left-color: #4f6ef7; }
+.item-card.memo-item   { border-left-color: #f59e0b; }
+.item-card.medium-item { border-left-color: #8b5cf6; }
+
+.item-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+.badge-todo   { background: #dbeafe; color: #1e3a8a; }
+.badge-memo   { background: #fef3c7; color: #78350f; }
+.badge-medium { background: #ede9fe; color: #5b21b6; }
+
+.item-body { flex: 1; min-width: 0; }
+.item-text { font-size: 13px; line-height: 1.5; word-break: break-word; }
+.item-sub  { font-size: 10px; color: #bbb; margin-top: 3px; }
+
+.item-actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.act-btn {
+  font-size: 11px; padding: 4px 9px; border-radius: 7px;
+  cursor: pointer; font-family: inherit;
+  border: 1.5px solid #e0e0e0; background: white; color: #555;
+  transition: all 0.12s; white-space: nowrap;
+}
+.act-btn:hover           { background: #f5f5f5; }
+.act-btn.btn-done:hover  { background: #dcfce7; border-color: #86efac; color: #166534; }
+.act-btn.btn-del:hover   { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+.act-btn.btn-edit:hover  { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.act-btn.btn-ext:hover   { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+
+/* 空状態 */
+.empty-state {
+  text-align: center; padding: 40px 20px; color: #bbb; font-size: 13px;
+}
+
+/* 確認ダイアログ */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.25); z-index: 500;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: white; border-radius: 16px;
+  padding: 24px; width: 340px; max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.modal-desc  { font-size: 13px; color: #555; margin-bottom: 18px; line-height: 1.6; }
+.modal-btns  { display: flex; gap: 8px; }
+.modal-btns button {
+  flex: 1; padding: 10px; border-radius: 9px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn-cancel { background: white; border: 1.5px solid #e0e0e0; color: #555; }
+.btn-cancel:hover { background: #f5f5f5; }
+.btn-del-confirm { background: #dc2626; border: none; color: white; }
+.btn-del-confirm:hover { background: #b91c1c; }
+
+/* 延長モーダル */
+.modal label { font-size: 12px; font-weight: 500; color: #666; margin-bottom: 3px; display: block; }
+.modal input[type="date"] {
+  width: 100%; padding: 8px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 13px; font-family: inherit; background: #fafafa;
+  margin-bottom: 14px;
+}
+.modal input[type="date"]:focus { outline: none; border-color: #4f6ef7; background: white; }
+.btn-submit { background: #1a1a1a; border: none; color: white; }
+.btn-submit:hover { background: #333; }
+
+/* ローディング */
+.loading { text-align: center; padding: 48px; color: #bbb; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="page-header">
+    <a class="back-btn" href="/">← ポータルへ戻る</a>
+    <div class="page-title">📝 引き継ぎ一覧</div>
+  </div>
+
+  <div id="listRoot">
+    <div class="loading">読み込み中…</div>
+  </div>
+
+</div>
+
+<!-- 削除確認モーダル -->
+<div class="modal-overlay" id="delModal" onclick="closeDelModal(event)">
+  <div class="modal">
+    <div class="modal-title">🗑️ 削除しますか？</div>
+    <div class="modal-desc" id="delModalText"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeDelModal()">キャンセル</button>
+      <button class="btn-del-confirm" onclick="confirmDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 延長モーダル -->
+<div class="modal-overlay" id="extModal" onclick="closeExtModal(event)">
+  <div class="modal">
+    <div class="modal-title">📅 終了日を延長</div>
+    <div class="modal-desc" id="extModalText"></div>
+    <label>新しい終了日</label>
+    <input type="date" id="extDateInput">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeExtModal()">キャンセル</button>
+      <button class="btn-submit" onclick="confirmExtend()">延長する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日付変更モーダル -->
+<div class="modal-overlay" id="dateEditModal" onclick="closeDateEdit(event)">
+  <div class="modal">
+    <div class="modal-title">📅 日付を変更</div>
+    <div class="modal-desc" id="dateEditText" style="margin-bottom:14px;"></div>
+
+    <!-- todo / memo 用 -->
+    <div id="dateEditDaily">
+      <label>日付</label>
+      <input type="date" id="dateEditSingle">
+    </div>
+
+    <!-- medium 用 -->
+    <div id="dateEditMedium" style="display:none;">
+      <label>開始日</label>
+      <input type="date" id="dateEditStart">
+      <label>終了日</label>
+      <input type="date" id="dateEditEnd">
+    </div>
+
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeDateEdit()">キャンセル</button>
+      <button class="btn-submit" onclick="confirmDateEdit()">変更する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let allItems = [];
+let deleteTargetId = null;
+let extendTargetId = null;
+let dateEditTargetId  = null;
+let dateEditItemType  = null;
+
+// ===== 日付ユーティリティ =====
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+const TODAY    = localDateStr(new Date());
+const TOMORROW = localDateStr(new Date(Date.now() + 86400000));
+
+function fmtDate(s) {
+  if (!s) return '';
+  const [y,m,d] = s.split('-');
+  return `${y}年${parseInt(m)}月${parseInt(d)}日`;
+}
+function dayLabel(s) {
+  if (s === TODAY)    return {text:'今日', cls:'is-today'};
+  if (s === TOMORROW) return {text:'明日', cls:'is-tomorrow'};
+  if (s < TODAY)      return {text:'期限切れ', cls:'is-past'};
+  return null;
+}
+
+// ===== データ取得 =====
+async function load() {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/all`,
+      {signal: AbortSignal.timeout(6000)});
+    if (!r.ok) { showError('サーバーエラー'); return; }
+    const d = await r.json();
+    if (!d.ok) { showError('取得失敗'); return; }
+    allItems = d.items || [];
+    render();
+  } catch(e) {
+    showError('サーバーに接続できません');
+  }
+}
+
+function showError(msg) {
+  document.getElementById('listRoot').innerHTML =
+    `<div class="empty-state">⚠️ ${msg}</div>`;
+}
+
+// ===== 描画 =====
+function render() {
+  const root = document.getElementById('listRoot');
+  if (!allItems.length) {
+    root.innerHTML = '<div class="empty-state">引き継ぎはありません 🎉</div>';
+    return;
+  }
+  root.innerHTML = '';
+
+  // 中期と日次に分割
+  const mediums = allItems.filter(i => i.type === 'medium');
+  const dailies = allItems.filter(i => i.type !== 'medium');
+
+  // 日次：日付でグループ化
+  if (dailies.length) {
+    const secLabel = document.createElement('div');
+    secLabel.className = 'section-label';
+    secLabel.textContent = 'Daily — TODO / メモ';
+    root.appendChild(secLabel);
+
+    const groups = {};
+    dailies.forEach(item => {
+      const d = item.date || '9999-12-31';
+      if (!groups[d]) groups[d] = [];
+      groups[d].push(item);
+    });
+
+    Object.keys(groups).sort().forEach(date => {
+      const group = document.createElement('div');
+      group.className = 'date-group';
+
+      const tag = dayLabel(date);
+      const hdr = document.createElement('div');
+      hdr.className = 'date-header';
+      hdr.innerHTML = `${fmtDate(date)}${tag ? `<span class="date-tag ${tag.cls}">${tag.text}</span>` : ''}`;
+      group.appendChild(hdr);
+
+      groups[date].forEach(item => group.appendChild(makeCard(item)));
+      root.appendChild(group);
+    });
+  }
+
+  // 中期
+  if (mediums.length) {
+    const secLabel = document.createElement('div');
+    secLabel.className = 'section-label';
+    secLabel.style.marginTop = '12px';
+    secLabel.textContent = 'Medium — 中期メモ';
+    root.appendChild(secLabel);
+
+    mediums.forEach(item => root.appendChild(makeCard(item)));
+  }
+}
+
+function makeCard(item) {
+  const el = document.createElement('div');
+  el.className = `item-card ${item.type}-item`;
+
+  const labels  = {todo:'TODO', memo:'メモ', medium:'中期'};
+  const bclass  = {todo:'badge-todo', memo:'badge-memo', medium:'badge-medium'};
+
+  let subInfo = '';
+  if (item.type === 'medium') {
+    subInfo = `${fmtDate(item.start_date)} 〜 ${fmtDate(item.end_date)}`;
+  } else {
+    subInfo = fmtDate(item.date);
+    if (item.type === 'todo') subInfo += ' （TODO: 未完了まで毎日表示）';
+  }
+
+  const iid = item.id;
+  const txt = esc(item.text);
+  const end = item.end_date || '';
+
+  // 日付変更ボタン用データ（シングルクォートをエスケープ）
+  const safeDate  = (item.date       || '').replace(/'/g,"\\'");
+  const safeStart = (item.start_date || '').replace(/'/g,"\\'");
+  const safeEnd   = (item.end_date   || '').replace(/'/g,"\\'");
+
+  let actions = `
+    <button class="act-btn btn-done" onclick="markDone('${iid}')">✓ 完了</button>
+    <button class="act-btn btn-edit" onclick="openDateEdit('${iid}','${item.type}','${safeDate}','${safeStart}','${safeEnd}','${txt}')">日付変更</button>
+  `;
+  if (item.type === 'medium') {
+    actions += `<button class="act-btn btn-ext" onclick="openExt('${iid}','${safeEnd}','${txt}')">延長</button>`;
+  }
+  actions += `<button class="act-btn btn-del" onclick="openDel('${iid}','${txt}')">削除</button>`;
+
+  el.innerHTML = `
+    <span class="item-badge ${bclass[item.type]}">${labels[item.type]}</span>
+    <div class="item-body">
+      <div class="item-text">${txt}</div>
+      <div class="item-sub">${subInfo}</div>
+    </div>
+    <div class="item-actions">${actions}</div>
+  `;
+  return el;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== アクション =====
+async function markDone(id) {
+  try {
+    const r = await fetch(`${SERVER}/api/handover/done`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) { allItems = allItems.filter(i => i.id !== id); render(); }
+  } catch(e) {}
+}
+
+// 削除確認
+function openDel(id, text) {
+  deleteTargetId = id;
+  document.getElementById('delModalText').textContent =
+    `「${text}」を完全に削除します。この操作は元に戻せません。`;
+  document.getElementById('delModal').classList.add('open');
+}
+function closeDelModal(e) {
+  if (e && e.target !== document.getElementById('delModal')) return;
+  document.getElementById('delModal').classList.remove('open');
+}
+async function confirmDelete() {
+  if (!deleteTargetId) return;
+  document.getElementById('delModal').classList.remove('open');
+  try {
+    const r = await fetch(`${SERVER}/api/handover/delete`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: deleteTargetId}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) { allItems = allItems.filter(i => i.id !== deleteTargetId); render(); }
+  } catch(e) {}
+}
+
+// ===== 日付変更 =====
+function openDateEdit(id, type, date, startDate, endDate, text) {
+  dateEditTargetId = id;
+  dateEditItemType = type;
+  document.getElementById('dateEditText').textContent = text;
+
+  if (type === 'medium') {
+    document.getElementById('dateEditDaily').style.display  = 'none';
+    document.getElementById('dateEditMedium').style.display = '';
+    document.getElementById('dateEditStart').value = startDate;
+    document.getElementById('dateEditEnd').value   = endDate;
+  } else {
+    document.getElementById('dateEditDaily').style.display  = '';
+    document.getElementById('dateEditMedium').style.display = 'none';
+    document.getElementById('dateEditSingle').value = date;
+  }
+  document.getElementById('dateEditModal').classList.add('open');
+}
+function closeDateEdit(e) {
+  if (e && e.target !== document.getElementById('dateEditModal')) return;
+  document.getElementById('dateEditModal').classList.remove('open');
+}
+async function confirmDateEdit() {
+  if (!dateEditTargetId) return;
+  let payload = {id: dateEditTargetId};
+  if (dateEditItemType === 'medium') {
+    payload.start_date = document.getElementById('dateEditStart').value;
+    payload.end_date   = document.getElementById('dateEditEnd').value;
+    if (!payload.start_date || !payload.end_date) return;
+  } else {
+    payload.date = document.getElementById('dateEditSingle').value;
+    if (!payload.date) return;
+  }
+  document.getElementById('dateEditModal').classList.remove('open');
+  try {
+    const r = await fetch(`${SERVER}/api/handover/update-date`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) await load();
+  } catch(e) {}
+}
+
+// 延長
+function openExt(id, currentEnd, text) {
+  extendTargetId = id;
+  document.getElementById('extModalText').textContent = text;
+  document.getElementById('extDateInput').value = currentEnd;
+  document.getElementById('extModal').classList.add('open');
+}
+function closeExtModal(e) {
+  if (e && e.target !== document.getElementById('extModal')) return;
+  document.getElementById('extModal').classList.remove('open');
+}
+async function confirmExtend() {
+  const newEnd = document.getElementById('extDateInput').value;
+  if (!newEnd || !extendTargetId) return;
+  document.getElementById('extModal').classList.remove('open');
+  try {
+    const r = await fetch(`${SERVER}/api/handover/extend`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: extendTargetId, end_date: newEnd}), signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) await load();
+  } catch(e) {}
+}
+
+load();
+setInterval(load, 30000); // 30秒ごとに自動更新
+</script>
+</body>
+</html>

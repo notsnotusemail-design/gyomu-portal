@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>顧客情報登録ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a;
+  min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 660px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+
+.card {
+  background: white; border-radius: 12px; padding: 18px 20px;
+  margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label { font-size: 13px; font-weight: 500; color: #444; }
+label .req { color: #e53; }
+label .sub { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 4px; }
+input[type=text], textarea {
+  padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus { outline: none; border-color: #4f6ef7; background: white; }
+textarea { resize: vertical; min-height: 70px; }
+
+/* サーバーバー */
+#serverBar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px; border: 1.5px solid #fde047;
+  background: #fef9c3; margin-bottom: 14px; font-size: 13px;
+}
+
+/* お客様No. エリア */
+.no-area {
+  background: #f8f8ff; border: 1.5px solid #e0e4ff;
+  border-radius: 10px; padding: 14px 16px;
+}
+.no-label { font-size: 12px; color: #666; margin-bottom: 8px; }
+.no-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.no-tab {
+  padding: 5px 12px; border: 1.5px solid #e2e2e2; border-radius: 20px;
+  font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #666;
+  transition: all 0.15s;
+}
+.no-tab:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.no-tab.active { border-color: #4f6ef7; background: #4f6ef7; color: white; }
+.no-display {
+  display: flex; align-items: center; gap: 10px;
+}
+.no-big {
+  font-size: 36px; font-weight: 800; color: #4f6ef7;
+  font-family: 'SF Mono', 'Courier New', monospace; min-width: 80px;
+}
+.no-hint { font-size: 12px; color: #aaa; line-height: 1.5; }
+.no-custom-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.no-custom-row input { flex: 1; }
+.btn-apply {
+  padding: 8px 14px; background: #4f6ef7; color: white;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; flex-shrink: 0;
+}
+.btn-apply:hover { background: #3a5ce5; }
+
+/* セレクト風チップ */
+.chip-group { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+.chip {
+  padding: 6px 13px; border: 1.5px solid #e2e2e2; border-radius: 20px;
+  font-size: 13px; cursor: pointer; background: white; color: #555;
+  transition: all 0.15s;
+}
+.chip:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.chip.on { border-color: #4f6ef7; background: #4f6ef7; color: white; font-weight: 600; }
+.chip.status-end { border-color: #fca5a5; color: #991b1b; }
+.chip.status-end.on { background: #ef4444; border-color: #ef4444; color: white; }
+
+/* チャンネルリスト */
+.channel-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.channel-row { display: flex; gap: 8px; align-items: center; }
+.channel-lbl {
+  font-size: 13px; font-weight: 700; color: #4f6ef7;
+  min-width: 36px; flex-shrink: 0;
+}
+.channel-row input { flex: 1; }
+.btn-del {
+  width: 28px; height: 28px; border: 1.5px solid #fca5a5; border-radius: 7px;
+  background: white; color: #ef4444; font-size: 16px; cursor: pointer;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+.btn-del:hover { background: #fef2f2; }
+.btn-add-ch {
+  margin-top: 6px; padding: 7px 12px; border: 1.5px dashed #c7d2fd;
+  border-radius: 8px; background: white; color: #4f6ef7;
+  font-size: 13px; font-weight: 500; cursor: pointer; width: 100%; text-align: left;
+}
+.btn-add-ch:hover { background: #f5f7ff; }
+
+/* 登録ボタン */
+.btn-register {
+  width: 100%; padding: 14px; background: #1a1a1a; color: white;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-register:hover:not(:disabled) { background: #333; }
+.btn-register:active:not(:disabled) { transform: scale(0.98); }
+.btn-register:disabled { background: #aaa; cursor: default; }
+
+.msg-box { display: none; padding: 14px 16px; border-radius: 10px; font-size: 14px; margin-top: 12px; line-height: 1.6; }
+.msg-box.show { display: block; }
+.msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+
+code { background: rgba(0,0,0,0.07); padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono','Courier New',monospace; font-size: 12px; }
+.divider { height: 1px; background: #eee; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>👤 顧客情報登録ツール</h1>
+<p class="subtitle">新規顧客を登録 → お客様No.自動採番 → 補足資料ページを自動作成</p>
+
+<!-- サーバーバー -->
+<div id="serverBar">
+  <span id="serverDot" style="width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0;transition:background 0.3s"></span>
+  <span id="serverTxt">サーバー確認中...</span>
+</div>
+
+<!-- お客様No. -->
+<div class="card">
+  <div class="card-title">👤 お客様No. <span style="color:#e53;font-size:12px">*</span></div>
+  <div class="no-area">
+    <div class="no-label">番号の種類を選択</div>
+    <div class="no-tabs">
+      <div class="no-tab active" onclick="setRange('300s',this)">300番台<br><span style="font-size:10px;font-weight:400">直営業・重要</span></div>
+      <div class="no-tab" onclick="setRange('3000s',this)">3000番台<br><span style="font-size:10px;font-weight:400">新規チャンネル</span></div>
+      <div class="no-tab" onclick="setRange('regular',this)">通常<br><span style="font-size:10px;font-weight:400">01, 02…</span></div>
+      <div class="no-tab" onclick="setRange('temp',this)">仮番<br><span style="font-size:10px;font-weight:400">T01… (再利用可)</span></div>
+      <div class="no-tab" onclick="setRange('custom',this)">カスタム</div>
+    </div>
+    <div class="no-display">
+      <div class="no-big" id="noBig">---</div>
+      <div class="no-hint" id="noHint">読み込み中...</div>
+    </div>
+    <div class="no-custom-row" id="customRow" style="display:none">
+      <input type="text" id="customNo" placeholder="例: 317, T02, 3001" oninput="onCustomNo()">
+      <button class="btn-apply" onclick="applyCustom()">適用</button>
+    </div>
+  </div>
+</div>
+
+<!-- 基本情報 -->
+<div class="card">
+  <div class="card-title">📋 基本情報</div>
+  <div class="form-group">
+    <label>クライアント名 <span class="req">*</span></label>
+    <input type="text" id="name" placeholder="例: 加藤 大樹、株式会社〇〇">
+  </div>
+  <div class="form-group">
+    <label>種別</label>
+    <div class="chip-group" id="typeChips">
+      <div class="chip" onclick="pick('type',this,'個人')">個人</div>
+      <div class="chip" onclick="pick('type',this,'法人')">法人</div>
+      <div class="chip" onclick="pick('type',this,'組織')">組織</div>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>取引状況</label>
+    <div class="chip-group" id="statusChips">
+      <div class="chip on" onclick="pick('status',this,'取引中')">取引中</div>
+      <div class="chip" onclick="pick('status',this,'取引開始準備中')">取引開始準備中</div>
+      <div class="chip" onclick="pick('status',this,'頻度低め')">頻度低め</div>
+      <div class="chip" onclick="pick('status',this,'受注一次停止中')">受注一次停止中</div>
+      <div class="chip status-end" onclick="pick('status',this,'取引終了')">取引終了</div>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>優先連絡方法</label>
+    <div class="chip-group" id="contactChips">
+      <div class="chip" onclick="pick('contact',this,'LINE')">LINE</div>
+      <div class="chip" onclick="pick('contact',this,'chat work')">chat work</div>
+      <div class="chip" onclick="pick('contact',this,'slack')">slack</div>
+      <div class="chip" onclick="pick('contact',this,'クラウドワークス')">クラウドワークス</div>
+      <div class="chip" onclick="pick('contact',this,'Google chat')">Google chat</div>
+      <div class="chip" onclick="pick('contact',this,'e-mail')">e-mail</div>
+      <div class="chip" onclick="pick('contact',this,'TEL')">TEL</div>
+      <div class="chip" onclick="pick('contact',this,'その他')">その他</div>
+    </div>
+  </div>
+</div>
+
+<!-- チャンネル情報 -->
+<div class="card">
+  <div class="card-title">📺 チャンネル / 案件情報<span style="font-size:10px;color:#aaa;text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px">（重要備考に登録されます）</span></div>
+  <div class="channel-list" id="channelList"></div>
+  <button class="btn-add-ch" onclick="addChannel()">＋ チャンネルを追加</button>
+  <div class="divider"></div>
+  <div class="form-group" style="margin-bottom:0">
+    <label>その他の重要備考 <span class="sub">（外注可否・実績公開可否など）</span></label>
+    <textarea id="extraNotes" placeholder="例: 外注自由・実績公開NG&#10;提出先: Googleドライブ"></textarea>
+  </div>
+</div>
+
+<!-- 補足資料ページ -->
+<div class="card" style="background:#f8f8ff;border:1.5px solid #e0e4ff">
+  <div class="card-title" style="color:#4f6ef7">✨ 自動作成されるもの</div>
+  <div style="font-size:13px;color:#444;line-height:1.8">
+    ✅ お客様データベースに <strong id="previewEntry">（番号）_（名前）様</strong> を登録<br>
+    ✅ <strong id="previewSub">（番号）_（名前）様_補足資料</strong> ページを自動作成
+  </div>
+</div>
+
+<button class="btn-register" id="btnReg" onclick="doRegister()">
+  👤 Notionに顧客を登録する
+</button>
+<div class="msg-box" id="msgBox"></div>
+<div style="height:40px"></div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+
+// ========== 状態 ==========
+let currentRange = '300s';
+let suggestedNos = { '300s': null, '3000s': null, regular: null };
+let customNoVal = null;
+let channelCount = 0;
+const picked = { type: null, status: '取引中', contact: null };
+
+// ========== サーバー接続 ==========
+async function checkServer() {
+  const bar = document.getElementById('serverBar');
+  const dot = document.getElementById('serverDot');
+  const txt = document.getElementById('serverTxt');
+  const btn = document.getElementById('btnReg');
+  try {
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) {
+      bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
+      dot.style.background = '#22c55e';
+      txt.textContent = 'サーバー接続中 ─ Notionへ直接登録できます';
+      btn.disabled = false;
+      return true;
+    }
+  } catch(e) {}
+  bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
+  dot.style.background = '#f59e0b';
+  txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリックしてください';
+  btn.disabled = true;
+  return false;
+}
+checkServer();
+setInterval(checkServer, 3000);
+
+// ========== 次の番号を取得 ==========
+async function loadNextNos() {
+  try {
+    const r = await fetch(SERVER + '/api/next-customer-no', { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const d = await r.json();
+      suggestedNos['300s']   = d.next_300s;
+      suggestedNos['3000s']  = d.next_3000s;
+      suggestedNos['regular'] = d.next_regular ? d.next_regular.padStart(2,'0') : null;
+      renderNo();
+    }
+  } catch(e) {
+    document.getElementById('noHint').textContent = 'サーバー起動後に自動取得されます';
+  }
+}
+loadNextNos();
+
+// ========== 番号レンジ選択 ==========
+function setRange(range, el) {
+  currentRange = range;
+  customNoVal = null;
+  document.querySelectorAll('.no-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('customRow').style.display = range === 'custom' ? 'flex' : 'none';
+  renderNo();
+}
+
+function renderNo() {
+  const bigEl = document.getElementById('noBig');
+  const hintEl = document.getElementById('noHint');
+  if (currentRange === 'custom') {
+    bigEl.textContent = customNoVal || '---';
+    hintEl.textContent = '任意の番号を入力してください';
+    updatePreview();
+    return;
+  }
+  if (currentRange === 'temp') {
+    bigEl.textContent = 'T01';
+    hintEl.textContent = '仮番号（T01, T02…）\n固有値ではなく再利用可能です';
+    updatePreview();
+    return;
+  }
+  const no = suggestedNos[currentRange];
+  if (no) {
+    bigEl.textContent = no;
+    const hints = {
+      '300s':   '直営業・重要クライアント向け\n（現在の最大番号から自動採番）',
+      '3000s':  '新規チャンネル案件向け\n（現在の最大番号から自動採番）',
+      'regular':'通常番号（01, 02…）\n（空き番号を自動提案）',
+    };
+    hintEl.textContent = hints[currentRange] || '';
+  } else {
+    bigEl.textContent = '---';
+    hintEl.textContent = 'サーバーに接続してください';
+  }
+  updatePreview();
+}
+
+function onCustomNo() {
+  customNoVal = document.getElementById('customNo').value.trim();
+  document.getElementById('noBig').textContent = customNoVal || '---';
+  updatePreview();
+}
+function applyCustom() {
+  customNoVal = document.getElementById('customNo').value.trim();
+  document.getElementById('noBig').textContent = customNoVal || '---';
+  updatePreview();
+}
+
+function getNo() {
+  if (currentRange === 'custom') return customNoVal;
+  if (currentRange === 'temp') return document.getElementById('customNo').value.trim() || 'T01';
+  return suggestedNos[currentRange] || null;
+}
+
+// ========== チップ選択 ==========
+function pick(key, el, val) {
+  const group = el.parentElement;
+  group.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  picked[key] = val;
+}
+
+// ========== チャンネル追加 ==========
+const LABELS = ['A','B','C','D','E','F','G','H','I','J'];
+function addChannel() {
+  const list = document.getElementById('channelList');
+  const idx = list.children.length;
+  const lbl = LABELS[idx] || String(idx + 1);
+  const row = document.createElement('div');
+  row.className = 'channel-row';
+  row.innerHTML = `
+    <span class="channel-lbl">${lbl}案件</span>
+    <input type="text" placeholder="例: スタディアスリート公式チャンネル" oninput="updatePreview()">
+    <button class="btn-del" onclick="removeChannel(this)">×</button>
+  `;
+  list.appendChild(row);
+}
+
+function removeChannel(btn) {
+  btn.closest('.channel-row').remove();
+  // ラベルを振り直す
+  document.querySelectorAll('.channel-row').forEach((row, i) => {
+    row.querySelector('.channel-lbl').textContent = (LABELS[i] || String(i+1)) + '案件';
+  });
+}
+
+function getChannelNotes() {
+  const rows = document.querySelectorAll('.channel-row');
+  const lines = [];
+  rows.forEach((row, i) => {
+    const lbl = LABELS[i] || String(i + 1);
+    const val = row.querySelector('input').value.trim();
+    if (val) lines.push(`${lbl}案件：${val}`);
+  });
+  const extra = document.getElementById('extraNotes').value.trim();
+  if (extra) lines.push(extra);
+  return lines.join('\n');
+}
+
+// ========== プレビュー更新 ==========
+function updatePreview() {
+  const no   = getNo() || '（番号）';
+  const name = document.getElementById('name')?.value.trim() || '（名前）';
+  document.getElementById('previewEntry').textContent = `${no}_${name}様`;
+  document.getElementById('previewSub').textContent   = `${no}_${name}様_補足資料`;
+}
+document.getElementById('name').addEventListener('input', updatePreview);
+
+// ========== 登録 ==========
+async function doRegister() {
+  const no   = getNo();
+  const name = document.getElementById('name').value.trim();
+  if (!no)   { showMsg('error','⚠️ お客様No.を確認してください。'); return; }
+  if (!name) { showMsg('error','⚠️ クライアント名を入力してください。'); return; }
+
+  const btn = document.getElementById('btnReg');
+  btn.disabled = true; btn.textContent = '⏳ 登録中...';
+
+  const payload = {
+    customerNo: no,
+    name:       name,
+    type:       picked.type,
+    status:     picked.status,
+    contact:    picked.contact,
+    notes:      getChannelNotes(),
+  };
+
+  try {
+    const res    = await fetch(SERVER + '/api/register-customer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || '登録失敗');
+
+    btn.disabled = false; btn.textContent = '👤 Notionに顧客を登録する';
+    showMsg('success', `
+      <strong>✅ 顧客登録が完了しました！</strong><br>
+      お客様No. <code style="font-size:14px;background:#dcfce7;padding:1px 8px;border-radius:4px">${no}</code>　${name}様<br><br>
+      ${result.customerUrl ? `<a href="${result.customerUrl}" target="_blank" style="color:#0ea5e9">📎 お客様ページを開く →</a><br>` : ''}
+      ${result.subPageUrl  ? `<a href="${result.subPageUrl}"  target="_blank" style="color:#0ea5e9">📄 補足資料ページを開く →</a>` : ''}
+    `);
+    resetForm();
+    // 次の番号を再取得
+    suggestedNos[currentRange] = null;
+    loadNextNos();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '👤 Notionに顧客を登録する';
+    showMsg('error', `⚠️ エラー: ${e.message}`);
+  }
+}
+
+function resetForm() {
+  document.getElementById('name').value = '';
+  document.getElementById('extraNotes').value = '';
+  document.getElementById('channelList').innerHTML = '';
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  document.querySelector('[onclick*="取引中"]').classList.add('on');
+  picked.type = null; picked.status = '取引中'; picked.contact = null;
+  updatePreview();
+}
+
+function showMsg(type, html) {
+  const el = document.getElementById('msgBox');
+  el.className = 'msg-box show msg-' + type;
+  el.innerHTML = html;
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>顧客情報</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 900px; margin: 0 auto; }
+
+/* ヘッダー */
+.page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.back-btn {
+  display: flex; align-items: center; gap: 5px; font-size: 13px; color: #888;
+  text-decoration: none; padding: 6px 10px; border-radius: 8px;
+  transition: background 0.15s;
+}
+.back-btn:hover { background: #e8e8e5; color: #333; }
+.page-title { font-size: 20px; font-weight: 700; }
+.page-count { font-size: 13px; color: #aaa; margin-left: auto; }
+
+/* コントロールバー */
+.ctrl-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: white; border-radius: 12px; padding: 12px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07); margin-bottom: 10px;
+}
+.search-input {
+  flex: 1; min-width: 160px; padding: 8px 12px; border: 1.5px solid #e2e2e2;
+  border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa;
+}
+.search-input:focus { outline: none; border-color: #4f6ef7; background: white; }
+.filter-sel, .sort-sel {
+  padding: 8px 10px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 13px; font-family: inherit; background: #fafafa; cursor: pointer;
+}
+.filter-sel:focus, .sort-sel:focus { outline: none; border-color: #4f6ef7; }
+.sort-dir-btn {
+  padding: 7px 10px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  background: white; cursor: pointer; font-size: 14px; transition: all 0.15s;
+  line-height: 1;
+}
+.sort-dir-btn:hover { background: #f0f0f0; }
+
+/* 一括操作バー */
+.bulk-bar {
+  display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #1a1a1a; color: white; border-radius: 12px; padding: 11px 16px;
+  margin-bottom: 10px; font-size: 13px;
+}
+.bulk-bar.show { display: flex; }
+.bulk-count { font-weight: 700; white-space: nowrap; }
+.bulk-status-sel {
+  padding: 6px 10px; border-radius: 7px; font-size: 13px;
+  font-family: inherit; border: none; background: #333; color: white; cursor: pointer;
+}
+.bulk-btn {
+  padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit; border: none; transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-apply  { background: #4f6ef7; color: white; }
+.btn-apply:hover  { background: #3b5ce0; }
+.btn-delete { background: #ef4444; color: white; }
+.btn-delete:hover { background: #dc2626; }
+.btn-clear  { background: #444; color: #ccc; margin-left: auto; }
+.btn-clear:hover  { background: #555; }
+
+/* テーブル */
+.table-wrap {
+  background: white; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left; font-size: 11px; font-weight: 600; color: #999;
+  padding: 10px 12px; border-bottom: 1.5px solid #efefef;
+  white-space: nowrap; background: #fafafa;
+  cursor: pointer; user-select: none;
+}
+thead th:hover { color: #555; }
+thead th.sorted { color: #4f6ef7; }
+thead th .sort-arrow { font-size: 10px; margin-left: 3px; }
+thead th:first-child { width: 36px; cursor: default; }
+
+tbody tr { border-bottom: 1px solid #f4f4f4; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #fafafa; }
+tbody tr.selected { background: #eef1ff; }
+
+td { padding: 11px 12px; vertical-align: middle; }
+td:first-child { text-align: center; }
+
+.no-cell { font-weight: 700; color: #4f6ef7; font-size: 12px; white-space: nowrap; }
+.name-cell { font-weight: 500; }
+.name-sub  { font-size: 11px; color: #aaa; }
+.notes-cell { font-size: 11px; color: #888; max-width: 200px; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap; }
+
+/* ステータスバッジ */
+.badge {
+  display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px;
+  white-space: nowrap; font-weight: 500;
+}
+.s-取引中      { background: #dcfce7; color: #166534; }
+.s-頻度低め    { background: #fef9c3; color: #854d0e; }
+.s-取引開始準備中 { background: #ede9fe; color: #5b21b6; }
+.s-受注一次停止中 { background: #e0f2fe; color: #075985; }
+.s-取引終了    { background: #fee2e2; color: #7f1d1d; }
+
+.kind-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: #f3f4f6; color: #666;
+}
+
+/* チェックボックス */
+input[type=checkbox] {
+  width: 16px; height: 16px; cursor: pointer; accent-color: #4f6ef7;
+}
+
+/* 空状態・ロード */
+.empty { text-align: center; padding: 48px 20px; color: #aaa; font-size: 14px; }
+.empty .icon { font-size: 32px; margin-bottom: 10px; }
+
+/* ロードスピナー */
+.loading { text-align: center; padding: 48px; color: #aaa; font-size: 14px; }
+
+/* リフレッシュ */
+.refresh-btn {
+  padding: 7px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+  background: white; cursor: pointer; font-size: 13px; font-family: inherit;
+  transition: all 0.15s; color: #555;
+}
+.refresh-btn:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="page-header">
+    <a class="back-btn" href="/">← ポータル</a>
+    <div class="page-title">👱 顧客情報</div>
+    <div class="page-count" id="pageCount"></div>
+    <button class="refresh-btn" onclick="loadCustomers()">🔄 更新</button>
+  </div>
+
+  <!-- コントロールバー -->
+  <div class="ctrl-bar">
+    <input class="search-input" id="searchInput" placeholder="🔍  名前・No.・備考で検索…"
+           oninput="applyFilters()">
+    <select class="filter-sel" id="statusFilter" onchange="applyFilters()">
+      <option value="active">取引停止以外</option>
+      <option value="">すべて</option>
+      <option value="取引中">取引中</option>
+      <option value="頻度低め">頻度低め</option>
+      <option value="取引開始準備中">取引開始準備中</option>
+      <option value="受注一次停止中">受注一次停止中</option>
+      <option value="取引終了">取引終了のみ</option>
+    </select>
+    <select class="sort-sel" id="sortKey" onchange="applyFilters()">
+      <option value="no">No. 順</option>
+      <option value="name">名前順</option>
+      <option value="status">取引状況順</option>
+      <option value="kind">種別順</option>
+    </select>
+    <button class="sort-dir-btn" id="sortDirBtn" onclick="toggleSortDir()" title="昇順/降順">↑</button>
+  </div>
+
+  <!-- 一括操作バー -->
+  <div class="bulk-bar" id="bulkBar">
+    <span class="bulk-count" id="bulkCount">0件選択中</span>
+    <select class="bulk-status-sel" id="bulkStatus">
+      <option value="取引中">→ 取引中</option>
+      <option value="頻度低め">→ 頻度低め</option>
+      <option value="取引開始準備中">→ 取引開始準備中</option>
+      <option value="受注一次停止中">→ 受注一次停止中</option>
+      <option value="取引終了">→ 取引終了</option>
+    </select>
+    <button class="bulk-btn btn-apply" onclick="bulkUpdate()">✅ 変更を適用</button>
+    <button class="bulk-btn btn-delete" onclick="bulkArchive()">🗑 削除</button>
+    <button class="bulk-btn btn-clear"  onclick="clearSelection()">✕ 解除</button>
+  </div>
+
+  <!-- テーブル -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="checkAll" onchange="toggleAll(this)"></th>
+          <th onclick="setSortKey('no')">No. <span class="sort-arrow" data-col="no"></span></th>
+          <th onclick="setSortKey('name')">名前 <span class="sort-arrow" data-col="name"></span></th>
+          <th onclick="setSortKey('status')">取引状況 <span class="sort-arrow" data-col="status"></span></th>
+          <th onclick="setSortKey('kind')">種別 <span class="sort-arrow" data-col="kind"></span></th>
+          <th>連絡方法</th>
+          <th>重要備考</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="7"><div class="loading">読み込み中…</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let allCustomers  = [];   // 全データ
+let filteredList  = [];   // フィルター後
+let selectedIds   = new Set();
+let sortKey = 'no';
+let sortAsc = true;
+
+// ===== 初期ロード =====
+async function loadCustomers() {
+  document.getElementById('tableBody').innerHTML =
+    '<tr><td colspan="7"><div class="loading">Notionから取得中…</div></td></tr>';
+  try {
+    const r = await fetch(SERVER + '/api/customers-all',
+      { signal: AbortSignal.timeout(12000) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    allCustomers = d.customers;
+    selectedIds.clear();
+    applyFilters();
+  } catch(e) {
+    document.getElementById('tableBody').innerHTML =
+      `<tr><td colspan="7"><div class="empty"><div class="icon">⚠️</div>取得失敗: ${e.message}</div></td></tr>`;
+  }
+}
+
+// ===== フィルター・ソート =====
+function applyFilters() {
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+
+  filteredList = allCustomers.filter(c => {
+    if (status === 'active' && c.status === '取引終了') return false;
+    else if (status && status !== 'active' && c.status !== status) return false;
+    if (q) {
+      const hay = (c.no + c.name + c.pageName + c.notes + c.kind).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // ソート
+  const STATUS_ORDER = { '取引中':0, '取引開始準備中':1, '頻度低め':2, '受注一次停止中':3, '取引終了':4 };
+  filteredList.sort((a, b) => {
+    let av, bv;
+    if (sortKey === 'no') {
+      av = parseInt(a.no) || 9999; bv = parseInt(b.no) || 9999;
+    } else if (sortKey === 'status') {
+      av = STATUS_ORDER[a.status] ?? 9; bv = STATUS_ORDER[b.status] ?? 9;
+    } else {
+      av = (a[sortKey] || '').toLowerCase(); bv = (b[sortKey] || '').toLowerCase();
+    }
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ?  1 : -1;
+    return 0;
+  });
+
+  renderTable();
+  updateSortUI();
+  document.getElementById('pageCount').textContent =
+    `${filteredList.length} / ${allCustomers.length} 件`;
+}
+
+function setSortKey(key) {
+  if (sortKey === key) { sortAsc = !sortAsc; }
+  else { sortKey = key; sortAsc = true; }
+  document.getElementById('sortKey').value = key;
+  applyFilters();
+}
+function toggleSortDir() {
+  sortAsc = !sortAsc;
+  applyFilters();
+}
+function updateSortUI() {
+  document.querySelectorAll('.sort-arrow').forEach(el => { el.textContent = ''; });
+  const arrow = document.querySelector(`.sort-arrow[data-col="${sortKey}"]`);
+  if (arrow) arrow.textContent = sortAsc ? ' ↑' : ' ↓';
+  document.getElementById('sortDirBtn').textContent = sortAsc ? '↑' : '↓';
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  const cols = { no:1, name:2, status:3, kind:4 };
+  const idx = cols[sortKey];
+  if (idx !== undefined) {
+    document.querySelectorAll('thead th')[idx].classList.add('sorted');
+  }
+  document.getElementById('sortKey').value = sortKey;
+}
+
+// ===== テーブル描画 =====
+function renderTable() {
+  const body = document.getElementById('tableBody');
+  if (filteredList.length === 0) {
+    body.innerHTML = '<tr><td colspan="7"><div class="empty"><div class="icon">🔍</div>該当する顧客が見つかりません</div></td></tr>';
+    return;
+  }
+  body.innerHTML = '';
+  filteredList.forEach(c => {
+    const tr = document.createElement('tr');
+    if (selectedIds.has(c.id)) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td><input type="checkbox" onchange="toggleSelect('${c.id}', this)"
+          ${selectedIds.has(c.id) ? 'checked' : ''}></td>
+      <td class="no-cell">${esc(c.no)}</td>
+      <td>
+        <div class="name-cell">${esc(c.name || c.pageName)}</div>
+        ${c.name && c.pageName && c.name !== c.pageName
+          ? `<div class="name-sub">${esc(c.pageName)}</div>` : ''}
+      </td>
+      <td><span class="badge s-${esc(c.status)}">${esc(c.status) || '―'}</span></td>
+      <td>${c.kind ? `<span class="kind-badge">${esc(c.kind)}</span>` : '―'}</td>
+      <td style="font-size:12px;color:#666">${esc(c.contact) || '―'}</td>
+      <td class="notes-cell" title="${esc(c.notes)}">${esc(c.notes) || '―'}</td>
+    `;
+    body.appendChild(tr);
+  });
+  updateBulkBar();
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== チェックボックス =====
+function toggleSelect(id, el) {
+  const tr = el.closest('tr');
+  if (el.checked) {
+    selectedIds.add(id);
+    tr.classList.add('selected');
+  } else {
+    selectedIds.delete(id);
+    tr.classList.remove('selected');
+  }
+  updateBulkBar();
+  updateCheckAll();
+}
+
+function toggleAll(el) {
+  filteredList.forEach(c => {
+    if (el.checked) selectedIds.add(c.id);
+    else            selectedIds.delete(c.id);
+  });
+  renderTable();
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  renderTable();
+  document.getElementById('checkAll').checked = false;
+}
+
+function updateCheckAll() {
+  const allChecked = filteredList.length > 0 &&
+    filteredList.every(c => selectedIds.has(c.id));
+  document.getElementById('checkAll').checked = allChecked;
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  const n = selectedIds.size;
+  if (n > 0) {
+    bar.classList.add('show');
+    document.getElementById('bulkCount').textContent = `${n}件選択中`;
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+// ===== 一括操作 =====
+async function bulkUpdate() {
+  const status = document.getElementById('bulkStatus').value;
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  if (!confirm(`${ids.length}件の取引状況を「${status}」に変更しますか？`)) return;
+
+  try {
+    const r = await fetch(SERVER + '/api/customers/bulk-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, status }),
+    });
+    const d = await r.json();
+    // ローカル更新
+    allCustomers.forEach(c => {
+      if (selectedIds.has(c.id)) c.status = status;
+    });
+    selectedIds.clear();
+    applyFilters();
+    alert(`✅ ${d.updated}件を「${status}」に変更しました${d.failed ? `（${d.failed}件失敗）` : ''}`);
+  } catch(e) {
+    alert('変更失敗: ' + e.message);
+  }
+}
+
+async function bulkArchive() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  if (!confirm(`⚠️ ${ids.length}件をNotionから削除します。この操作は元に戻せません。\n続けますか？`)) return;
+
+  try {
+    const r = await fetch(SERVER + '/api/customers/bulk-archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const d = await r.json();
+    // ローカルから除去
+    allCustomers = allCustomers.filter(c => !selectedIds.has(c.id));
+    selectedIds.clear();
+    applyFilters();
+    alert(`🗑 ${d.archived}件を削除しました`);
+  } catch(e) {
+    alert('削除失敗: ' + e.message);
+  }
+}
+
+// 起動
+loadCustomers();
+</script>
+</body>
+</html>

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>案件登録ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef;
+  color: #1a1a1a;
+  min-height: 100vh;
+  padding: 20px 16px 60px;
+}
+.container { max-width: 660px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+
+/* カード */
+.card {
+  background: white; border-radius: 12px; padding: 18px 20px;
+  margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+}
+.form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label { font-size: 13px; font-weight: 500; color: #444; }
+label .req { color: #e53; }
+label .sub { font-weight: 400; color: #999; font-size: 11px; margin-left: 4px; }
+input[type=text], input[type=date], input[type=number], textarea, select {
+  padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa;
+  transition: border-color 0.15s, background 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: #4f6ef7; background: white;
+}
+textarea { resize: vertical; min-height: 56px; }
+
+/* ========== お客様ボタン ========== */
+.customer-grid {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+}
+.cust-btn {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 8px 12px; border: 1.5px solid #e2e2e2; border-radius: 10px;
+  cursor: pointer; background: white; transition: all 0.15s; text-align: left;
+  min-width: 100px;
+}
+.cust-btn:hover { border-color: #4f6ef7; background: #f5f7ff; }
+.cust-btn.selected { border-color: #4f6ef7; background: #eef1ff; }
+.cust-btn .cb-no { font-size: 12px; font-weight: 700; color: #4f6ef7; }
+.cust-btn .cb-name { font-size: 13px; font-weight: 500; color: #1a1a1a; line-height: 1.3; margin-top: 1px; }
+.cust-btn .cb-status { font-size: 10px; margin-top: 3px; padding: 1px 6px; border-radius: 20px; }
+.s-active { background: #dcfce7; color: #166534; }
+.s-low { background: #fef9c3; color: #854d0e; }
+.s-prep { background: #ede9fe; color: #5b21b6; }
+
+/* ========== 検索 ========== */
+.search-wrap { position: relative; margin-bottom: 4px; }
+.search-input { width: 100%; padding: 9px 36px 9px 12px; }
+.search-clear {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  cursor: pointer; color: #bbb; font-size: 16px; display: none; background: none; border: none;
+  line-height: 1;
+}
+.search-clear.show { display: block; }
+.dropdown {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: white; border: 1.5px solid #e0e0e0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;
+  max-height: 240px; overflow-y: auto;
+}
+.dropdown.open { display: block; }
+.dd-item {
+  padding: 10px 14px; cursor: pointer; display: flex;
+  align-items: center; gap: 10px; transition: background 0.1s;
+  border-bottom: 1px solid #f5f5f5;
+}
+.dd-item:last-child { border-bottom: none; }
+.dd-item:hover { background: #f5f7ff; }
+.dd-no { font-weight: 700; color: #4f6ef7; font-size: 13px; min-width: 46px; }
+.dd-name { font-size: 14px; flex: 1; }
+.dd-ch { font-size: 11px; color: #aaa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.dd-st { font-size: 10px; padding: 2px 7px; border-radius: 20px; flex-shrink: 0; }
+.no-result { padding: 12px 14px; font-size: 13px; color: #aaa; text-align: center; }
+
+/* 選択済みバナー */
+.selected-banner {
+  display: none; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #eef1ff; border: 1.5px solid #c7d2fd;
+  border-radius: 10px; margin-top: 10px;
+}
+.selected-banner.show { display: flex; }
+.sb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sb-no { font-weight: 700; color: #4338ca; font-size: 13px; }
+.sb-name { font-size: 14px; flex: 1; }
+.sb-clear { font-size: 11px; color: #999; cursor: pointer; padding: 2px 6px; border: 1px solid #ddd; border-radius: 5px; background: white; }
+.sb-clear:hover { color: #e53; border-color: #e53; }
+
+/* ========== 案件種別 ========== */
+.case-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.case-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border: 1.5px solid #e2e2e2; border-radius: 20px;
+  cursor: pointer; background: white; font-size: 13px; color: #444;
+  transition: all 0.15s;
+}
+.case-chip:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.case-chip.selected { border-color: #4f6ef7; background: #4f6ef7; color: white; }
+.case-chip.new-chip { border-style: dashed; border-color: #94a3b8; color: #94a3b8; }
+.case-chip.new-chip:hover { border-color: #f59e0b; color: #f59e0b; }
+.case-label { font-weight: 700; font-size: 11px; }
+
+.new-case-input { margin-top: 10px; display: none; }
+.new-case-input.show { display: block; }
+.new-case-confirm {
+  margin-top: 8px; padding: 12px 14px;
+  background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+  font-size: 13px; color: #78350f; line-height: 1.6;
+  display: none;
+}
+.new-case-confirm.show { display: block; }
+.confirm-btns { display: flex; gap: 8px; margin-top: 8px; }
+.btn-yes {
+  padding: 6px 14px; background: #f59e0b; color: white;
+  border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.btn-yes:hover { background: #d97706; }
+.btn-no {
+  padding: 6px 14px; background: white; color: #666;
+  border: 1px solid #ddd; border-radius: 7px; font-size: 13px;
+  cursor: pointer;
+}
+.btn-no:hover { background: #f5f5f5; }
+
+/* ========== プレビュー ========== */
+.preview-card {
+  background: linear-gradient(135deg, #312e81 0%, #4f6ef7 100%);
+  border-radius: 12px; padding: 20px; margin-bottom: 14px; color: white;
+}
+.pv-label { font-size: 11px; opacity: 0.7; margin-bottom: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.pv-number {
+  font-size: 28px; font-weight: 700; font-family: 'SF Mono', 'Courier New', monospace;
+  letter-spacing: 0.04em; word-break: break-all; min-height: 40px; margin-bottom: 8px;
+}
+.pv-number.empty { font-size: 14px; font-weight: 400; font-family: inherit; opacity: 0.5; }
+.pv-rule { font-size: 12px; opacity: 0.65; line-height: 1.5; }
+.btn-copy {
+  display: none; margin-top: 10px; padding: 7px 14px;
+  background: rgba(255,255,255,0.18); color: white;
+  border: 1.5px solid rgba(255,255,255,0.35); border-radius: 7px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-copy:hover { background: rgba(255,255,255,0.28); }
+
+/* ========== トグル ========== */
+.toggle-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: #f8f8f8; border-radius: 8px; margin-bottom: 8px;
+}
+.toggle-row:last-child { margin-bottom: 0; }
+.toggle-label { font-size: 14px; flex: 1; }
+.toggle {
+  width: 40px; height: 22px; background: #ccc; border-radius: 11px;
+  cursor: pointer; position: relative; transition: background 0.2s;
+  flex-shrink: 0; border: none;
+}
+.toggle.on { background: #4f6ef7; }
+.toggle::after {
+  content: ''; position: absolute; width: 18px; height: 18px; background: white;
+  border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.toggle.on::after { left: 20px; }
+.sub-panel {
+  display: none; padding: 12px; background: #f0f4ff;
+  border-radius: 8px; border-left: 3px solid #4f6ef7; margin-bottom: 8px;
+}
+.sub-panel.show { display: block; }
+
+/* 進捗 */
+.prog-row { display: flex; gap: 8px; margin-top: 4px; }
+.prog-chip {
+  flex: 1; padding: 8px 4px; border: 1.5px solid #e2e2e2;
+  border-radius: 8px; text-align: center; font-size: 12px;
+  cursor: pointer; transition: all 0.15s; background: white;
+}
+.prog-chip.on { border-color: #4f6ef7; background: #eef1ff; color: #3730a3; font-weight: 600; }
+
+/* ========== 登録ボタン ========== */
+.btn-register {
+  width: 100%; padding: 14px; background: #1a1a1a; color: white;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s, transform 0.1s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-register:hover:not(:disabled) { background: #333; }
+.btn-register:active:not(:disabled) { transform: scale(0.98); }
+.btn-register:disabled { background: #aaa; cursor: default; }
+
+/* メッセージ */
+.msg-box {
+  display: none; padding: 12px 16px; border-radius: 10px;
+  font-size: 14px; margin-top: 12px; line-height: 1.6;
+}
+.msg-box.show { display: block; }
+.msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.msg-info    { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+
+code { background: rgba(0,0,0,0.08); padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono','Courier New',monospace; font-size: 12px; }
+.divider { height: 1px; background: #eee; margin: 12px 0; }
+.rules-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #78350f; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📁 案件登録ツール</h1>
+<p class="subtitle">取引中・低め・準備中のお客様のみ表示 → 管理番号を自動生成 → Notionへ登録</p>
+
+<!-- サーバーステータス -->
+<div id="serverBar" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1.5px solid #fde047;background:#fef9c3;margin-bottom:14px;font-size:13px;">
+  <span id="serverDot" style="width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0;transition:background 0.3s"></span>
+  <span id="serverTxt">サーバー確認中...</span>
+</div>
+
+<!-- ===== プレビュー ===== -->
+<div class="preview-card">
+  <div class="pv-label">生成される管理番号</div>
+  <div class="pv-number empty" id="pvNum">お客様と締切日を選択してください</div>
+  <div class="pv-rule" id="pvRule"></div>
+  <button class="btn-copy" id="btnCopy" onclick="copyNum()">📋 コピー</button>
+</div>
+
+<!-- ===== お客様選択 ===== -->
+<div class="card">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+    <span>お客様を選択 <span style="color:#e53">*</span></span>
+    <button id="btnRefresh" onclick="loadCustomers(true)"
+      style="font-size:11px;padding:3px 10px;border:1px solid #d1d5db;border-radius:6px;background:white;cursor:pointer;color:#555;display:flex;align-items:center;gap:4px">
+      <span id="refreshIcon">🔄</span> 最新に更新
+    </button>
+  </div>
+
+  <!-- クイック選択ボタン -->
+  <div class="customer-grid" id="custGrid"><div id="custLoading" style="color:#aaa;font-size:13px;padding:8px 0">Notionから読み込み中...</div></div>
+
+  <!-- 検索 -->
+  <div class="search-wrap">
+    <input type="text" class="search-input" id="searchIn"
+      placeholder="🔍 名前・番号・チャンネル名で検索…"
+      oninput="onSearch()" onfocus="onSearch()" autocomplete="off">
+    <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
+    <div class="dropdown" id="dropdown"></div>
+  </div>
+
+  <!-- 選択済み -->
+  <div class="selected-banner" id="selBanner">
+    <span class="sb-dot" id="sbDot"></span>
+    <span class="sb-no" id="sbNo"></span>
+    <span class="sb-name" id="sbName"></span>
+    <button class="sb-clear" onclick="clearCustomer()">変更</button>
+  </div>
+</div>
+
+<!-- ===== 案件種別（チャンネル） ===== -->
+<div class="card" id="caseCard" style="display:none">
+  <div class="card-title">案件種別 <span style="color:#e53">*</span>
+    <span style="font-size:11px;color:#aaa;text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px">A以外は必ず選択（管理番号の枝番に反映）</span>
+  </div>
+
+  <!-- 既存案件チップ -->
+  <div class="case-chips" id="caseChips"></div>
+
+  <!-- 新規案件 -->
+  <div class="new-case-input" id="newCaseWrap">
+    <div class="form-group" style="margin-bottom:0">
+      <label>新しいチャンネル/案件名を入力</label>
+      <input type="text" id="newCaseName"
+        placeholder="例: 山田税理士チャンネル"
+        oninput="onNewCaseInput()">
+    </div>
+    <div class="new-case-confirm" id="newCaseConfirm">
+      <strong id="newCaseConfirmText"></strong>
+      <div style="margin-top:4px;font-size:12px;color:#92400e">
+        「はい」を選ぶとNotionのお客様情報にも自動追記します。
+      </div>
+      <div class="confirm-btns">
+        <button class="btn-yes" onclick="confirmNewCase()">はい・新案件として登録</button>
+        <button class="btn-no" onclick="cancelNewCase()">いいえ・キャンセル</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 案件詳細 ===== -->
+<div class="card">
+  <div class="card-title">案件詳細</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>締切日 <span class="req">*</span></label>
+      <input type="date" id="deadline" oninput="updatePreview()">
+    </div>
+    <div class="form-group">
+      <label>単価</label>
+      <input type="number" id="price" placeholder="例: 8000" oninput="updateGrossProfit()">
+    </div>
+  </div>
+  <div class="form-group">
+    <label>備考/素材名<span class="sub">（動画タイトルなど）</span></label>
+    <input type="text" id="matName" placeholder="例: 名古屋大学情報学部、武田塾AD案件">
+  </div>
+  <div class="form-group">
+    <label>指定案件ファイル名<span class="sub">（クライアント指定がある場合）</span></label>
+    <input type="text" id="fileName">
+  </div>
+  <div class="form-group">
+    <label>進捗</label>
+    <div class="prog-row">
+      <div class="prog-chip on" onclick="selProg(this,'未着手')">未着手</div>
+      <div class="prog-chip" onclick="selProg(this,'進行中')">進行中</div>
+      <div class="prog-chip" onclick="selProg(this,'完了')">完了</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 番号オプション ===== -->
+<div class="card">
+  <div class="card-title">番号オプション</div>
+  <div class="toggle-row">
+    <span class="toggle-label">📅 納期未定（13月方式）</span>
+    <button class="toggle" id="togUnknown" onclick="tog('unknown')"></button>
+  </div>
+  <div class="toggle-row">
+    <span class="toggle-label">🔢 数字枝番を追加<span style="font-size:11px;color:#999;font-weight:400;margin-left:6px">（期日変更・複数本など）</span></span>
+    <button class="toggle" id="togBranch" onclick="tog('branch')"></button>
+  </div>
+  <div class="sub-panel" id="panBranch">
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">枝番を選択または入力</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <div class="case-chip" onclick="setBranch(this,'1')"><span>-1</span></div>
+      <div class="case-chip" onclick="setBranch(this,'2')"><span>-2</span></div>
+      <div class="case-chip" onclick="setBranch(this,'3')"><span>-3</span></div>
+    </div>
+    <input type="text" id="branchIn" placeholder="カスタム入力（例: 4, A1-1）" oninput="updatePreview()">
+  </div>
+  <div class="toggle-row" style="margin-bottom:0">
+    <span class="toggle-label">👷 外注あり</span>
+    <button class="toggle" id="togOut" onclick="tog('outsource')"></button>
+  </div>
+  <div class="sub-panel" id="panOut">
+    <div class="form-row">
+      <div class="form-group">
+        <label>外注先No.<span class="sub">W1, W2…</span></label>
+        <input type="text" id="workerNo" placeholder="W1" oninput="updatePreview()">
+      </div>
+      <div class="form-group">
+        <label>外注への納期</label>
+        <input type="date" id="workerDL" oninput="updatePreview()">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:4px">
+      <label>外注費<span class="sub">（粗利の計算に使用）</span></label>
+      <input type="number" id="outsourceCost" placeholder="例: 6000" min="0" step="100"
+        oninput="updateGrossProfit()">
+    </div>
+    <div id="grossProfitPreview" style="display:none;margin-top:8px;padding:10px 14px;
+      background:#f0fdf4;border:1px solid #86efac;border-radius:8px;
+      font-size:14px;color:#166534;font-weight:500;letter-spacing:0.02em">
+    </div>
+  </div>
+</div>
+
+<!-- ===== 備考 ===== -->
+<div class="card">
+  <div class="card-title">備考</div>
+  <textarea id="memo" placeholder="補足事項（例: 遅れのため振替、外注費計算中 など）"></textarea>
+</div>
+
+<!-- ===== ルール参照 ===== -->
+<details style="margin-bottom:14px">
+  <summary style="cursor:pointer;font-size:13px;color:#666;padding:8px 0">📖 番号ルール早見表</summary>
+  <div class="card" style="margin-top:8px">
+    <div class="rules-box">
+      <strong>基本：</strong><code>お客様No-YY-MMDD</code>　例: <code>301-26-0401</code><br>
+      <strong>A以外の案件：</strong><code>301-26-0401-B</code>（B案件）<code>-C</code>（C案件）<br>
+      <strong>納期未定：</strong><code>301-26-1301</code>（13月、2本目は1302）<br>
+      <strong>期日変更：</strong>新番号に枝番 <code>301-26-0403-1</code><br>
+      <strong>外注：</strong><code>W1-0328-301-26-0401</code>（外注先-外注納期-元番号）
+    </div>
+  </div>
+</details>
+
+<button class="btn-register" id="btnReg" onclick="doRegister()">
+  ✅ Notionに案件を登録する
+</button>
+<div class="msg-box" id="msgBox"></div>
+<div style="height:40px"></div>
+</div><!-- /container -->
+
+<script>
+const SERVER = window.location.origin;
+
+// ========== マスターデータ（静的リストなし・常にNotionから取得）==========
+let CUSTOMERS = [];
+
+const STATUS_DOT  = { '取引中':'#22c55e', '頻度低め':'#f59e0b', '取引開始準備中':'#a78bfa' };
+const STATUS_CHIP = { '取引中':'s-active', '頻度低め':'s-low', '取引開始準備中':'s-prep' };
+
+// ========== 状態 ==========
+let sel = null;
+let selCase = null;
+let newCaseConfirmed = false;
+let state = { unknown:false, branch:false, outsource:false, progress:'未着手', branchVal:'' };
+
+// ========== 初期化 ==========
+document.getElementById('deadline').value = new Date().toISOString().split('T')[0];
+updatePreview();
+loadCustomers(); // 起動時にNotionから取得
+
+async function loadCustomers(manual = false) {
+  const grid = document.getElementById('custGrid');
+  const btn  = document.getElementById('btnRefresh');
+  const icon = document.getElementById('refreshIcon');
+  if (btn) { btn.disabled = true; icon.textContent = '⏳'; }
+
+  // ローディング表示（既存ボタンがある場合は上に小さく表示）
+  let loadingEl = document.getElementById('custLoadingMsg');
+  if (!loadingEl) {
+    loadingEl = document.createElement('div');
+    loadingEl.id = 'custLoadingMsg';
+    loadingEl.style.cssText = 'color:#aaa;font-size:12px;padding:4px 0;';
+    grid.before(loadingEl);
+  }
+  loadingEl.textContent = '⏳ Notionから取得中...';
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const r = await fetch(SERVER + '/api/customers', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      throw new Error('サーバーエラー ' + r.status + (errText ? ': ' + errText.slice(0,200) : ''));
+    }
+    const d = await r.json();
+    if (d.customers && d.customers.length > 0) {
+      CUSTOMERS = d.customers.map(c => ({
+        ...c, short: c.name.length > 6 ? c.name.slice(0,5)+'…' : c.name, kana: ''
+      }));
+      buildGrid();
+      loadingEl.style.color = '#166534';
+      loadingEl.textContent = '✅ ' + CUSTOMERS.length + '件（Notion最新）';
+      setTimeout(() => { loadingEl.textContent = ''; }, 3000);
+    } else {
+      loadingEl.style.color = '#aaa';
+      loadingEl.textContent = '対象のお客様が見つかりませんでした';
+    }
+  } catch(e) {
+    // エラーはメッセージで表示。ボタンは消さない。
+    loadingEl.style.color = '#e53';
+    const errMsg = e.message || String(e);
+    loadingEl.innerHTML = '⚠️ 取得失敗: ' + errMsg +
+      ' <button onclick="loadCustomers(true)" style="margin-left:8px;font-size:11px;padding:2px 8px;border:1px solid #ddd;border-radius:5px;cursor:pointer">再試行</button>';
+    console.error('loadCustomers error:', e);
+  } finally {
+    if (btn) { btn.disabled = false; icon.textContent = '🔄'; }
+  }
+}
+
+// ========== クイック選択グリッド ==========
+function buildGrid() {
+  const grid = document.getElementById('custGrid');
+  grid.innerHTML = ''; // 再描画前にクリア（重複防止）
+  CUSTOMERS.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'cust-btn';
+    btn.id = 'cb-' + c.no;
+    btn.innerHTML = `<span class="cb-no">${c.no}</span>
+      <span class="cb-name">${c.short || c.name}</span>
+      <span class="cb-status ${STATUS_CHIP[c.status]}">${c.status}</span>`;
+    btn.onclick = () => pickCustomer(c.no);
+    grid.appendChild(btn);
+  });
+}
+
+// ========== 検索 ==========
+function onSearch() {
+  const q = document.getElementById('searchIn').value.trim().toLowerCase();
+  document.getElementById('searchClear').classList.toggle('show', q.length > 0);
+  if (!q) { closeDD(); return; }
+  const hits = CUSTOMERS.filter(c =>
+    c.no.toLowerCase().includes(q) ||
+    c.name.toLowerCase().includes(q) ||
+    c.kana.includes(q) ||
+    c.channels.some(ch => ch.name.toLowerCase().includes(q))
+  );
+  const dd = document.getElementById('dropdown');
+  if (!hits.length) {
+    dd.innerHTML = '<div class="no-result">見つかりません</div>';
+  } else {
+    dd.innerHTML = hits.map(c => {
+      const chs = c.channels.map(ch => `${ch.lbl}: ${ch.name}`).join(' / ');
+      return `<div class="dd-item" onclick="pickCustomer('${c.no}')">
+        <span class="dd-no">${c.no}</span>
+        <span class="dd-name">${c.name}</span>
+        ${chs ? `<span class="dd-ch">${chs}</span>` : ''}
+        <span class="dd-st ${STATUS_CHIP[c.status]}">${c.status}</span>
+      </div>`;
+    }).join('');
+  }
+  dd.classList.add('open');
+}
+
+function clearSearch() {
+  document.getElementById('searchIn').value = '';
+  document.getElementById('searchClear').classList.remove('show');
+  closeDD();
+}
+function closeDD() { document.getElementById('dropdown').classList.remove('open'); }
+document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) closeDD(); });
+
+// ========== お客様選択 ==========
+function pickCustomer(no) {
+  sel = CUSTOMERS.find(c => c.no === no);
+  if (!sel) return;
+  selCase = null;
+  newCaseConfirmed = false;
+
+  // グリッドハイライト
+  document.querySelectorAll('.cust-btn').forEach(b => b.classList.remove('selected'));
+  const cb = document.getElementById('cb-' + no);
+  if (cb) cb.classList.add('selected');
+
+  // バナー
+  document.getElementById('sbNo').textContent = sel.no;
+  document.getElementById('sbName').textContent = sel.name + '様';
+  document.getElementById('sbDot').style.background = STATUS_DOT[sel.status] || '#ccc';
+  document.getElementById('selBanner').classList.add('show');
+
+  // 検索クリア
+  document.getElementById('searchIn').value = '';
+  document.getElementById('searchClear').classList.remove('show');
+  closeDD();
+
+  // 案件種別を構築
+  buildCaseSection();
+  updatePreview();
+}
+
+function clearCustomer() {
+  sel = null; selCase = null; newCaseConfirmed = false;
+  document.querySelectorAll('.cust-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('selBanner').classList.remove('show');
+  document.getElementById('caseCard').style.display = 'none';
+  updatePreview();
+}
+
+// ========== 案件種別 ==========
+function buildCaseSection() {
+  const card = document.getElementById('caseCard');
+  const chips = document.getElementById('caseChips');
+  card.style.display = 'block';
+
+  // 既存チャンネルチップ
+  let html = sel.channels.map(ch => {
+    const isA = ch.lbl === 'A';
+    return `<div class="case-chip" id="chip-${ch.lbl}" onclick="pickCase('${ch.lbl}','${ch.name}',false)">
+      <span class="case-label">${ch.lbl}案件</span>${ch.name}
+      ${isA ? '<span style="font-size:10px;margin-left:4px;opacity:0.6">（枝番なし）</span>' : ''}
+    </div>`;
+  }).join('');
+
+  // 次の枝番候補を計算
+  const nextLbl = nextLabel(sel.channels);
+
+  // 「枝番なし」チップ（A案件がない場合）
+  if (!sel.channels.find(c => c.lbl === 'A')) {
+    html = `<div class="case-chip" id="chip-none" onclick="pickCase('','none',false)">
+      <span class="case-label">枝番なし</span>（A案件・基本案件）
+    </div>` + html;
+  }
+
+  // 新規案件追加チップ
+  html += `<div class="case-chip new-chip" onclick="showNewCaseInput('${nextLbl}')">
+    ＋ ${nextLbl}案件を新規追加
+  </div>`;
+
+  chips.innerHTML = html;
+
+  // 新規入力欄リセット
+  document.getElementById('newCaseWrap').classList.remove('show');
+  document.getElementById('newCaseName').value = '';
+  document.getElementById('newCaseConfirm').classList.remove('show');
+}
+
+function nextLabel(channels) {
+  const used = channels.map(c => c.lbl);
+  const letters = 'ABCDEFGHIJ';
+  for (const l of letters) {
+    if (!used.includes(l)) return l;
+  }
+  return 'Z';
+}
+
+function pickCase(lbl, name, isNew) {
+  selCase = { lbl, name, isNew: isNew || false };
+  newCaseConfirmed = isNew;
+  document.querySelectorAll('.case-chip').forEach(c => c.classList.remove('selected'));
+  const chip = document.getElementById('chip-' + (lbl || 'none'));
+  if (chip) chip.classList.add('selected');
+  document.getElementById('newCaseWrap').classList.remove('show');
+  updatePreview();
+}
+
+function showNewCaseInput(nextLbl) {
+  selCase = null;
+  document.querySelectorAll('.case-chip').forEach(c => c.classList.remove('selected'));
+  document.querySelector('.new-chip').classList.add('selected');
+  const wrap = document.getElementById('newCaseWrap');
+  wrap.classList.add('show');
+  document.getElementById('newCaseConfirm').classList.remove('show');
+  document.getElementById('newCaseName').value = '';
+  document.getElementById('newCaseName').dataset.nextLbl = nextLbl;
+  document.getElementById('newCaseName').focus();
+}
+
+let newCaseTimer = null;
+function onNewCaseInput() {
+  clearTimeout(newCaseTimer);
+  newCaseTimer = setTimeout(() => {
+    const name = document.getElementById('newCaseName').value.trim();
+    const lbl = document.getElementById('newCaseName').dataset.nextLbl || 'B';
+    if (name.length >= 2) {
+      const confirm = document.getElementById('newCaseConfirm');
+      document.getElementById('newCaseConfirmText').textContent =
+        `「${sel.name}様」の${lbl}案件として「${name}」を新規登録しますか？`;
+      confirm.classList.add('show');
+      newCaseConfirmed = false;
+      selCase = null;
+    } else {
+      document.getElementById('newCaseConfirm').classList.remove('show');
+    }
+    updatePreview();
+  }, 500);
+}
+
+function confirmNewCase() {
+  const name = document.getElementById('newCaseName').value.trim();
+  const lbl = document.getElementById('newCaseName').dataset.nextLbl || 'B';
+  selCase = { lbl, name, isNew: true };
+  newCaseConfirmed = true;
+  document.getElementById('newCaseConfirm').classList.remove('show');
+  const confirm = document.getElementById('newCaseConfirm');
+  confirm.style.background = '#f0fdf4';
+  confirm.style.border = '1px solid #86efac';
+  confirm.style.color = '#14532d';
+  confirm.innerHTML = `✅ <strong>${lbl}案件「${name}」</strong>を新案件として登録します。Notionの顧客情報にも追記します。`;
+  confirm.classList.add('show');
+  updatePreview();
+}
+
+function cancelNewCase() {
+  selCase = null; newCaseConfirmed = false;
+  document.querySelectorAll('.case-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('newCaseWrap').classList.remove('show');
+  document.getElementById('newCaseName').value = '';
+  updatePreview();
+}
+
+// ========== オプション ==========
+// ========== 粗利リアルタイム計算 ==========
+function updateGrossProfit() {
+  const price = Number(document.getElementById('price').value) || 0;
+  const cost  = Number(document.getElementById('outsourceCost').value) || 0;
+  const prev  = document.getElementById('grossProfitPreview');
+  if (!prev) return;
+  if (price > 0 && cost > 0 && state.outsource) {
+    const gross = price - cost;
+    const fmt = n => n.toLocaleString('ja-JP');
+    prev.style.display = 'block';
+    prev.innerHTML = `粗利　¥${fmt(price)} − ¥${fmt(cost)} = <strong>¥${fmt(gross)}</strong>`;
+  } else {
+    prev.style.display = 'none';
+  }
+}
+
+function tog(key) {
+  state[key] = !state[key];
+  const map = { unknown:'togUnknown', branch:'togBranch', outsource:'togOut' };
+  const panMap = { branch:'panBranch', outsource:'panOut' };
+  document.getElementById(map[key]).classList.toggle('on', state[key]);
+  if (panMap[key]) document.getElementById(panMap[key]).classList.toggle('show', state[key]);
+  if (key === 'outsource') updateGrossProfit();
+  updatePreview();
+}
+
+function setBranch(el, val) {
+  document.querySelectorAll('#panBranch .case-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('branchIn').value = val;
+  state.branchVal = val;
+  updatePreview();
+}
+
+function selProg(el, val) {
+  document.querySelectorAll('.prog-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  state.progress = val;
+}
+
+// ========== 番号生成 ==========
+function buildNumber() {
+  if (!sel) return null;
+  const dlVal = document.getElementById('deadline').value;
+  if (!dlVal && !state.unknown) return null;
+
+  let base = '';
+  if (state.unknown) {
+    const yr = dlVal ? new Date(dlVal).getFullYear() : new Date().getFullYear();
+    base = `${sel.no}-${String(yr).slice(-2)}-1301`;
+  } else {
+    const d = new Date(dlVal);
+    const yy = String(d.getFullYear()).slice(-2);
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    base = `${sel.no}-${yy}-${mm}${dd}`;
+  }
+
+  // 案件種別枝番（A以外）
+  if (selCase && selCase.lbl && selCase.lbl !== '') {
+    base += `-${selCase.lbl}`;
+  }
+
+  // 追加枝番
+  if (state.branch) {
+    const bv = document.getElementById('branchIn').value.trim() || state.branchVal;
+    if (bv) base += `-${bv}`;
+  }
+
+  // 外注
+  if (state.outsource) {
+    const wn = document.getElementById('workerNo').value.trim();
+    if (wn) {
+      const wdv = document.getElementById('workerDL').value;
+      let wds = '';
+      if (wdv) {
+        const wd = new Date(wdv);
+        wds = String(wd.getMonth()+1).padStart(2,'0') + String(wd.getDate()).padStart(2,'0');
+      }
+      base = `${wn}-${wds}-${base}`;
+    }
+  }
+  return base;
+}
+
+function updatePreview() {
+  const numEl = document.getElementById('pvNum');
+  const ruleEl = document.getElementById('pvRule');
+  const cpBtn = document.getElementById('btnCopy');
+  const num = buildNumber();
+  if (!num) {
+    numEl.textContent = !sel ? 'お客様を選択してください' : '締切日を入力してください';
+    numEl.className = 'pv-number empty';
+    ruleEl.textContent = '';
+    cpBtn.style.display = 'none';
+    return;
+  }
+  numEl.textContent = num;
+  numEl.className = 'pv-number';
+  const dlv = document.getElementById('deadline').value;
+  let rule = `${sel.no}番 ${sel.name}様`;
+  if (dlv && !state.unknown) {
+    const d = new Date(dlv);
+    rule += ` / ${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日締切`;
+  }
+  if (selCase && selCase.lbl) rule += ` / ${selCase.lbl}案件: ${selCase.name}`;
+  if (state.unknown) rule += ' / 納期未定（13月）';
+  ruleEl.textContent = rule;
+  cpBtn.style.display = 'inline-block';
+}
+
+function copyNum() {
+  const t = document.getElementById('pvNum').textContent;
+  if (!t || t.includes('選択') || t.includes('入力')) return;
+  navigator.clipboard.writeText(t).then(() => {
+    document.getElementById('btnCopy').textContent = '✅ コピーしました';
+    setTimeout(() => { document.getElementById('btnCopy').textContent = '📋 コピー'; }, 2000);
+  }).catch(() => {});
+}
+
+// ========== サーバー接続確認 ==========
+async function checkServer() {
+  const bar = document.getElementById('serverBar');
+  const dot = document.getElementById('serverDot');
+  const txt = document.getElementById('serverTxt');
+  const btn = document.getElementById('btnReg');
+  try {
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) {
+      bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
+      dot.style.background = '#22c55e';
+      txt.textContent = 'サーバー接続中 ─ Notionへ直接登録できます';
+      btn.disabled = false;
+      // サーバー接続後にNotionの最新顧客リストを取得（未取得時のみ）
+      if (CUSTOMERS.length === 0) loadCustomers();
+      return true;
+    }
+  } catch(e) {}
+  bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
+  dot.style.background = '#f59e0b';
+  txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリックしてください';
+  btn.disabled = true;
+  return false;
+}
+checkServer();
+setInterval(checkServer, 3000);
+
+// ========== Notion登録 ==========
+async function doRegister() {
+  const num = buildNumber();
+  if (!sel) { showMsg('error','⚠️ お客様を選択してください。'); return; }
+  if (!num) { showMsg('error','⚠️ 締切日を入力してください。'); return; }
+  if (sel.channels.length > 0 && !selCase) {
+    showMsg('error','⚠️ 案件種別（A/B/C…）を選択してください。A以外は必ず指定が必要です。');
+    return;
+  }
+
+  const btn = document.getElementById('btnReg');
+  btn.disabled = true; btn.textContent = '⏳ 登録中...';
+
+  const payload = {
+    number:       num,
+    customerNo:   sel.no,
+    deadline:     document.getElementById('deadline').value,
+    materialName: document.getElementById('matName').value.trim(),
+    price:        document.getElementById('price').value,
+    outsourceCost: state.outsource ? (document.getElementById('outsourceCost').value || '') : '',
+    fileName:     document.getElementById('fileName').value.trim(),
+    progress:     state.progress,
+    memo:         document.getElementById('memo').value.trim(),
+  };
+
+  try {
+    // ① 案件登録
+    const res = await fetch(SERVER + '/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || '登録失敗');
+
+    // ② 新案件なら顧客情報を追記
+    if (newCaseConfirmed && selCase) {
+      await fetch(SERVER + '/api/update-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerNo: sel.no, entry: `${selCase.lbl}案件：${selCase.name}` }),
+      });
+    }
+
+    btn.disabled = false; btn.textContent = '✅ Notionに案件を登録する';
+    showMsg('success', `
+      <strong>✅ Notionに登録しました！</strong><br>
+      管理番号: <code style="font-size:14px;background:#dcfce7;padding:2px 10px;border-radius:5px">${num}</code><br>
+      ${sel.name}様 / ${payload.deadline ? payload.deadline.replace(/-/g,'/') : ''}
+      ${payload.materialName ? ' / ' + payload.materialName : ''}
+      ${newCaseConfirmed ? `<br><br>⭐ <strong>${selCase.lbl}案件「${selCase.name}」</strong>をお客様情報にも追記しました。` : ''}
+      ${result.url ? `<br><br><a href="${result.url}" target="_blank" style="color:#0ea5e9">📎 Notionで確認する →</a>` : ''}
+    `);
+    resetForm();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '✅ Notionに案件を登録する';
+    showMsg('error', `⚠️ エラー: ${e.message}`);
+    checkServer();
+  }
+}
+
+function resetForm() {
+  sel = null; selCase = null; newCaseConfirmed = false;
+  document.querySelectorAll('.cust-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('selBanner').classList.remove('show');
+  document.getElementById('caseCard').style.display = 'none';
+  document.getElementById('matName').value = '';
+  document.getElementById('price').value = '';
+  document.getElementById('outsourceCost').value = '';
+  document.getElementById('grossProfitPreview').style.display = 'none';
+  document.getElementById('fileName').value = '';
+  document.getElementById('memo').value = '';
+  document.getElementById('deadline').value = new Date().toISOString().split('T')[0];
+  updatePreview();
+}
+
+function showMsg(type, html) {
+  const el = document.getElementById('msgBox');
+  el.className = 'msg-box show msg-' + type;
+  el.innerHTML = html;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
+</body>
+</html>
