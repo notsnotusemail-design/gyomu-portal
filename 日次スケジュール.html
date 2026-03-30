@@ -7,528 +7,596 @@
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
-  background: #f2f2ef;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+  background: #f0f0f0;
   color: #1a1a1a;
+  overflow-x: hidden;
   min-height: 100vh;
-  padding-bottom: 40px;
 }
 
 /* ===== ヘッダー ===== */
 .page-header {
-  position: sticky; top: 0; z-index: 50;
-  background: rgba(242,242,239,0.95);
-  backdrop-filter: blur(8px);
-  padding: 12px 16px 10px;
+  background: #2b2b3a;
+  color: white;
+  padding: 10px 14px;
   display: flex; align-items: center; gap: 10px;
-  border-bottom: 1px solid #e0e0e0;
+  position: sticky; top: 0; z-index: 100;
 }
 .back-btn {
-  font-size: 13px; color: #888; text-decoration: none;
-  padding: 6px 12px; border: 1.5px solid #ddd;
-  border-radius: 8px; background: white;
-  transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+  font-size: 12px; color: rgba(255,255,255,0.7); text-decoration: none;
+  padding: 5px 10px; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px; transition: all 0.15s; white-space: nowrap;
 }
-.back-btn:hover { background: #f5f5f5; }
-.header-date {
-  font-size: 16px; font-weight: 700; flex: 1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.date-nav { display: flex; gap: 4px; flex-shrink: 0; }
+.back-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+.header-date { font-size: 15px; font-weight: 700; flex: 1; }
+.header-sub  { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px; }
+.date-nav { display: flex; gap: 4px; }
 .nav-btn {
-  font-size: 13px; padding: 6px 10px;
-  border: 1.5px solid #ddd; border-radius: 8px; background: white;
-  cursor: pointer; color: #555; transition: all 0.15s;
+  font-size: 15px; padding: 5px 10px;
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+  background: none; color: white; cursor: pointer; transition: all 0.15s;
 }
-.nav-btn:hover { background: #f5f5f5; }
+.nav-btn:hover { background: rgba(255,255,255,0.1); }
 
-/* ===== メインレイアウト ===== */
-.main-wrap {
-  display: flex; gap: 12px;
-  padding: 12px 12px 0;
-  align-items: flex-start;
+/* ===== タイムライン外枠 ===== */
+.tl-wrap {
+  background: white;
+  margin: 10px 0 0;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* ===== タイムライン ===== */
-.timeline-section {
-  flex: 1; min-width: 0;
-  background: white; border-radius: 14px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  overflow: hidden;
-}
-.timeline-inner {
-  position: relative;
-  /* 25時間分: 1h = 60px */
-}
-.hour-row {
-  display: flex; align-items: flex-start;
-  border-bottom: 1px solid #f0f0f0;
-  min-height: 60px; position: relative;
-}
-.hour-label {
-  width: 42px; flex-shrink: 0;
-  padding: 4px 6px 0;
-  font-size: 11px; color: #bbb; font-weight: 500;
-  text-align: right; line-height: 1;
+/* ===== ルーラー（時間軸） ===== */
+.ruler {
+  display: flex;
+  height: 28px;
+  background: #f7f7f7;
+  border-bottom: 1px solid #ddd;
+  position: sticky; top: 0;/* sticky header overridden by tl-wrap overflow */
   user-select: none;
 }
-.hour-drop {
-  flex: 1; min-height: 60px;
+.ruler-label {
+  flex-shrink: 0;
+  width: 60px; /* HR_W */
+  text-align: center;
+  font-size: 11px; color: #888; font-weight: 600;
+  line-height: 28px;
+  border-right: 1px solid #e0e0e0;
+}
+.ruler-label.half {
+  color: #bbb; font-size: 10px; font-weight: 400;
+}
+
+/* ===== トラック行 ===== */
+.track-row {
+  display: flex;
+  height: 64px;
   position: relative;
   cursor: crosshair;
 }
-.hour-drop.drag-over {
-  background: #eff3ff;
+.track-label {
+  width: 0; /* no label for single user */
+  flex-shrink: 0;
 }
-/* ハーフアワーライン */
-.half-line {
-  position: absolute; left: 0; right: 0;
-  top: 50%; height: 1px;
-  background: #f5f5f5;
-  pointer-events: none;
+.track-lane {
+  flex: 1; position: relative;
+  border-top: 1px solid #f0f0f0;
+  background: white;
 }
 
-/* ===== スケジュールブロック ===== */
+/* 時間グリッドライン */
+.grid-line {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: #f0f0f0; pointer-events: none;
+}
+.grid-line.major { background: #e8e8e8; }
+
+/* 現在時刻 */
+.now-line {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: #ef4444; z-index: 8; pointer-events: none;
+}
+.now-dot {
+  position: absolute; top: -4px; left: -4px;
+  width: 10px; height: 10px;
+  border-radius: 50%; background: #ef4444;
+}
+
+/* ===== ブロック ===== */
 .sched-block {
-  position: absolute; left: 4px; right: 4px;
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 12px; font-weight: 600;
-  cursor: grab; z-index: 2;
-  display: flex; align-items: flex-start; gap: 4px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  transition: box-shadow 0.15s, opacity 0.15s;
+  position: absolute; top: 5px; bottom: 5px;
+  border-radius: 6px;
+  display: flex; align-items: center;
+  padding: 0 28px 0 8px;
+  font-size: 12px; font-weight: 700;
+  color: white;
+  cursor: grab;
   user-select: none;
-  min-height: 24px;
+  z-index: 5;
+  overflow: hidden;
+  min-width: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: box-shadow 0.1s;
 }
-.sched-block:active { cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0.85; }
-.sched-block.dragging { opacity: 0.5; }
-.sched-block-label {
-  font-size: 10px; padding: 1px 5px;
-  border-radius: 10px; flex-shrink: 0; margin-top: 1px;
-  white-space: nowrap;
+.sched-block:active, .sched-block.dragging { cursor: grabbing; box-shadow: 0 3px 12px rgba(0,0,0,0.25); }
+.sched-block .blk-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.sched-block .blk-time { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.8); margin-left: 5px; white-space: nowrap; }
+.sched-block .blk-del  {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,0.2); border: none; color: white; cursor: pointer;
+  width: 18px; height: 18px; border-radius: 50%;
+  font-size: 12px; line-height: 18px; text-align: center; padding: 0;
+  display: none;
 }
-.sched-block-text { flex: 1; line-height: 1.4; word-break: break-word; }
-.sched-block-del {
-  flex-shrink: 0; background: none; border: none;
-  cursor: pointer; font-size: 14px; color: rgba(0,0,0,0.35);
-  padding: 0; line-height: 1; margin-left: 2px;
+.sched-block:hover .blk-del { display: block; }
+/* リサイズハンドル */
+.sched-block .blk-handle-l,
+.sched-block .blk-handle-r {
+  position: absolute; top: 0; bottom: 0; width: 10px;
+  cursor: ew-resize;
+  z-index: 6;
 }
-.sched-block-del:hover { color: rgba(0,0,0,0.7); }
-.sched-block-time {
-  font-size: 9px; color: rgba(0,0,0,0.45);
-  font-weight: 400; white-space: nowrap; margin-top: 1px;
-}
+.sched-block .blk-handle-l { left: 0; border-radius: 6px 0 0 6px; }
+.sched-block .blk-handle-r { right: 0; border-radius: 0 6px 6px 0; }
 
 /* ブロック色 */
-.color-todo   { background: #eff3ff; color: #3b5bdb; }
-.color-memo   { background: #fffbeb; color: #c07800; }
-.color-medium { background: #f5f3ff; color: #6d28d9; }
-.color-custom { background: #f0fdf4; color: #15803d; }
-.color-deadline { background: #fff1f2; color: #be123c; }
+.bc-todo     { background: linear-gradient(135deg,#4f6ef7,#3b5bdb); }
+.bc-memo     { background: linear-gradient(135deg,#f59e0b,#d97706); }
+.bc-medium   { background: linear-gradient(135deg,#8b5cf6,#7c3aed); }
+.bc-custom   { background: linear-gradient(135deg,#10b981,#059669); }
+.bc-deadline { background: linear-gradient(135deg,#ef4444,#dc2626); }
+/* 新規作成中のプレビューブロック */
+.preview-block {
+  position: absolute; top: 5px; bottom: 5px;
+  background: rgba(79,110,247,0.25);
+  border: 2px dashed #4f6ef7;
+  border-radius: 6px; z-index: 4; pointer-events: none;
+}
+
+/* ===== スナップトースト ===== */
+.snap-toast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.75); color: white;
+  font-size: 12px; padding: 6px 14px; border-radius: 20px;
+  z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+}
+.snap-toast.show { opacity: 1; }
 
 /* ===== クリップパネル ===== */
-.clips-section {
-  width: 180px; flex-shrink: 0;
+.clips-panel {
+  padding: 12px 12px 20px;
 }
-@media (max-width: 540px) {
-  .main-wrap { flex-direction: column; }
-  .clips-section { width: 100%; }
+.clips-row {
+  display: flex; gap: 10px; flex-wrap: wrap;
 }
-.clips-card {
-  background: white; border-radius: 14px;
+.clips-group {
+  flex: 1; min-width: 220px;
+  background: white; border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-  overflow: hidden; margin-bottom: 10px;
-  position: sticky; top: 72px;
+  overflow: hidden;
 }
-.clips-header {
-  padding: 10px 14px 8px;
-  font-size: 12px; font-weight: 700; color: #666;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex; align-items: center; justify-content: space-between;
+.clips-title {
+  padding: 9px 14px;
+  font-size: 11px; font-weight: 700; color: #666;
+  background: #fafafa; border-bottom: 1px solid #f0f0f0;
+  display: flex; justify-content: space-between; align-items: center;
 }
-.clips-body { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 5px; max-height: 320px; overflow-y: auto; }
+.clips-list { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 .clip-item {
-  border-radius: 8px; padding: 6px 8px;
+  border-radius: 7px; padding: 6px 9px;
   font-size: 12px; font-weight: 600;
-  cursor: grab;
-  display: flex; gap: 5px; align-items: flex-start;
-  transition: opacity 0.15s, transform 0.15s;
+  cursor: grab; display: flex; gap: 6px; align-items: center;
+  transition: transform 0.12s, opacity 0.12s;
   user-select: none;
 }
-.clip-item:active { cursor: grabbing; transform: scale(0.97); }
-.clip-item.used { opacity: 0.35; }
-.clip-badge {
-  font-size: 10px; padding: 1px 5px;
-  border-radius: 10px; flex-shrink: 0; margin-top: 1px;
-  background: rgba(0,0,0,0.08);
-}
-.clip-text { flex: 1; line-height: 1.4; word-break: break-word; }
-.clips-empty { font-size: 12px; color: #bbb; text-align: center; padding: 14px 0; }
+.clip-item:active { transform: scale(0.96); cursor: grabbing; }
+.clip-item.used   { opacity: 0.3; }
+.clip-badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(0,0,0,0.08); flex-shrink: 0; }
+.clip-text  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clips-empty { font-size: 11px; color: #ccc; text-align: center; padding: 16px 0; }
 
-/* カスタムブロック追加 */
-.add-custom {
-  background: white; border-radius: 14px;
+/* カスタム入力 */
+.custom-input-group {
+  background: white; border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.07);
   padding: 10px 12px;
+  min-width: 200px; flex: 0 0 auto;
 }
-.add-custom-title { font-size: 11px; font-weight: 700; color: #777; margin-bottom: 7px; }
-.add-custom input {
-  width: 100%; font-size: 12px;
-  padding: 6px 8px; border: 1.5px solid #e2e2e2;
-  border-radius: 8px; background: #fafafa;
-  outline: none; margin-bottom: 6px;
+.custom-input-group label { font-size: 11px; font-weight: 700; color: #666; display: block; margin-bottom: 6px; }
+.custom-input-group input {
+  width: 100%; font-size: 12px; padding: 7px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  background: #fafafa; outline: none; margin-bottom: 7px;
+  font-family: inherit;
 }
-.add-custom input:focus { border-color: #4f6ef7; background: white; }
-.add-custom-btn {
+.custom-input-group input:focus { border-color: #4f6ef7; background: white; }
+.custom-input-group button {
   width: 100%; font-size: 12px; padding: 7px;
   border: none; border-radius: 8px;
   background: #4f6ef7; color: white; font-weight: 600;
   cursor: pointer; transition: background 0.15s;
 }
-.add-custom-btn:hover { background: #3b5bdb; }
-
-/* ===== 現在時刻ライン ===== */
-.now-line {
-  position: absolute; left: 42px; right: 0;
-  height: 2px; background: #ef4444;
-  z-index: 10; pointer-events: none;
-}
-.now-dot {
-  position: absolute; left: -5px; top: -4px;
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #ef4444;
+.custom-input-group button:hover { background: #3b5bdb; }
+.custom-input-group select {
+  width: 100%; font-size: 12px; padding: 7px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  background: #fafafa; outline: none; margin-bottom: 7px;
+  font-family: inherit;
 }
 
-/* ===== ローディング ===== */
-.loading { text-align: center; padding: 30px 0; color: #bbb; font-size: 13px; }
-
-/* ===== スナップガイド ===== */
-.snap-guide {
-  position: absolute; left: 0; right: 0; pointer-events: none;
-  z-index: 5; height: 2px; background: rgba(79,110,247,0.6);
-  display: none;
-}
+/* clip colors */
+.cc-todo   { background: #eff3ff; color: #3b5bdb; }
+.cc-memo   { background: #fffbeb; color: #b45309; }
+.cc-medium { background: #f5f3ff; color: #6d28d9; }
+.cc-deadline { background: #fff1f2; color: #be123c; }
 </style>
 </head>
 <body>
 
 <div class="page-header">
   <a class="back-btn" href="/index.html">← ホーム</a>
-  <div class="header-date" id="headerDate">— 年 — 月 — 日</div>
+  <div style="flex:1">
+    <div class="header-date" id="headerDate">読み込み中…</div>
+    <div class="header-sub">タイムライン — ドラッグで作成・移動・リサイズ</div>
+  </div>
   <div class="date-nav">
     <button class="nav-btn" onclick="changeDate(-1)">‹</button>
     <button class="nav-btn" onclick="changeDate(1)">›</button>
   </div>
 </div>
 
-<div class="main-wrap">
-  <!-- タイムライン -->
-  <div class="timeline-section">
-    <div class="timeline-inner" id="timeline">
-      <div class="loading">読み込み中…</div>
-    </div>
-  </div>
+<!-- タイムライン -->
+<div class="tl-wrap" id="tlWrap">
+  <!-- JSで構築 -->
+</div>
 
-  <!-- クリップパネル -->
-  <div class="clips-section">
-    <div class="clips-card">
-      <div class="clips-header">
-        <span>📎 引き継ぎ</span>
-        <span id="clipsCount" style="font-size:10px;color:#bbb;font-weight:400;"></span>
-      </div>
-      <div class="clips-body" id="clipsBody">
-        <div class="clips-empty">読み込み中…</div>
-      </div>
+<!-- クリップパネル -->
+<div class="clips-panel">
+  <div class="clips-row">
+    <div class="clips-group">
+      <div class="clips-title"><span>📎 引き継ぎ</span><span id="clipsCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></div>
+      <div class="clips-list" id="clipsBody"><div class="clips-empty">読み込み中…</div></div>
     </div>
-
-    <div class="clips-card">
-      <div class="clips-header">
-        <span>🗓️ 納期</span>
-        <span id="deadlineCount" style="font-size:10px;color:#bbb;font-weight:400;"></span>
-      </div>
-      <div class="clips-body" id="deadlineBody">
-        <div class="clips-empty">読み込み中…</div>
-      </div>
+    <div class="clips-group">
+      <div class="clips-title"><span>🗓️ 今日の納期</span><span id="deadlineCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></div>
+      <div class="clips-list" id="deadlineBody"><div class="clips-empty">読み込み中…</div></div>
     </div>
-
-    <div class="add-custom">
-      <div class="add-custom-title">＋ 自由入力</div>
-      <input type="text" id="customText" placeholder="メモ・作業内容など" maxlength="60">
-      <button class="add-custom-btn" onclick="addCustomBlock()">タイムラインに追加</button>
+    <div class="custom-input-group">
+      <label>＋ 自由入力ブロック</label>
+      <input type="text" id="customText" placeholder="作業内容・メモなど" maxlength="60">
+      <select id="customColor">
+        <option value="custom">🟢 作業</option>
+        <option value="todo">🔵 TODO</option>
+        <option value="memo">🟡 メモ</option>
+        <option value="deadline">🔴 締切</option>
+      </select>
+      <button onclick="addCustomBlock()">今すぐ追加（現在時刻）</button>
     </div>
   </div>
 </div>
 
+<div class="snap-toast" id="snapToast"></div>
+
 <script>
-const SERVER = window.location.origin;
-const HOUR_H = 60; // px per hour
-const SNAP   = 15; // minute snap
+const SERVER  = window.location.origin;
+const HR_W    = 60;   // px per hour
+const SNAP_M  = 15;   // minute snap
+const TOTAL_M = 24 * 60;
+const TOTAL_W = (TOTAL_M / 60) * HR_W; // 1440px
 
 // ===== 日付管理 =====
 function getTodayStr() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
 }
+function p2(n) { return String(n).padStart(2,'0'); }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 let currentDate = (() => {
-  const p = new URLSearchParams(location.search);
-  return p.get('date') || getTodayStr();
+  return new URLSearchParams(location.search).get('date') || getTodayStr();
 })();
 
-function formatDateJP(dateStr) {
-  const [y,m,d] = dateStr.split('-');
-  const weekday = ['日','月','火','水','木','金','土'][new Date(dateStr).getDay()];
-  return `${parseInt(y)}年${parseInt(m)}月${parseInt(d)}日（${weekday}）`;
+function formatDateJP(ds) {
+  const [y,m,d] = ds.split('-');
+  const wd = ['日','月','火','水','木','金','土'][new Date(ds).getDay()];
+  return `${parseInt(y)}年${parseInt(m)}月${parseInt(d)}日（${wd}）`;
 }
-
 function changeDate(delta) {
   const d = new Date(currentDate);
   d.setDate(d.getDate() + delta);
-  currentDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  currentDate = `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
   history.replaceState(null, '', `?date=${currentDate}`);
   init();
 }
 
 // ===== データ =====
-let schedBlocks = [];   // 保存済みブロック
-let handoverItems = []; // 引き継ぎクリップ
-let deadlineItems = []; // 納期クリップ
-
-// ===== 初期化 =====
-async function init() {
-  document.getElementById('headerDate').textContent = formatDateJP(currentDate);
-  buildTimeline();
-  await Promise.all([loadBlocks(), loadHandover(), loadDeadlines()]);
-  renderAll();
-  updateNowLine();
-}
+let schedBlocks = [];
+let handoverItems = [];
+let deadlineItems = [];
 
 // ===== タイムライン構築 =====
 function buildTimeline() {
-  const tl = document.getElementById('timeline');
-  let html = '';
-  for (let h = 0; h <= 23; h++) {
-    html += `
-      <div class="hour-row" id="hr-${h}">
-        <div class="hour-label">${String(h).padStart(2,'0')}:00</div>
-        <div class="hour-drop" id="drop-${h}" data-hour="${h}"
-             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,${h})">
-          <div class="half-line"></div>
-        </div>
-      </div>`;
+  const wrap = document.getElementById('tlWrap');
+
+  // ルーラー
+  let rulerHTML = `<div class="ruler" style="width:${TOTAL_W}px">`;
+  for (let h = 0; h < 24; h++) {
+    rulerHTML += `<div class="ruler-label" style="width:${HR_W}px">${p2(h)}</div>`;
   }
-  tl.innerHTML = html;
-  setupTouchDrop();
+  rulerHTML += '</div>';
+
+  // トラック行
+  const laneId = 'mainLane';
+  let gridHTML = '';
+  for (let h = 0; h < 24; h++) {
+    const x = h * HR_W;
+    gridHTML += `<div class="grid-line major" style="left:${x}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.25}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.5}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.75}px"></div>`;
+  }
+  const trackHTML = `
+    <div class="track-row" style="width:${TOTAL_W}px">
+      <div class="track-lane" id="${laneId}">
+        ${gridHTML}
+      </div>
+    </div>`;
+
+  wrap.innerHTML = rulerHTML + trackHTML;
+
+  // イベント登録
+  const lane = document.getElementById(laneId);
+  lane.addEventListener('mousedown', onLaneMouseDown);
+  lane.addEventListener('touchstart', onLaneTouchStart, { passive: false });
 }
 
-// ===== データ読み込み =====
-async function loadBlocks() {
-  try {
-    const r = await fetch(`${SERVER}/api/daily-schedule?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
-    const d = await r.json();
-    schedBlocks = d.blocks || [];
-  } catch(e) { schedBlocks = []; }
+function minToX(min) { return (min / 60) * HR_W; }
+function xToMin(x) {
+  const raw = (x / HR_W) * 60;
+  return Math.round(raw / SNAP_M) * SNAP_M;
 }
+function clampMin(m) { return Math.max(0, Math.min(m, TOTAL_M)); }
 
-async function loadHandover() {
-  try {
-    const r = await fetch(`${SERVER}/api/handover?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
-    const d = await r.json();
-    handoverItems = d.items || [];
-  } catch(e) { handoverItems = []; }
-}
-
-async function loadDeadlines() {
-  try {
-    const r = await fetch(`${SERVER}/api/calendar?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
-    const d = await r.json();
-    // 当日に締切がある案件を取得
-    const today = currentDate;
-    deadlineItems = (d.cases || []).filter(c => c.deadline === today || c.date === today).slice(0, 20);
-  } catch(e) { deadlineItems = []; }
-}
-
-// ===== 全描画 =====
-function renderAll() {
-  renderBlocks();
-  renderClips();
-  renderDeadlines();
-}
-
-// ===== タイムラインブロック描画 =====
-const COLORS = { todo:'color-todo', memo:'color-memo', medium:'color-medium', custom:'color-custom', deadline:'color-deadline' };
-const LABELS = { todo:'TODO', memo:'メモ', medium:'中期', custom:'作業', deadline:'納期' };
-
-function minuteToY(min) { return (min / 60) * HOUR_H; }
-function yToMinute(y)   { return Math.round((y / HOUR_H) * 60 / SNAP) * SNAP; }
+// ===== ブロック描画 =====
+const BC = { todo:'bc-todo', memo:'bc-memo', medium:'bc-medium', custom:'bc-custom', deadline:'bc-deadline' };
+const BL = { todo:'TODO', memo:'メモ', medium:'中期', custom:'作業', deadline:'納期' };
 
 function renderBlocks() {
-  // 古いブロック要素を消す
-  document.querySelectorAll('.sched-block').forEach(el => el.remove());
-  schedBlocks.forEach(b => placeBlock(b));
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.sched-block,.preview-block').forEach(el => el.remove());
+  schedBlocks.forEach(b => addBlockEl(b));
+  updateNowLine();
 }
 
-function placeBlock(b) {
-  const startMin = b.startMin ?? 0;
-  const endMin   = b.endMin   ?? (startMin + 60);
-  const duration = endMin - startMin;
-  const topH   = Math.floor(startMin / 60);
-  const topMin = startMin % 60;
-  const drop   = document.getElementById(`drop-${topH}`);
-  if (!drop) return;
+function addBlockEl(b) {
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  const start = b.startMin ?? 0;
+  const end   = b.endMin   ?? start + 60;
+  const x     = minToX(start);
+  const w     = Math.max(4, minToX(end) - x);
+
+  const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
 
   const el = document.createElement('div');
-  el.className = `sched-block ${COLORS[b.type] || 'color-custom'}`;
-  el.id = `block-${b.id}`;
-  el.draggable = true;
-  el.style.top    = `${(topMin / 60) * HOUR_H}px`;
-  el.style.height = `${Math.max(24, (duration / 60) * HOUR_H)}px`;
-
-  const timeStr = `${pad(Math.floor(startMin/60))}:${pad(startMin%60)} 〜 ${pad(Math.floor(endMin/60))}:${pad(endMin%60)}`;
+  el.className = `sched-block ${BC[b.type]||'bc-custom'}`;
+  el.id = `blk-${b.id}`;
+  el.style.left  = `${x}px`;
+  el.style.width = `${w}px`;
   el.innerHTML = `
-    <div class="sched-block-label">${LABELS[b.type]||'作業'}</div>
-    <div class="sched-block-body" style="flex:1;min-width:0;">
-      <div class="sched-block-text">${esc(b.text)}</div>
-      <div class="sched-block-time">${timeStr}</div>
-    </div>
-    <button class="sched-block-del" onclick="deleteBlock('${b.id}',event)" title="削除">×</button>`;
+    <div class="blk-handle-l" data-action="resize-l" data-id="${b.id}"></div>
+    <span class="blk-text">${esc(b.text)}</span>
+    <span class="blk-time">${timeStr}</span>
+    <button class="blk-del" onclick="deleteBlock('${b.id}',event)">×</button>
+    <div class="blk-handle-r" data-action="resize-r" data-id="${b.id}"></div>`;
 
-  el.addEventListener('dragstart', e => onBlockDragStart(e, b.id));
-  el.addEventListener('dragend',   e => el.classList.remove('dragging'));
-  addTouchDrag(el, b.id);
-  drop.appendChild(el);
+  el.addEventListener('mousedown', e => onBlockMouseDown(e, b.id));
+  el.addEventListener('touchstart', e => onBlockTouchStart(e, b.id), { passive: false });
+  lane.appendChild(el);
 }
 
-function pad(n) { return String(n).padStart(2,'0'); }
-function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function refreshBlockEl(b) {
+  const el = document.getElementById(`blk-${b.id}`);
+  if (!el) { addBlockEl(b); return; }
+  const start = b.startMin ?? 0;
+  const end   = b.endMin   ?? start + 60;
+  el.style.left  = `${minToX(start)}px`;
+  el.style.width = `${Math.max(4, minToX(end) - minToX(start))}px`;
+  const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
+  const ts = el.querySelector('.blk-time');
+  if (ts) ts.textContent = timeStr;
+}
 
-// ===== クリップ描画 =====
-function renderClips() {
-  const body = document.getElementById('clipsBody');
-  const usedSourceIds = schedBlocks.filter(b => b.sourceId).map(b => b.sourceId);
-  document.getElementById('clipsCount').textContent = `${handoverItems.length}件`;
+// ===== 現在時刻ライン =====
+function updateNowLine() {
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.now-line').forEach(el => el.remove());
+  if (currentDate !== getTodayStr()) return;
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const x = minToX(m);
+  const line = document.createElement('div');
+  line.className = 'now-line';
+  line.style.left = `${x}px`;
+  line.innerHTML = '<div class="now-dot"></div>';
+  lane.appendChild(line);
+}
 
-  if (!handoverItems.length) {
-    body.innerHTML = '<div class="clips-empty">今日の引き継ぎはありません</div>';
+// ===== マウスインタラクション =====
+let interaction = null; // { type: 'create'|'move'|'resize-l'|'resize-r', ... }
+let previewEl = null;
+
+function laneX(e, lane) {
+  const rect = lane.getBoundingClientRect();
+  return e.clientX - rect.left;
+}
+
+function onLaneMouseDown(e) {
+  if (e.target.closest('.sched-block') || e.target.closest('.blk-handle-l') || e.target.closest('.blk-handle-r')) return;
+  e.preventDefault();
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  const m0 = clampMin(xToMin(x0));
+
+  // プレビューブロック
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = `${minToX(m0)}px`;
+  previewEl.style.width = '0px';
+  lane.appendChild(previewEl);
+
+  interaction = { type: 'create', startMin: m0, endMin: m0, x0 };
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+function onBlockMouseDown(e, blockId) {
+  const handle = e.target.closest('[data-action]');
+  if (handle) {
+    e.preventDefault(); e.stopPropagation();
+    const action = handle.dataset.action; // 'resize-l' or 'resize-r'
+    const b = schedBlocks.find(x => x.id === blockId);
+    if (!b) return;
+    interaction = { type: action, id: blockId, origStart: b.startMin, origEnd: b.endMin };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onMouseUp);
     return;
   }
-  const LABEL = {todo:'TODO', memo:'メモ', medium:'中期'};
-  body.innerHTML = handoverItems.map(item => {
-    const used = usedSourceIds.includes(item.id);
-    return `<div class="clip-item ${COLORS[item.type]||''} ${used?'used':''}"
-                 id="clip-${item.id}"
-                 draggable="true"
-                 ondragstart="onClipDragStart(event,'${item.id}','${item.type}','${esc(item.text)}')"
-                 ontouchstart="onClipTouchStart(event,'${item.id}','${item.type}','${esc(item.text)}')"
-            >
-      <span class="clip-badge">${LABEL[item.type]||item.type}</span>
-      <span class="clip-text">${esc(item.text)}</span>
-    </div>`;
-  }).join('');
-}
-
-function renderDeadlines() {
-  const body = document.getElementById('deadlineBody');
-  const usedSourceIds = schedBlocks.filter(b => b.sourceId).map(b => b.sourceId);
-  document.getElementById('deadlineCount').textContent = `${deadlineItems.length}件`;
-
-  if (!deadlineItems.length) {
-    body.innerHTML = '<div class="clips-empty">今日の締切案件はありません</div>';
-    return;
-  }
-  body.innerHTML = deadlineItems.map(item => {
-    const did = `deadline-${item.id||item.title}`;
-    const used = usedSourceIds.includes(did);
-    const title = item.title || item.name || '';
-    return `<div class="clip-item color-deadline ${used?'used':''}"
-                 id="clipd-${did}"
-                 draggable="true"
-                 ondragstart="onClipDragStart(event,'${esc(did)}','deadline','${esc(title)}')"
-                 ontouchstart="onClipTouchStart(event,'${esc(did)}','deadline','${esc(title)}')"
-            >
-      <span class="clip-badge">納期</span>
-      <span class="clip-text">${esc(title)}</span>
-    </div>`;
-  }).join('');
-}
-
-// ===== ドラッグ（マウス） =====
-let dragData = null; // { type: 'block'|'clip', id, offsetMinute, clipType, clipText }
-
-function onBlockDragStart(e, blockId) {
+  if (e.target.classList.contains('blk-del')) return;
+  e.preventDefault(); e.stopPropagation();
   const b = schedBlocks.find(x => x.id === blockId);
   if (!b) return;
-  e.dataTransfer.effectAllowed = 'move';
-  dragData = { type: 'block', id: blockId, offsetMinute: 0, startMin: b.startMin, endMin: b.endMin };
-  document.getElementById(`block-${blockId}`)?.classList.add('dragging');
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  interaction = {
+    type: 'move', id: blockId,
+    grabOffset: x0 - minToX(b.startMin),
+    duration: (b.endMin ?? b.startMin+60) - b.startMin,
+  };
+  document.getElementById(`blk-${blockId}`)?.classList.add('dragging');
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
 }
 
-function onClipDragStart(e, clipId, clipType, clipText) {
-  e.dataTransfer.effectAllowed = 'copy';
-  dragData = { type: 'clip', sourceId: clipId, clipType, clipText };
-}
+function onMouseMove(e) {
+  if (!interaction) return;
+  const lane = document.getElementById('mainLane');
+  const x = laneX(e, lane);
+  const m = clampMin(xToMin(x));
 
-function onDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = dragData?.type === 'block' ? 'move' : 'copy';
-  e.currentTarget.classList.add('drag-over');
-}
-function onDragLeave(e) {
-  e.currentTarget.classList.remove('drag-over');
-}
-
-function onDrop(e, hour) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  if (!dragData) return;
-
-  const rect = e.currentTarget.getBoundingClientRect();
-  const rawY = e.clientY - rect.top;
-  const minute = snapMin(hour * 60 + yToMinute(rawY));
-
-  if (dragData.type === 'block') {
-    dropExistingBlock(dragData.id, minute);
-  } else {
-    dropNewClip(dragData.sourceId, dragData.clipType, dragData.clipText, minute);
+  if (interaction.type === 'create') {
+    const s = Math.min(interaction.startMin, m);
+    const en = Math.max(interaction.startMin, m);
+    interaction.endMin = en;
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(s)}px`;
+      previewEl.style.width = `${Math.max(2, minToX(en) - minToX(s))}px`;
+    }
+  } else if (interaction.type === 'move') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    let s = clampMin(xToMin(x - interaction.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - interaction.duration));
+    b.startMin = s;
+    b.endMin   = s + interaction.duration;
+    refreshBlockEl(b);
+  } else if (interaction.type === 'resize-l') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    const newStart = clampMin(Math.min(m, interaction.origEnd - SNAP_M));
+    b.startMin = newStart;
+    refreshBlockEl(b);
+  } else if (interaction.type === 'resize-r') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    const newEnd = clampMin(Math.max(m, interaction.origStart + SNAP_M));
+    b.endMin = newEnd;
+    refreshBlockEl(b);
   }
-  dragData = null;
 }
 
-// ===== タッチドラッグ =====
-let touchDragInfo = null; // { id, type(block|clip), ghost }
-let touchDragSourceId = null, touchDragType = null, touchDragText = null;
+async function onMouseUp(e) {
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup',   onMouseUp);
+  if (!interaction) return;
+  const ia = interaction;
+  interaction = null;
 
-function addTouchDrag(el, blockId) {
-  el.addEventListener('touchstart', e => onBlockTouchStart(e, blockId), { passive: false });
+  if (ia.type === 'create') {
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const s = Math.min(ia.startMin, ia.endMin);
+    const en = Math.max(ia.startMin, ia.endMin);
+    if (en - s < SNAP_M) return; // 短すぎ → キャンセル
+    const block = { id: genId(), type: 'custom', text: '作業', startMin: s, endMin: en };
+    schedBlocks.push(block);
+    addBlockEl(block);
+    updateClipUsed();
+    await saveBlock(block);
+  } else if (ia.type === 'move' || ia.type === 'resize-l' || ia.type === 'resize-r') {
+    document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
+    const b = schedBlocks.find(x => x.id === ia.id);
+    if (b) {
+      refreshBlockEl(b);
+      await saveBlock(b);
+    }
+  }
+}
+
+// ===== タッチ操作 =====
+let touchIA = null;
+
+function onLaneTouchStart(e) {
+  if (e.target.closest('.sched-block')) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  const m0    = clampMin(xToMin(x0));
+
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = `${minToX(m0)}px`;
+  previewEl.style.width = '0px';
+  lane.appendChild(previewEl);
+
+  touchIA = { type: 'create', startMin: m0, endMin: m0 };
+  document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  document.addEventListener('touchend',   onTouchEnd);
+  document.addEventListener('touchcancel',onTouchEnd);
 }
 
 function onBlockTouchStart(e, blockId) {
-  e.preventDefault();
+  if (e.target.closest('[data-action]')) {
+    const action = e.target.closest('[data-action]').dataset.action;
+    e.preventDefault(); e.stopPropagation();
+    const b = schedBlocks.find(x => x.id === blockId);
+    if (!b) return;
+    touchIA = { type: action, id: blockId, origStart: b.startMin, origEnd: b.endMin };
+    document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    document.addEventListener('touchend',   onTouchEnd);
+    document.addEventListener('touchcancel',onTouchEnd);
+    return;
+  }
+  if (e.target.classList.contains('blk-del')) return;
+  e.preventDefault(); e.stopPropagation();
   const b = schedBlocks.find(x => x.id === blockId);
   if (!b) return;
-  startTouchDrag(e, 'block', blockId, b.type, b.text, b.startMin, b.endMin);
-}
-
-function onClipTouchStart(e, clipId, clipType, clipText) {
-  e.preventDefault();
-  startTouchDrag(e, 'clip', clipId, clipType, clipText, null, null);
-}
-
-function startTouchDrag(e, kind, id, type, text, startMin, endMin) {
   const touch = e.touches[0];
-  // ゴーストエレメント作成
-  const ghost = document.createElement('div');
-  ghost.className = `sched-block ${COLORS[type]||'color-custom'}`;
-  ghost.style.cssText = `position:fixed;z-index:999;width:140px;opacity:0.8;pointer-events:none;padding:6px 8px;font-size:12px;border-radius:8px;`;
-  ghost.innerHTML = `<span class="sched-block-label">${LABELS[type]||'作業'}</span> ${esc(text).substring(0,20)}`;
-  ghost.style.left = `${touch.clientX - 70}px`;
-  ghost.style.top  = `${touch.clientY - 20}px`;
-  document.body.appendChild(ghost);
-
-  touchDragInfo = { kind, id, type, text, startMin, endMin, ghost };
-
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  touchIA = {
+    type: 'move', id: blockId,
+    grabOffset: x0 - minToX(b.startMin),
+    duration: (b.endMin ?? b.startMin+60) - b.startMin,
+  };
+  document.getElementById(`blk-${blockId}`)?.classList.add('dragging');
   document.addEventListener('touchmove',  onTouchMove,  { passive: false });
   document.addEventListener('touchend',   onTouchEnd);
   document.addEventListener('touchcancel',onTouchEnd);
@@ -536,94 +604,189 @@ function startTouchDrag(e, kind, id, type, text, startMin, endMin) {
 
 function onTouchMove(e) {
   e.preventDefault();
-  if (!touchDragInfo) return;
+  if (!touchIA) return;
   const touch = e.touches[0];
-  touchDragInfo.ghost.style.left = `${touch.clientX - 70}px`;
-  touchDragInfo.ghost.style.top  = `${touch.clientY - 20}px`;
-  // ドロップゾーンをハイライト
-  document.querySelectorAll('.hour-drop.drag-over').forEach(el => el.classList.remove('drag-over'));
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  const drop = el?.closest('.hour-drop');
-  if (drop) drop.classList.add('drag-over');
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x     = touch.clientX - rect.left;
+  const m     = clampMin(xToMin(x));
+
+  if (touchIA.type === 'create') {
+    const s  = Math.min(touchIA.startMin, m);
+    const en = Math.max(touchIA.startMin, m);
+    touchIA.endMin = en;
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(s)}px`;
+      previewEl.style.width = `${Math.max(2, minToX(en)-minToX(s))}px`;
+    }
+  } else if (touchIA.type === 'move') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    let s = clampMin(xToMin(x - touchIA.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - touchIA.duration));
+    b.startMin = s; b.endMin = s + touchIA.duration;
+    refreshBlockEl(b);
+  } else if (touchIA.type === 'resize-l') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    b.startMin = clampMin(Math.min(m, touchIA.origEnd - SNAP_M));
+    refreshBlockEl(b);
+  } else if (touchIA.type === 'resize-r') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    b.endMin = clampMin(Math.max(m, touchIA.origStart + SNAP_M));
+    refreshBlockEl(b);
+  }
 }
 
-function onTouchEnd(e) {
-  if (!touchDragInfo) return;
-  const touch = e.changedTouches[0];
-  touchDragInfo.ghost.remove();
-  document.querySelectorAll('.hour-drop.drag-over').forEach(el => el.classList.remove('drag-over'));
-
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  const drop = el?.closest('.hour-drop');
-  if (drop) {
-    const hour = parseInt(drop.dataset.hour);
-    const rect = drop.getBoundingClientRect();
-    const rawY = touch.clientY - rect.top;
-    const minute = snapMin(hour * 60 + yToMinute(rawY));
-    if (touchDragInfo.kind === 'block') {
-      dropExistingBlock(touchDragInfo.id, minute);
-    } else {
-      dropNewClip(touchDragInfo.id, touchDragInfo.type, touchDragInfo.text, minute);
-    }
-  }
-
+async function onTouchEnd(e) {
   document.removeEventListener('touchmove',  onTouchMove);
   document.removeEventListener('touchend',   onTouchEnd);
   document.removeEventListener('touchcancel',onTouchEnd);
-  touchDragInfo = null;
+  if (!touchIA) return;
+  const ia = touchIA;
+  touchIA = null;
+
+  if (ia.type === 'create') {
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const s  = Math.min(ia.startMin, ia.endMin);
+    const en = Math.max(ia.startMin, ia.endMin);
+    if (en - s < SNAP_M) return;
+    const block = { id: genId(), type: 'custom', text: '作業', startMin: s, endMin: en };
+    schedBlocks.push(block);
+    addBlockEl(block);
+    updateClipUsed();
+    await saveBlock(block);
+  } else {
+    document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
+    const b = schedBlocks.find(x => x.id === ia.id);
+    if (b) { refreshBlockEl(b); await saveBlock(b); }
+  }
 }
 
-function setupTouchDrop() {} // 動的に追加するので不要
+// ===== クリップドラッグ → タイムラインへ =====
+let clipDragInfo = null;
 
-// ===== ブロック操作 =====
-function snapMin(m) { return Math.round(m / SNAP) * SNAP; }
-
-async function dropExistingBlock(blockId, newStartMin) {
-  const b = schedBlocks.find(x => x.id === blockId);
-  if (!b) return;
-  const dur = (b.endMin || b.startMin + 60) - b.startMin;
-  b.startMin = Math.max(0, Math.min(newStartMin, 23*60+45));
-  b.endMin   = b.startMin + dur;
-  renderBlocks();
-  await saveBlock(b);
+function startClipDrag(e, clipId, type, text) {
+  // マウス
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  const onMove = (ev) => {
+    const rect = lane.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const m = clampMin(xToMin(x));
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(m)}px`;
+      previewEl.style.width = `${HR_W}px`; // 1h preview
+    }
+  };
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = '-9999px';
+  previewEl.style.width = `${HR_W}px`;
+  lane.appendChild(previewEl);
+  clipDragInfo = { clipId, type, text };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', async (ev) => {
+    document.removeEventListener('mousemove', onMove);
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const rect = lane.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    if (x >= 0 && x <= TOTAL_W) {
+      const m = clampMin(xToMin(x));
+      await placeClip(clipDragInfo, m);
+    }
+    clipDragInfo = null;
+  }, { once: true });
 }
 
-async function dropNewClip(sourceId, type, text, startMin) {
-  // 同じsourceIdのブロックがあれば移動、なければ新規
-  const existing = schedBlocks.find(b => b.sourceId === sourceId);
+async function placeClip(info, startMin) {
+  const existing = schedBlocks.find(b => b.sourceId === info.clipId);
   if (existing) {
-    await dropExistingBlock(existing.id, startMin);
+    existing.startMin = startMin;
+    existing.endMin   = startMin + (existing.endMin - existing.startMin || 60);
+    refreshBlockEl(existing);
+    await saveBlock(existing);
     return;
   }
-  const block = {
-    id: genId(), sourceId, type, text,
-    startMin: Math.max(0, Math.min(startMin, 23*60+45)),
-    endMin:   Math.max(0, Math.min(startMin, 23*60+45)) + 60,
-  };
+  const block = { id: genId(), sourceId: info.clipId, type: info.type, text: info.text, startMin, endMin: startMin + 60 };
   schedBlocks.push(block);
-  renderAll();
+  addBlockEl(block);
+  updateClipUsed();
   await saveBlock(block);
 }
 
+function updateClipUsed() {
+  const usedSrc = schedBlocks.filter(b => b.sourceId).map(b => b.sourceId);
+  document.querySelectorAll('.clip-item[data-src]').forEach(el => {
+    el.classList.toggle('used', usedSrc.includes(el.dataset.src));
+  });
+}
+
+// ===== クリップ描画 =====
+function renderClips() {
+  const body = document.getElementById('clipsBody');
+  document.getElementById('clipsCount').textContent = `${handoverItems.length}件`;
+  const LABEL = { todo:'TODO', memo:'メモ', medium:'中期' };
+  const CC    = { todo:'cc-todo', memo:'cc-memo', medium:'cc-medium' };
+  if (!handoverItems.length) {
+    body.innerHTML = '<div class="clips-empty">今日の引き継ぎはありません</div>';
+    return;
+  }
+  body.innerHTML = handoverItems.map(item => `
+    <div class="clip-item ${CC[item.type]||''}" data-src="${item.id}"
+         onmousedown="startClipDrag(event,'${item.id}','${item.type}','${esc(item.text)}')"
+    >
+      <span class="clip-badge">${LABEL[item.type]||item.type}</span>
+      <span class="clip-text" title="${esc(item.text)}">${esc(item.text)}</span>
+    </div>`).join('');
+  updateClipUsed();
+}
+
+function renderDeadlines() {
+  const body = document.getElementById('deadlineBody');
+  document.getElementById('deadlineCount').textContent = `${deadlineItems.length}件`;
+  if (!deadlineItems.length) {
+    body.innerHTML = '<div class="clips-empty">今日の締切はありません</div>';
+    return;
+  }
+  body.innerHTML = deadlineItems.map(item => {
+    const did = `dl-${item.id||item.title}`;
+    const title = item.title || item.name || '';
+    return `<div class="clip-item cc-deadline" data-src="${esc(did)}"
+                 onmousedown="startClipDrag(event,'${esc(did)}','deadline','${esc(title)}')"
+            >
+      <span class="clip-badge">納期</span>
+      <span class="clip-text" title="${esc(title)}">${esc(title)}</span>
+    </div>`;
+  }).join('');
+  updateClipUsed();
+}
+
+// ===== カスタムブロック追加 =====
 async function addCustomBlock() {
-  const input = document.getElementById('customText');
-  const text = input.value.trim();
-  if (!text) return;
+  const txt   = document.getElementById('customText').value.trim();
+  const type  = document.getElementById('customColor').value;
+  if (!txt) return;
   const now = new Date();
-  const startMin = snapMin(now.getHours() * 60 + now.getMinutes());
-  const block = { id: genId(), type: 'custom', text, startMin, endMin: startMin + 60 };
+  const s = Math.round((now.getHours()*60 + now.getMinutes()) / SNAP_M) * SNAP_M;
+  const block = { id: genId(), type, text: txt, startMin: s, endMin: s + 60 };
   schedBlocks.push(block);
-  renderBlocks();
-  input.value = '';
+  addBlockEl(block);
+  document.getElementById('customText').value = '';
+  updateClipUsed();
   await saveBlock(block);
+  // スクロールして見えるように
+  const wrap = document.getElementById('tlWrap');
+  wrap.scrollLeft = Math.max(0, minToX(s) - 100);
 }
 
+// ===== ブロック削除 =====
 async function deleteBlock(blockId, e) {
   e.stopPropagation();
   schedBlocks = schedBlocks.filter(b => b.id !== blockId);
-  document.getElementById(`block-${blockId}`)?.remove();
-  renderClips();
-  renderDeadlines();
+  document.getElementById(`blk-${blockId}`)?.remove();
+  updateClipUsed();
   try {
     await fetch(`${SERVER}/api/daily-schedule/delete`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -633,6 +796,28 @@ async function deleteBlock(blockId, e) {
   } catch(e) {}
 }
 
+// ===== API =====
+async function loadBlocks() {
+  try {
+    const r = await fetch(`${SERVER}/api/daily-schedule?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    schedBlocks = d.blocks || [];
+  } catch(e) { schedBlocks = []; }
+}
+async function loadHandover() {
+  try {
+    const r = await fetch(`${SERVER}/api/handover?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    handoverItems = d.items || [];
+  } catch(e) { handoverItems = []; }
+}
+async function loadDeadlines() {
+  try {
+    const r = await fetch(`${SERVER}/api/calendar?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    deadlineItems = (d.cases || []).filter(c => c.deadline === currentDate || c.date === currentDate).slice(0,20);
+  } catch(e) { deadlineItems = []; }
+}
 async function saveBlock(b) {
   try {
     await fetch(`${SERVER}/api/daily-schedule/save`, {
@@ -643,31 +828,29 @@ async function saveBlock(b) {
   } catch(e) {}
 }
 
-function genId() {
-  return Math.random().toString(36).slice(2, 10);
+function genId() { return Math.random().toString(36).slice(2,10); }
+
+// ===== 初期化 =====
+async function init() {
+  document.getElementById('headerDate').textContent = formatDateJP(currentDate);
+  buildTimeline();
+  await Promise.all([loadBlocks(), loadHandover(), loadDeadlines()]);
+  renderBlocks();
+  renderClips();
+  renderDeadlines();
+  updateNowLine();
+  // 今の時間帯までスクロール
+  if (currentDate === getTodayStr()) {
+    const now = new Date();
+    const m = now.getHours() * 60 + now.getMinutes();
+    const wrap = document.getElementById('tlWrap');
+    wrap.scrollLeft = Math.max(0, minToX(m) - 120);
+  } else {
+    const wrap = document.getElementById('tlWrap');
+    wrap.scrollLeft = minToX(8 * 60); // 8時から表示
+  }
 }
 
-// ===== 現在時刻ライン =====
-function updateNowLine() {
-  document.querySelectorAll('.now-line').forEach(el => el.remove());
-  const today = getTodayStr();
-  if (currentDate !== today) return;
-
-  const now = new Date();
-  const totalMin = now.getHours() * 60 + now.getMinutes();
-  const topH = Math.floor(totalMin / 60);
-  const topMin = totalMin % 60;
-  const drop = document.getElementById(`drop-${topH}`);
-  if (!drop) return;
-
-  const line = document.createElement('div');
-  line.className = 'now-line';
-  line.innerHTML = '<div class="now-dot"></div>';
-  line.style.top = `${(topMin / 60) * HOUR_H}px`;
-  drop.appendChild(line);
-}
-
-// ===== 起動 =====
 init();
 setInterval(updateNowLine, 60000);
 </script>
