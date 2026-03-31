@@ -265,34 +265,48 @@ body {
 .handover-body { padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
 .handover-empty { font-size: 12px; color: #bbb; text-align: center; padding: 10px 0; }
 .handover-item {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 9px 11px; border-radius: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 11px 12px; border-radius: 10px;
   background: #fafafa; border: 1px solid #f0f0f0;
 }
 .handover-item.todo-item   { border-left: 3px solid #4f6ef7; }
 .handover-item.memo-item   { border-left: 3px solid #f59e0b; }
 .handover-item.medium-item { border-left: 3px solid #8b5cf6; }
+/* 上段：バッジ＋テキスト */
+.handover-top { display: flex; align-items: flex-start; gap: 8px; }
 .handover-badge {
-  font-size: 10px; font-weight: 700; padding: 2px 6px;
-  border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+  font-size: 10px; font-weight: 700; padding: 3px 7px;
+  border-radius: 5px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
 }
 .badge-todo   { background: #dbeafe; color: #1e3a8a; }
 .badge-memo   { background: #fef3c7; color: #78350f; }
 .badge-medium { background: #ede9fe; color: #5b21b6; }
-.handover-text { font-size: 13px; line-height: 1.5; word-break: break-word; }
-.handover-date-info { font-size: 10px; color: #bbb; margin-top: 2px; }
-.handover-actions { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.handover-text { font-size: 13px; line-height: 1.55; word-break: break-word; flex: 1; }
+.handover-date-info { font-size: 11px; color: #aaa; }
+/* 下段：アクションボタン行 */
+.handover-actions {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  padding-top: 2px; border-top: 1px solid #ebebeb;
+}
 .ha-btn {
-  font-size: 11px; padding: 3px 8px; border-radius: 6px;
+  font-size: 12px; padding: 5px 12px; border-radius: 7px;
   cursor: pointer; font-family: inherit;
   border: 1.5px solid #e0e0e0; background: white; color: #555;
-  transition: all 0.12s; white-space: nowrap;
+  transition: all 0.12s; white-space: nowrap; flex-shrink: 0;
+  min-height: 32px; display: flex; align-items: center;
 }
 .ha-btn:hover           { background: #f5f5f5; }
-.ha-btn.btn-done:hover  { background: #dcfce7; border-color: #86efac; color: #166534; }
+.ha-btn.btn-done        { border-color: #86efac; color: #166534; background: #f0fdf4; }
+.ha-btn.btn-done:hover  { background: #dcfce7; }
 .ha-btn.btn-todo:hover  { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
 .ha-btn.btn-memo:hover  { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
 .ha-btn.btn-ext:hover   { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+/* 編集ボタンは右端に */
+.ha-btn.btn-edit-content {
+  margin-left: auto; border-color: #d1d5db; color: #6b7280; background: white;
+  padding: 5px 10px;
+}
+.ha-btn.btn-edit-content:hover { background: #f9fafb; color: #374151; }
 .ha-btn.btn-edit-content { color: #888; }
 .ha-btn.btn-edit-content:hover { background: #f5f5f5; color: #333; }
 
@@ -785,23 +799,25 @@ function renderHandover() {
     if (item.type === 'medium') {
       actions = `
         <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
-        <button class="ha-btn btn-ext"  onclick="openExtendModal('${iid}','${iend}','${itxt}')">延長</button>
-        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️</button>
+        <button class="ha-btn btn-ext"  onclick="openExtendModal('${iid}','${iend}','${itxt}')">📅 延長</button>
+        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️ 編集</button>
       `;
     } else {
       actions = `
         <button class="ha-btn btn-done" onclick="doneHandover('${iid}')">✓ 完了</button>
-        <button class="ha-btn btn-todo" onclick="carryHandover('${iid}','todo')" title="TODOとして翌日へ">TODO</button>
-        <button class="ha-btn btn-memo" onclick="carryHandover('${iid}','memo')" title="メモとして翌日へ">メモ</button>
-        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️</button>
+        <button class="ha-btn btn-todo" onclick="carryHandover('${iid}','todo')" title="TODOとして翌日へ">→ TODO</button>
+        <button class="ha-btn btn-memo" onclick="carryHandover('${iid}','memo')" title="メモとして翌日へ">→ メモ</button>
+        <button class="ha-btn btn-edit-content" onclick="openEditContent('${iid}','${itxt}')">✏️ 編集</button>
       `;
     }
 
     el.innerHTML = `
-      <span class="handover-badge ${bclass[item.type]}">${labels[item.type]}</span>
-      <div style="flex:1;min-width:0;">
-        <div class="handover-text">${itxt}</div>
-        <div class="handover-date-info">${dateInfo}</div>
+      <div class="handover-top">
+        <span class="handover-badge ${bclass[item.type]}">${labels[item.type]}</span>
+        <div style="flex:1;min-width:0;">
+          <div class="handover-text">${itxt}</div>
+          <div class="handover-date-info">${dateInfo}</div>
+        </div>
       </div>
       <div class="handover-actions">${actions}</div>
     `;
