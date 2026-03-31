@@ -72,7 +72,7 @@ body {
 /* ===== トラック行 ===== */
 .track-row {
   display: flex;
-  height: 64px;
+  height: 96px;   /* 上28px=名前ゾーン + 下68px=ブロックゾーン */
   position: relative;
   cursor: crosshair;
 }
@@ -104,9 +104,28 @@ body {
   border-radius: 50%; background: #ef4444;
 }
 
+/* ===== 名前タグゾーン（トラック上部 常時表示） ===== */
+.blk-name-tag {
+  position: absolute;
+  top: 4px; height: 20px;
+  font-size: 10px; font-weight: 700; color: #1a1a1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; z-index: 10;
+  line-height: 20px; max-width: 110px;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+/* 名前タグ色（ブロック種別に合わせる） */
+.blk-name-tag.tag-todo   { color: #3b5bdb; }
+.blk-name-tag.tag-memo   { color: #b45309; }
+.blk-name-tag.tag-medium { color: #6d28d9; }
+.blk-name-tag.tag-custom { color: #065f46; }
+.blk-name-tag.tag-deadline{ color: #be123c; }
+.blk-name-tag.tag-schedule{ color: #374151; }
+
 /* ===== ブロック ===== */
 .sched-block {
-  position: absolute; top: 5px; bottom: 5px;
+  position: absolute; top: 28px; bottom: 4px;
   border-radius: 6px;
   display: flex; align-items: center;
   padding: 0 24px 0 8px;
@@ -136,9 +155,19 @@ body {
 }
 .sched-block:hover .blk-del { display: block; }
 
+/* インライン入力 */
+.blk-input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.45); color: white;
+  border: 2px solid rgba(255,255,255,0.9); border-radius: 6px;
+  font-size: 12px; font-weight: 700; padding: 0 8px;
+  font-family: inherit; outline: none; z-index: 20;
+}
+.blk-input::placeholder { color: rgba(255,255,255,0.6); font-weight: 400; }
+
 /* Notion固定ブロック（バイト・会議等） */
 .notion-block {
-  position: absolute; top: 0; bottom: 0;
+  position: absolute; top: 28px; bottom: 0;
   background: linear-gradient(135deg,#374151,#4b5563);
   opacity: 0.88;
   border-radius: 0;
@@ -508,7 +537,7 @@ const BL = { todo:'TODO', memo:'メモ', medium:'中期', custom:'作業', deadl
 function renderBlocks() {
   const lane = document.getElementById('mainLane');
   if (!lane) return;
-  lane.querySelectorAll('.sched-block,.preview-block').forEach(el => el.remove());
+  lane.querySelectorAll('.sched-block,.preview-block,.blk-name-tag').forEach(el => el.remove());
   schedBlocks.forEach(b => addBlockEl(b));
   updateNowLine();
 }
@@ -522,8 +551,18 @@ function addBlockEl(b) {
   const x     = minToX(start);
   const w     = Math.max(4, minToX(end) - x);
   const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
-  const isNarrow = w < 72;
+  const isNarrow = w < 64;
 
+  // ===== 名前タグ（常時表示）=====
+  const tag = document.createElement('div');
+  tag.className = `blk-name-tag tag-${b.type||'custom'}`;
+  tag.id = `tag-${b.id}`;
+  tag.style.left  = `${x + 2}px`;
+  tag.style.maxWidth = `${Math.max(30, w - 4)}px`;
+  tag.textContent = b.text || '（無題）';
+  lane.appendChild(tag);
+
+  // ===== ブロック本体 =====
   const el = document.createElement('div');
   el.className = `sched-block ${BC[b.type]||'bc-custom'}${isNarrow?' blk-narrow':''}`;
   el.id = `blk-${b.id}`;
@@ -531,23 +570,67 @@ function addBlockEl(b) {
   el.style.width = `${w}px`;
   el.dataset.text = b.text;
   el.dataset.time = timeStr;
+  // 広いブロックはブロック内にも時刻表示
   el.innerHTML = `
     <div class="blk-handle-l" data-action="resize-l" data-id="${b.id}"></div>
     <div class="blk-inner">
-      <span class="blk-text">${esc(b.text)}</span>
+      ${!isNarrow ? `<span class="blk-text">${esc(b.text)}</span>` : ''}
       <span class="blk-time">${timeStr}</span>
     </div>
     <button class="blk-del" onclick="deleteBlock('${b.id}',event)">×</button>
     <div class="blk-handle-r" data-action="resize-r" data-id="${b.id}"></div>`;
 
-  // ツールチップ（幅が狭い時 or hover時）
-  el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
-  el.addEventListener('mouseleave', () => hideTooltip());
-  el.addEventListener('touchstart', e => { if(isNarrow) showTooltip(e.currentTarget, e.touches[0]); }, { passive:true });
-
   el.addEventListener('mousedown', e => onBlockMouseDown(e, b.id));
   el.addEventListener('touchstart', e => onBlockTouchStart(e, b.id), { passive: false });
   lane.appendChild(el);
+}
+
+// ===== ブロック作成後インライン入力 =====
+function startBlockWithInput(s, en) {
+  const block = { id: genId(), type: 'custom', text: '', startMin: s, endMin: en };
+  schedBlocks.push(block);
+  addBlockEl(block);
+
+  const el = document.getElementById(`blk-${block.id}`);
+  if (!el) return;
+
+  // インライン入力フィールドを追加
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '内容を入力… (Enter確定 / Esc削除)';
+  input.className = 'blk-input';
+  input.maxLength = 50;
+  el.appendChild(input);
+  setTimeout(() => input.focus(), 30);
+
+  let done = false;
+  const commit = async (cancel = false) => {
+    if (done) return;
+    done = true;
+    input.remove();
+    const text = input.value.trim();
+    if (cancel || !text) {
+      // キャンセル or 空 → ブロック削除
+      schedBlocks = schedBlocks.filter(b => b.id !== block.id);
+      el.remove();
+      document.getElementById(`tag-${block.id}`)?.remove();
+      return;
+    }
+    block.text = text;
+    // 名前タグを更新
+    const tag = document.getElementById(`tag-${block.id}`);
+    if (tag) tag.textContent = text;
+    el.dataset.text = text;
+    const inner = el.querySelector('.blk-text');
+    if (inner) inner.textContent = text;
+    updateClipUsed();
+    await saveBlock(block);
+  };
+  input.addEventListener('blur', () => commit(false));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
+    if (e.key === 'Escape') { e.preventDefault(); commit(true); }
+  });
 }
 
 function refreshBlockEl(b) {
@@ -556,14 +639,18 @@ function refreshBlockEl(b) {
   if (!el) { addBlockEl(b); return; }
   const start = b.startMin ?? 0;
   const end   = b.endMin   ?? start + 60;
-  const w = Math.max(4, minToX(end) - minToX(start));
-  el.style.left  = `${minToX(start)}px`;
+  const x = minToX(start);
+  const w = Math.max(4, minToX(end) - x);
+  el.style.left  = `${x}px`;
   el.style.width = `${w}px`;
   const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
   const ts = el.querySelector('.blk-time');
   if (ts) ts.textContent = timeStr;
   el.dataset.time = timeStr;
-  el.classList.toggle('blk-narrow', w < 72);
+  el.classList.toggle('blk-narrow', w < 64);
+  // 名前タグ位置も更新
+  const tag = document.getElementById(`tag-${b.id}`);
+  if (tag) { tag.style.left = `${x + 2}px`; tag.style.maxWidth = `${Math.max(30, w - 4)}px`; }
 }
 
 // ===== Notion固定ブロック描画（バイト・会議） =====
@@ -898,11 +985,7 @@ async function onMouseUp(e) {
     const s = Math.min(ia.startMin, ia.endMin);
     const en = Math.max(ia.startMin, ia.endMin);
     if (en - s < SNAP_M) return; // 短すぎ → キャンセル
-    const block = { id: genId(), type: 'custom', text: '作業', startMin: s, endMin: en };
-    schedBlocks.push(block);
-    addBlockEl(block);
-    updateClipUsed();
-    await saveBlock(block);
+    startBlockWithInput(s, en);
   } else if (ia.type === 'move' || ia.type === 'resize-l' || ia.type === 'resize-r') {
     document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
     const b = schedBlocks.find(x => x.id === ia.id);
@@ -1018,11 +1101,7 @@ async function onTouchEnd(e) {
     const s  = Math.min(ia.startMin, ia.endMin);
     const en = Math.max(ia.startMin, ia.endMin);
     if (en - s < SNAP_M) return;
-    const block = { id: genId(), type: 'custom', text: '作業', startMin: s, endMin: en };
-    schedBlocks.push(block);
-    addBlockEl(block);
-    updateClipUsed();
-    await saveBlock(block);
+    startBlockWithInput(s, en);
   } else {
     document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
     const b = schedBlocks.find(x => x.id === ia.id);
@@ -1158,6 +1237,7 @@ async function deleteBlock(blockId, e) {
   e.stopPropagation();
   schedBlocks = schedBlocks.filter(b => b.id !== blockId);
   document.getElementById(`blk-${blockId}`)?.remove();
+  document.getElementById(`tag-${blockId}`)?.remove();
   updateClipUsed();
   try {
     await fetch(`${SERVER}/api/daily-schedule/delete`, {
