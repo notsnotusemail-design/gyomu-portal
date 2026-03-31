@@ -829,17 +829,26 @@ class Handler(BaseHTTPRequestHandler):
         status_f = (qs.get("status")   or [""])[0].strip()
         cust_f   = (qs.get("customer") or [""])[0].strip()
 
+        month_f  = (qs.get("month")    or [""])[0].strip()   # e.g. "2026-03"
+
         filters = []
+        # 月フィルター（デフォルト: 当月）
+        if month_f:
+            try:
+                y, m = map(int, month_f.split('-'))
+                ms = f"{y}-{m:02d}-01"
+                me = f"{y+1}-01-01" if m == 12 else f"{y}-{m+1:02d}-01"
+                filters.append({"property": "案件締切日・進行", "date": {"on_or_after": ms}})
+                filters.append({"property": "案件締切日・進行", "date": {"before": me}})
+            except Exception:
+                pass
         if cust_f:
             filters.append({"property": "お客様no/名", "rich_text": {"contains": cust_f}})
         if status_f:
             filters.append({"property": "進捗", "status": {"equals": status_f}})
+        # キーワード検索は案件番号のみ（Notion APIのorフィルター制限を回避）
         if q_term:
-            filters.append({"or": [
-                {"property": "当方案件番号", "title": {"contains": q_term}},
-                {"property": "備考/素材名",  "rich_text": {"contains": q_term}},
-                {"property": "お客様no/名",  "rich_text": {"contains": q_term}},
-            ]})
+            filters.append({"property": "当方案件番号", "title": {"contains": q_term}})
 
         query_body = {
             "page_size": 100,
@@ -868,10 +877,18 @@ class Handler(BaseHTTPRequestHandler):
                     gross    = (props.get("粗利（単価-外注費）",{}).get("rich_text") or [{}])[0].get("plain_text","")
                     dl       = (props.get("案件締切日・進行",{}).get("date") or {}).get("start","")
                     status   = (props.get("進捗",{}).get("status") or {}).get("name","")
+                    # 粗利テキストから利益額を抽出（例: "10,000 - 3,000 = 7,000" → 7000）
+                    profit = None
+                    if gross:
+                        import re as _re
+                        m = _re.search(r'=\s*([\d,]+)', gross)
+                        if m:
+                            try: profit = int(m.group(1).replace(',',''))
+                            except: pass
                     cases.append({
                         "id": page["id"], "number": number, "customer": customer,
                         "price": price, "note": note, "filename": filename,
-                        "memo": memo, "gross": gross,
+                        "memo": memo, "gross": gross, "profit": profit,
                         "date": dl[:10] if dl else "", "status": status,
                         "url": page.get("url",""),
                     })

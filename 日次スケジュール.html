@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>日次スケジュール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+  background: #f0f0f0;
+  color: #1a1a1a;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ===== ヘッダー ===== */
+.page-header {
+  background: #2b2b3a;
+  color: white;
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+  position: sticky; top: 0; z-index: 100;
+}
+.back-btn {
+  font-size: 12px; color: rgba(255,255,255,0.7); text-decoration: none;
+  padding: 5px 10px; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px; transition: all 0.15s; white-space: nowrap;
+}
+.back-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+.header-date { font-size: 15px; font-weight: 700; flex: 1; }
+.header-sub  { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px; }
+.date-nav { display: flex; gap: 4px; }
+.nav-btn {
+  font-size: 15px; padding: 5px 10px;
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+  background: none; color: white; cursor: pointer; transition: all 0.15s;
+}
+.nav-btn:hover { background: rgba(255,255,255,0.1); }
+
+/* ===== タイムライン外枠 ===== */
+.tl-wrap {
+  background: white;
+  margin: 10px 0 0;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ===== ルーラー（時間軸） ===== */
+.ruler {
+  display: flex;
+  height: 28px;
+  background: #f7f7f7;
+  border-bottom: 1px solid #ddd;
+  position: sticky; top: 0;/* sticky header overridden by tl-wrap overflow */
+  user-select: none;
+}
+.ruler-label {
+  flex-shrink: 0;
+  width: 60px; /* HR_W */
+  text-align: center;
+  font-size: 11px; color: #888; font-weight: 600;
+  line-height: 28px;
+  border-right: 1px solid #e0e0e0;
+}
+.ruler-label.half {
+  color: #bbb; font-size: 10px; font-weight: 400;
+}
+
+/* ===== トラック行 ===== */
+.track-row {
+  display: flex;
+  height: 96px;   /* 上28px=名前ゾーン + 下68px=ブロックゾーン */
+  position: relative;
+  cursor: crosshair;
+}
+.track-label {
+  width: 0; /* no label for single user */
+  flex-shrink: 0;
+}
+.track-lane {
+  flex: 1; position: relative;
+  border-top: 1px solid #f0f0f0;
+  background: white;
+}
+
+/* 時間グリッドライン */
+.grid-line {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: #f0f0f0; pointer-events: none;
+}
+.grid-line.major { background: #e8e8e8; }
+
+/* 現在時刻 */
+.now-line {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: #ef4444; z-index: 8; pointer-events: none;
+}
+.now-dot {
+  position: absolute; top: -4px; left: -4px;
+  width: 10px; height: 10px;
+  border-radius: 50%; background: #ef4444;
+}
+
+/* ===== 名前タグゾーン（トラック上部 常時表示） ===== */
+.blk-name-tag {
+  position: absolute;
+  top: 4px; height: 20px;
+  font-size: 10px; font-weight: 700; color: #1a1a1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none; z-index: 10;
+  line-height: 20px; max-width: 110px;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+/* 名前タグ色（ブロック種別に合わせる） */
+.blk-name-tag.tag-todo   { color: #3b5bdb; }
+.blk-name-tag.tag-memo   { color: #b45309; }
+.blk-name-tag.tag-medium { color: #6d28d9; }
+.blk-name-tag.tag-custom { color: #065f46; }
+.blk-name-tag.tag-deadline{ color: #be123c; }
+.blk-name-tag.tag-schedule{ color: #374151; }
+
+/* ===== ブロック ===== */
+.sched-block {
+  position: absolute; top: 28px; bottom: 4px;
+  border-radius: 6px;
+  display: flex; align-items: center;
+  padding: 0 24px 0 8px;
+  font-size: 12px; font-weight: 700;
+  color: white;
+  cursor: grab;
+  user-select: none;
+  z-index: 5;
+  overflow: hidden;
+  min-width: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: box-shadow 0.1s;
+}
+.sched-block:active, .sched-block.dragging { cursor: grabbing; box-shadow: 0 3px 12px rgba(0,0,0,0.25); }
+.sched-block .blk-inner { display: flex; align-items: baseline; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.sched-block .blk-text  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; min-width: 0; }
+.sched-block .blk-time  { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.8); white-space: nowrap; flex-shrink: 0; }
+/* 幅が狭い場合はテキストを非表示にしてツールチップのみ */
+.sched-block.blk-narrow .blk-text { display: none; }
+.sched-block.blk-narrow .blk-time { display: none; }
+.sched-block .blk-del {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,0.25); border: none; color: white; cursor: pointer;
+  width: 18px; height: 18px; border-radius: 50%;
+  font-size: 12px; line-height: 18px; text-align: center; padding: 0;
+  display: none; flex-shrink: 0;
+}
+.sched-block:hover .blk-del { display: block; }
+
+/* インライン入力 */
+.blk-input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.45); color: white;
+  border: 2px solid rgba(255,255,255,0.9); border-radius: 6px;
+  font-size: 12px; font-weight: 700; padding: 0 8px;
+  font-family: inherit; outline: none; z-index: 20;
+}
+.blk-input::placeholder { color: rgba(255,255,255,0.6); font-weight: 400; }
+
+/* ===== Notion追加選択パネル ===== */
+.notion-add-panel {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 12px 14px 10px;
+  z-index: 10000;
+  min-width: 220px;
+  animation: nap-in 0.15s ease;
+}
+@keyframes nap-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nap-label {
+  font-size: 11px; color: #6b7280; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.nap-time {
+  font-size: 12px; font-weight: 700; color: #111827;
+  margin-bottom: 10px; line-height: 1.4;
+}
+.nap-btns { display: flex; gap: 7px; }
+.nap-btn {
+  flex: 1; padding: 7px 10px; border-radius: 8px;
+  border: 1.5px solid transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.nap-btn-local {
+  background: #f3f4f6; color: #374151;
+  border-color: #e5e7eb;
+}
+.nap-btn-local:hover { background: #e5e7eb; }
+.nap-btn-notion {
+  background: #111827; color: #fff;
+  border-color: #111827;
+}
+.nap-btn-notion:hover { background: #1f2937; }
+
+/* Notion固定ブロック（バイト・会議等） */
+.notion-block {
+  position: absolute; top: 28px; bottom: 0;
+  background: linear-gradient(135deg,#374151,#4b5563);
+  opacity: 0.88;
+  border-radius: 0;
+  display: flex; align-items: center;
+  padding: 0 30px 0 8px;
+  font-size: 12px; font-weight: 700;
+  color: rgba(255,255,255,0.95);
+  z-index: 3;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  border-left: 3px solid #60a5fa;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+.notion-block.dragging {
+  cursor: grabbing; opacity: 0.75;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  z-index: 10;
+}
+.notion-block.nb-unlocked {
+  border-left-color: #f59e0b;
+  background: linear-gradient(135deg,#451a03,#78350f);
+}
+.notion-block .nb-inner { display: flex; align-items: baseline; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.notion-block .nb-text  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+.notion-block .nb-time  { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.6); white-space: nowrap; flex-shrink: 0; }
+.notion-block .nb-lock  { font-size: 11px; margin-right: 4px; flex-shrink: 0; opacity: 0.8; }
+/* 幅が狭い場合 */
+.notion-block.nb-narrow .nb-text { display: none; }
+.notion-block.nb-narrow .nb-time { display: none; }
+/* Notion削除ボタン（Notionデータは変更せずビューからのみ除去） */
+.notion-block .nb-del {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: rgba(255,255,255,0.15); border: none; color: white; cursor: pointer;
+  width: 18px; height: 18px; border-radius: 50%;
+  font-size: 12px; line-height: 18px; text-align: center; padding: 0;
+  display: none;
+}
+.notion-block:hover .nb-del { display: block; }
+
+/* ===== ツールチップ ===== */
+.blk-tooltip {
+  position: fixed; background: #1e1e2e; color: #f0f0f8;
+  font-size: 12px; padding: 8px 12px; border-radius: 9px;
+  z-index: 9999; pointer-events: none; max-width: 260px;
+  line-height: 1.6; box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  opacity: 0; transition: opacity 0.12s;
+  white-space: pre-line; border: 1px solid rgba(255,255,255,0.1);
+}
+.blk-tooltip.show { opacity: 1; }
+.blk-tooltip .tt-name { font-weight: 700; font-size: 13px; color: #fff; display: block; margin-bottom: 2px; }
+.blk-tooltip .tt-time { font-size: 11px; color: #a0a8c8; display: block; }
+
+/* リサイズハンドル */
+.sched-block .blk-handle-l,
+.sched-block .blk-handle-r {
+  position: absolute; top: 0; bottom: 0; width: 10px;
+  cursor: ew-resize;
+  z-index: 6;
+}
+.sched-block .blk-handle-l { left: 0; border-radius: 6px 0 0 6px; }
+.sched-block .blk-handle-r { right: 0; border-radius: 0 6px 6px 0; }
+
+/* ブロック色 */
+.bc-todo     { background: linear-gradient(135deg,#4f6ef7,#3b5bdb); }
+.bc-memo     { background: linear-gradient(135deg,#f59e0b,#d97706); }
+.bc-medium   { background: linear-gradient(135deg,#8b5cf6,#7c3aed); }
+.bc-custom   { background: linear-gradient(135deg,#10b981,#059669); }
+.bc-deadline { background: linear-gradient(135deg,#ef4444,#dc2626); }
+/* 新規作成中のプレビューブロック */
+.preview-block {
+  position: absolute; top: 5px; bottom: 5px;
+  background: rgba(79,110,247,0.25);
+  border: 2px dashed #4f6ef7;
+  border-radius: 6px; z-index: 4; pointer-events: none;
+}
+
+/* ===== スナップトースト ===== */
+.snap-toast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.75); color: white;
+  font-size: 12px; padding: 6px 14px; border-radius: 20px;
+  z-index: 200; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+}
+.snap-toast.show { opacity: 1; }
+
+/* ===== クリップパネル ===== */
+.clips-panel {
+  padding: 12px 12px 20px;
+}
+.clips-row {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.clips-group {
+  flex: 1; min-width: 220px;
+  background: white; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  overflow: hidden;
+}
+.clips-title {
+  padding: 9px 14px;
+  font-size: 11px; font-weight: 700; color: #666;
+  background: #fafafa; border-bottom: 1px solid #f0f0f0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.clips-list { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.clip-item {
+  border-radius: 7px; padding: 6px 9px;
+  font-size: 12px; font-weight: 600;
+  cursor: grab; display: flex; gap: 6px; align-items: center;
+  transition: transform 0.12s, opacity 0.12s;
+  user-select: none;
+}
+.clip-item:active { transform: scale(0.96); cursor: grabbing; }
+.clip-item.used   { opacity: 0.3; }
+.clip-badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(0,0,0,0.08); flex-shrink: 0; }
+.clip-text  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clips-empty { font-size: 11px; color: #ccc; text-align: center; padding: 16px 0; }
+
+/* カスタム入力 */
+.custom-input-group {
+  background: white; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  padding: 10px 12px;
+  min-width: 200px; flex: 0 0 auto;
+}
+.custom-input-group label { font-size: 11px; font-weight: 700; color: #666; display: block; margin-bottom: 6px; }
+.custom-input-group input {
+  width: 100%; font-size: 12px; padding: 7px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  background: #fafafa; outline: none; margin-bottom: 7px;
+  font-family: inherit;
+}
+.custom-input-group input:focus { border-color: #4f6ef7; background: white; }
+.custom-input-group button {
+  width: 100%; font-size: 12px; padding: 7px;
+  border: none; border-radius: 8px;
+  background: #4f6ef7; color: white; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.custom-input-group button:hover { background: #3b5bdb; }
+.custom-input-group select {
+  width: 100%; font-size: 12px; padding: 7px 10px;
+  border: 1.5px solid #e2e2e2; border-radius: 8px;
+  background: #fafafa; outline: none; margin-bottom: 7px;
+  font-family: inherit;
+}
+
+/* clip colors */
+.cc-todo   { background: #eff3ff; color: #3b5bdb; }
+.cc-memo   { background: #fffbeb; color: #b45309; }
+.cc-medium { background: #f5f3ff; color: #6d28d9; }
+.cc-deadline { background: #fff1f2; color: #be123c; }
+
+/* スクロールヒント */
+.scroll-hint {
+  text-align: center; font-size: 11px; color: #bbb;
+  padding: 5px 0 7px; background: white; letter-spacing: 0.05em;
+}
+
+/* スマホ向け */
+@media (max-width: 640px) {
+  .track-row { height: 80px !important; }
+  .page-header { padding: 10px 10px; }
+  .back-btn { padding: 5px 8px; font-size: 11px; }
+  .header-date { font-size: 13px; }
+  .header-sub { font-size: 10px; }
+  .clips-row { flex-direction: column; }
+  .clips-group { min-width: 0; }
+  .clips-list { max-height: 140px; }
+  .custom-input-group { min-width: 0; }
+  .sched-block { font-size: 11px; }
+}
+
+/* 縦レイアウト切り替えボタン */
+.layout-toggle {
+  font-size: 11px; padding: 4px 9px;
+  border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
+  background: none; color: rgba(255,255,255,0.8); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+}
+.layout-toggle:hover { background: rgba(255,255,255,0.1); }
+.layout-toggle.active { background: rgba(255,255,255,0.2); }
+
+/* 縦レイアウト */
+.vtl-wrap { padding: 0 0 20px; }
+.vtl-hour {
+  display: flex; min-height: 64px; border-bottom: 1px solid #f0f0f0;
+  background: white; position: relative;
+}
+.vtl-label {
+  width: 52px; flex-shrink: 0; font-size: 11px; color: #bbb;
+  padding: 6px 8px 0; text-align: right; font-weight: 500; line-height: 1;
+}
+.vtl-slot {
+  flex: 1; position: relative; cursor: crosshair; min-height: 64px;
+  border-left: 1px solid #f5f5f5;
+}
+.vtl-slot.drag-over { background: #eff3ff; }
+.vtl-slot .half-line {
+  position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #f5f5f5; pointer-events: none;
+}
+/* 縦ブロック */
+.vtl-block {
+  position: absolute; left: 4px; right: 4px;
+  border-radius: 8px; padding: 4px 8px;
+  font-size: 12px; font-weight: 700; color: white;
+  cursor: grab; z-index: 5;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  user-select: none; overflow: hidden; min-height: 20px;
+}
+.vtl-block:active { cursor: grabbing; }
+.vtl-block .vb-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vtl-block .vb-time { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.75); }
+.vtl-block .vb-del  {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(0,0,0,0.2); border: none; color: white; cursor: pointer;
+  width: 16px; height: 16px; border-radius: 50%; font-size: 11px;
+  line-height: 16px; text-align: center; padding: 0; display: none;
+}
+.vtl-block:hover .vb-del { display: block; }
+/* 縦Notionブロック */
+.vtl-notion {
+  position: absolute; left: 0; right: 0;
+  background: linear-gradient(180deg,#374151,#4b5563);
+  opacity: 0.85; padding: 4px 8px 4px 10px;
+  font-size: 12px; font-weight: 700; color: white;
+  cursor: default; user-select: none; overflow: hidden;
+  border-top: 3px solid #60a5fa; z-index: 3;
+}
+.vtl-notion .vn-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vtl-notion .vn-time { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.6); }
+.vtl-notion .vn-del  {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(255,255,255,0.15); border: none; color: white; cursor: pointer;
+  width: 16px; height: 16px; border-radius: 50%; font-size: 11px;
+  line-height: 16px; text-align: center; padding: 0; display: none;
+}
+.vtl-notion:hover .vn-del { display: block; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <a class="back-btn" href="/index.html">← ホーム</a>
+  <div style="flex:1;min-width:0;">
+    <div class="header-date" id="headerDate">読み込み中…</div>
+    <div class="header-sub" id="headerSub">ドラッグで作成 · 移動 · リサイズ</div>
+  </div>
+  <button class="layout-toggle" id="layoutToggle" onclick="toggleLayout()">縦 ↕</button>
+  <div class="date-nav">
+    <button class="nav-btn" onclick="changeDate(-1)">‹</button>
+    <button class="nav-btn" onclick="changeDate(1)">›</button>
+  </div>
+</div>
+
+<!-- タイムライン（横・縦切り替え） -->
+<div id="tlContainer">
+  <!-- 横レイアウト -->
+  <div class="tl-wrap" id="tlWrap"><!-- JSで構築 --></div>
+  <div class="scroll-hint" id="scrollHint">← 横スクロールで時間移動 →</div>
+  <!-- 縦レイアウト -->
+  <div class="vtl-wrap" id="vtlWrap" style="display:none;"><!-- JSで構築 --></div>
+</div>
+
+<!-- クリップパネル -->
+<div class="clips-panel">
+  <div class="clips-row">
+    <div class="clips-group">
+      <div class="clips-title"><span>📎 引き継ぎ</span><span id="clipsCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></div>
+      <div class="clips-list" id="clipsBody"><div class="clips-empty">読み込み中…</div></div>
+    </div>
+    <div class="clips-group">
+      <div class="clips-title"><span>🗓️ 今日の納期</span><span id="deadlineCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></div>
+      <div class="clips-list" id="deadlineBody"><div class="clips-empty">読み込み中…</div></div>
+    </div>
+    <div class="custom-input-group">
+      <label>＋ 自由入力ブロック</label>
+      <input type="text" id="customText" placeholder="作業内容・メモなど" maxlength="60">
+      <select id="customColor">
+        <option value="custom">🟢 作業</option>
+        <option value="todo">🔵 TODO</option>
+        <option value="memo">🟡 メモ</option>
+        <option value="deadline">🔴 締切</option>
+      </select>
+      <button onclick="addCustomBlock()">今すぐ追加（現在時刻）</button>
+    </div>
+  </div>
+</div>
+
+<div class="snap-toast" id="snapToast"></div>
+<div class="snap-toast" id="saveToast" style="bottom:120px;background:rgba(16,185,129,0.9);">✓ 保存しました</div>
+
+<script>
+const SERVER  = window.location.origin;
+const HR_W    = 60;   // px per hour
+const SNAP_M  = 15;   // minute snap
+const TOTAL_M = 24 * 60;
+const TOTAL_W = (TOTAL_M / 60) * HR_W; // 1440px
+
+// ===== 日付管理 =====
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+}
+function p2(n) { return String(n).padStart(2,'0'); }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let currentDate = (() => {
+  return new URLSearchParams(location.search).get('date') || getTodayStr();
+})();
+
+function formatDateJP(ds) {
+  const [y,m,d] = ds.split('-');
+  const wd = ['日','月','火','水','木','金','土'][new Date(ds).getDay()];
+  return `${parseInt(y)}年${parseInt(m)}月${parseInt(d)}日（${wd}）`;
+}
+function changeDate(delta) {
+  const d = new Date(currentDate);
+  d.setDate(d.getDate() + delta);
+  currentDate = `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+  history.replaceState(null, '', `?date=${currentDate}`);
+  init();
+}
+
+// ===== データ =====
+let schedBlocks   = [];
+let handoverItems = [];
+let deadlineItems = [];  // 納期クリップ用
+let notionEvents  = [];  // Notionの固定予定（バイト・会議など）
+
+// ===== タイムライン構築 =====
+function buildTimeline() {
+  const wrap = document.getElementById('tlWrap');
+
+  // ルーラー
+  let rulerHTML = `<div class="ruler" style="width:${TOTAL_W}px">`;
+  for (let h = 0; h < 24; h++) {
+    rulerHTML += `<div class="ruler-label" style="width:${HR_W}px">${p2(h)}</div>`;
+  }
+  rulerHTML += '</div>';
+
+  // トラック行
+  const laneId = 'mainLane';
+  let gridHTML = '';
+  for (let h = 0; h < 24; h++) {
+    const x = h * HR_W;
+    gridHTML += `<div class="grid-line major" style="left:${x}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.25}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.5}px"></div>`;
+    gridHTML += `<div class="grid-line" style="left:${x + HR_W*0.75}px"></div>`;
+  }
+  const trackHTML = `
+    <div class="track-row" style="width:${TOTAL_W}px">
+      <div class="track-lane" id="${laneId}">
+        ${gridHTML}
+      </div>
+    </div>`;
+
+  wrap.innerHTML = rulerHTML + trackHTML;
+
+  // イベント登録
+  const lane = document.getElementById(laneId);
+  lane.addEventListener('mousedown', onLaneMouseDown);
+  lane.addEventListener('touchstart', onLaneTouchStart, { passive: false });
+}
+
+function minToX(min) { return (min / 60) * HR_W; }
+function xToMin(x) {
+  const raw = (x / HR_W) * 60;
+  return Math.round(raw / SNAP_M) * SNAP_M;
+}
+function clampMin(m) { return Math.max(0, Math.min(m, TOTAL_M)); }
+
+// ===== ブロック描画 =====
+const BC = { todo:'bc-todo', memo:'bc-memo', medium:'bc-medium', custom:'bc-custom', deadline:'bc-deadline' };
+const BL = { todo:'TODO', memo:'メモ', medium:'中期', custom:'作業', deadline:'納期' };
+
+function renderBlocks() {
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.sched-block,.preview-block,.blk-name-tag').forEach(el => el.remove());
+  schedBlocks.forEach(b => addBlockEl(b));
+  updateNowLine();
+}
+
+function addBlockEl(b) {
+  if (layoutMode === 'vertical') { addVtlBlockEl(b); return; }
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  const start = b.startMin ?? 0;
+  const end   = b.endMin   ?? start + 60;
+  const x     = minToX(start);
+  const w     = Math.max(4, minToX(end) - x);
+  const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
+  const isNarrow = w < 64;
+
+  // ===== 名前タグ（常時表示）=====
+  const tag = document.createElement('div');
+  tag.className = `blk-name-tag tag-${b.type||'custom'}`;
+  tag.id = `tag-${b.id}`;
+  tag.style.left  = `${x + 2}px`;
+  tag.style.maxWidth = `${Math.max(30, w - 4)}px`;
+  tag.textContent = b.text || '（無題）';
+  lane.appendChild(tag);
+
+  // ===== ブロック本体 =====
+  const el = document.createElement('div');
+  el.className = `sched-block ${BC[b.type]||'bc-custom'}${isNarrow?' blk-narrow':''}`;
+  el.id = `blk-${b.id}`;
+  el.style.left  = `${x}px`;
+  el.style.width = `${w}px`;
+  el.dataset.text = b.text;
+  el.dataset.time = timeStr;
+  // 広いブロックはブロック内にも時刻表示
+  el.innerHTML = `
+    <div class="blk-handle-l" data-action="resize-l" data-id="${b.id}"></div>
+    <div class="blk-inner">
+      ${!isNarrow ? `<span class="blk-text">${esc(b.text)}</span>` : ''}
+      <span class="blk-time">${timeStr}</span>
+    </div>
+    <button class="blk-del" onclick="deleteBlock('${b.id}',event)">×</button>
+    <div class="blk-handle-r" data-action="resize-r" data-id="${b.id}"></div>`;
+
+  el.addEventListener('mousedown', e => onBlockMouseDown(e, b.id));
+  el.addEventListener('touchstart', e => onBlockTouchStart(e, b.id), { passive: false });
+  el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
+  el.addEventListener('mouseleave', () => hideTooltip());
+  lane.appendChild(el);
+}
+
+// ===== ブロック作成後インライン入力 =====
+function startBlockWithInput(s, en) {
+  const block = { id: genId(), type: 'custom', text: '', startMin: s, endMin: en };
+  schedBlocks.push(block);
+  addBlockEl(block);
+
+  const el = document.getElementById(`blk-${block.id}`);
+  if (!el) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '内容を入力… (Enter確定 / Esc削除)';
+  input.className = 'blk-input';
+  input.maxLength = 50;
+  el.appendChild(input);
+  setTimeout(() => input.focus(), 30);
+
+  let done = false;
+  const commit = async (cancel = false) => {
+    if (done) return;
+    done = true;
+    input.remove();
+    const text = input.value.trim();
+    if (cancel || !text) {
+      schedBlocks = schedBlocks.filter(b => b.id !== block.id);
+      el.remove();
+      document.getElementById(`tag-${block.id}`)?.remove();
+      return;
+    }
+    block.text = text;
+    const tag = document.getElementById(`tag-${block.id}`);
+    if (tag) tag.textContent = text;
+    el.dataset.text = text;
+    const inner = el.querySelector('.blk-text');
+    if (inner) inner.textContent = text;
+    updateClipUsed();
+    await saveBlock(block);
+    // 保存後にNotion追加選択パネルを表示
+    showNotionAddPanel(block, el);
+  };
+  input.addEventListener('blur', () => {
+    // パネルがあればblurは無視（パネルのボタンクリック中）
+    setTimeout(() => { if (!document.querySelector('.notion-add-panel')) commit(false); }, 120);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
+    if (e.key === 'Escape') { e.preventDefault(); commit(true); }
+  });
+}
+
+// ===== Notion追加選択パネル =====
+function showNotionAddPanel(block, blockEl) {
+  // 既存パネルを除去
+  document.querySelector('.notion-add-panel')?.remove();
+
+  const sh = `${p2(Math.floor(block.startMin/60))}:${p2(block.startMin%60)}`;
+  const eh = `${p2(Math.floor(block.endMin/60))}:${p2(block.endMin%60)}`;
+
+  const panel = document.createElement('div');
+  panel.className = 'notion-add-panel';
+  panel.innerHTML = `
+    <div class="nap-label">📅 Notionカレンダーにも追加しますか？</div>
+    <div class="nap-time">${sh}〜${eh}　「${esc(block.text)}」</div>
+    <div class="nap-btns">
+      <button class="nap-btn nap-btn-local">このアプリのみ</button>
+      <button class="nap-btn nap-btn-notion">＋ Notionにも登録</button>
+    </div>`;
+  document.body.appendChild(panel);
+
+  // ブロック上部に配置（画面端対応）
+  const rect = blockEl.getBoundingClientRect();
+  const PW = panel.offsetWidth || 230;
+  let left = rect.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - PW - 8));
+  if (rect.top > 130) {
+    panel.style.top  = `${rect.top - 130}px`;
+  } else {
+    panel.style.top  = `${rect.bottom + 8}px`;
+  }
+  panel.style.left = `${left}px`;
+
+  const close = () => panel.remove();
+
+  panel.querySelector('.nap-btn-local').addEventListener('click', () => {
+    close();
+    showSaveToast('✅ 保存しました');
+  });
+
+  panel.querySelector('.nap-btn-notion').addEventListener('click', async () => {
+    close();
+    await addBlockToNotion(block, sh, eh);
+  });
+
+  // 外クリックで閉じる（少し遅延させてボタンクリックと競合させない）
+  setTimeout(() => {
+    const onOutside = (e) => {
+      if (!panel.contains(e.target)) { close(); document.removeEventListener('click', onOutside); }
+    };
+    document.addEventListener('click', onOutside);
+  }, 200);
+}
+
+async function addBlockToNotion(block, sh, eh) {
+  try {
+    const r = await fetch(`${SERVER}/api/calendar/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: block.text,
+        date: currentDate,
+        startTime: sh,
+        endTime: eh,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      block.notionId = d.id;
+      await saveBlock(block);
+      showSaveToast('📅 Notionに登録しました');
+      setTimeout(() => loadNotionEvents(), 1200);
+    } else {
+      showSaveToast('⚠️ Notion登録に失敗しました');
+    }
+  } catch(err) {
+    showSaveToast('⚠️ Notion登録に失敗しました');
+  }
+}
+
+function refreshBlockEl(b) {
+  if (layoutMode === 'vertical') { renderVtlBlocks(); return; }
+  const el = document.getElementById(`blk-${b.id}`);
+  if (!el) { addBlockEl(b); return; }
+  const start = b.startMin ?? 0;
+  const end   = b.endMin   ?? start + 60;
+  const x = minToX(start);
+  const w = Math.max(4, minToX(end) - x);
+  el.style.left  = `${x}px`;
+  el.style.width = `${w}px`;
+  const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}-${p2(Math.floor(end/60))}:${p2(end%60)}`;
+  const ts = el.querySelector('.blk-time');
+  if (ts) ts.textContent = timeStr;
+  el.dataset.time = timeStr;
+  el.classList.toggle('blk-narrow', w < 64);
+  // 名前タグ位置も更新
+  const tag = document.getElementById(`tag-${b.id}`);
+  if (tag) { tag.style.left = `${x + 2}px`; tag.style.maxWidth = `${Math.max(30, w - 4)}px`; }
+}
+
+// ===== Notion固定ブロック描画（バイト・会議） =====
+function renderNotionBlocks() {
+  if (layoutMode === 'vertical') { renderVtlNotionBlocks(); return; }
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.notion-block').forEach(el => el.remove());
+  notionEvents.forEach(ev => {
+    if (!ev.startTime) return;
+    const startMin = timeToMin(ev.startTime);
+    const endMin   = ev.endTime ? timeToMin(ev.endTime) : startMin + 60;
+    const x = minToX(startMin);
+    const w = Math.max(8, minToX(endMin) - x);
+    const timeStr = `${ev.startTime}${ev.endTime ? '〜'+ev.endTime : ''}`;
+    const isNarrow = w < 80;
+
+    const el = document.createElement('div');
+    el.className = `notion-block${isNarrow?' nb-narrow':''}`;
+    el.id = `notion-${ev.id}`;
+    el.style.left  = `${x}px`;
+    el.style.width = `${w}px`;
+    el.dataset.text = ev.title;
+    el.dataset.time = timeStr;
+    el.dataset.notionId = ev.id;
+    el.innerHTML = `
+      <span class="nb-lock">🔒</span>
+      <div class="nb-inner">
+        <span class="nb-text">${esc(ev.title)}</span>
+        <span class="nb-time">${timeStr}</span>
+      </div>
+      <button class="nb-del" onclick="deleteNotionBlock('${ev.id}',event)" title="スケジュールから除去">×</button>`;
+    el.dataset.startMin = startMin;
+    el.dataset.endMin   = endMin;
+    ev._startMin = startMin;
+    ev._endMin   = endMin;
+    el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
+    el.addEventListener('mouseleave', () => hideTooltip());
+    el.addEventListener('mousedown',  e => onNotionBlockMouseDown(e, ev.id));
+    el.addEventListener('touchstart', e => onNotionBlockTouchStart(e, ev.id), { passive: false });
+    lane.appendChild(el);
+  });
+}
+
+function refreshNotionBlockEl(ev) {
+  const el = document.getElementById(`notion-${ev.id}`);
+  if (!el) return;
+  const s = ev._startMin ?? 0;
+  const en = ev._endMin ?? s + 60;
+  const x = minToX(s);
+  const w = Math.max(8, minToX(en) - x);
+  el.style.left  = `${x}px`;
+  el.style.width = `${w}px`;
+  const sh = `${p2(Math.floor(s/60))}:${p2(s%60)}`;
+  const eh = `${p2(Math.floor(en/60))}:${p2(en%60)}`;
+  const timeStr = `${sh}〜${eh}`;
+  el.dataset.time = timeStr;
+  el.dataset.startMin = s;
+  el.dataset.endMin   = en;
+  const timeEl = el.querySelector('.nb-time');
+  if (timeEl) timeEl.textContent = timeStr;
+  el.classList.toggle('nb-narrow', w < 80);
+}
+
+function onNotionBlockMouseDown(e, notionId) {
+  if (e.target.classList.contains('nb-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  hideTooltip();
+  const ev = notionEvents.find(x => x.id === notionId);
+  if (!ev) return;
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  interaction = {
+    type: 'notion-move',
+    id: notionId,
+    origStart: ev._startMin,
+    origEnd:   ev._endMin,
+    grabOffset: x0 - minToX(ev._startMin),
+    duration: (ev._endMin ?? ev._startMin + 60) - ev._startMin,
+    moved: false,
+  };
+  document.getElementById(`notion-${notionId}`)?.classList.add('dragging');
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+function onNotionBlockTouchStart(e, notionId) {
+  if (e.target.classList.contains('nb-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  hideTooltip();
+  const ev = notionEvents.find(x => x.id === notionId);
+  if (!ev) return;
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  touchIA = {
+    type: 'notion-move',
+    id: notionId,
+    origStart: ev._startMin,
+    origEnd:   ev._endMin,
+    grabOffset: x0 - minToX(ev._startMin),
+    duration: (ev._endMin ?? ev._startMin + 60) - ev._startMin,
+    moved: false,
+  };
+  document.getElementById(`notion-${notionId}`)?.classList.add('dragging');
+  document.addEventListener('touchmove',   onTouchMove,  { passive: false });
+  document.addEventListener('touchend',    onTouchEnd);
+  document.addEventListener('touchcancel', onTouchEnd);
+}
+
+function timeToMin(timeStr) {
+  if (!timeStr) return 0;
+  const [h, m] = timeStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// ===== ツールチップ =====
+let tooltipEl = null;
+function showTooltip(target, touch) {
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'blk-tooltip';
+    document.body.appendChild(tooltipEl);
+  }
+  const name = target.dataset.text || '（無題）';
+  const time = target.dataset.time || '';
+  tooltipEl.innerHTML = `<span class="tt-name">${esc(name)}</span>${time ? `<span class="tt-time">🕐 ${esc(time)}</span>` : ''}`;
+  tooltipEl.classList.add('show');
+
+  // 位置計算（ブロックの上・画面端に被らないよう調整）
+  const rect = target.getBoundingClientRect();
+  const cx = touch ? touch.clientX : rect.left + rect.width / 2;
+  const TT_W = 200;
+  let left = cx - TT_W / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - TT_W - 8));
+  // 上に出す余裕がなければ下に出す
+  const spaceAbove = rect.top;
+  if (spaceAbove < 72) {
+    tooltipEl.style.top = `${rect.bottom + 8}px`;
+  } else {
+    tooltipEl.style.top = `${rect.top - 68}px`;
+  }
+  tooltipEl.style.left = `${left}px`;
+}
+function hideTooltip() {
+  if (tooltipEl) tooltipEl.classList.remove('show');
+}
+
+// ===== Notion削除確認 =====
+async function deleteNotionBlock(notionId, e) {
+  e.stopPropagation();
+  const ev = notionEvents.find(x => x.id === notionId);
+  const name = ev ? ev.title : '予定';
+  const alsoNotion = confirm(`「${name}」をNotionから削除しますか？\n\nOK → Notionからも完全削除\nキャンセル → この画面からのみ除去`);
+  if (alsoNotion) {
+    try {
+      await fetch(`${SERVER}/api/calendar/delete`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ id: notionId }),
+        signal: AbortSignal.timeout(8000),
+      });
+      showSaveToast('🗑️ Notionから削除しました');
+    } catch(err) {
+      showSaveToast('⚠️ Notion削除に失敗しました');
+    }
+  }
+  notionEvents = notionEvents.filter(x => x.id !== notionId);
+  document.getElementById(`notion-${notionId}`)?.remove();
+  document.getElementById(`vtlnotion-${notionId}`)?.remove();
+}
+
+// ===== レイアウト切り替え =====
+let layoutMode = 'horizontal'; // 'horizontal' | 'vertical'
+
+function toggleLayout() {
+  layoutMode = layoutMode === 'horizontal' ? 'vertical' : 'horizontal';
+  sessionStorage.setItem('layoutPref', layoutMode);
+  const btn = document.getElementById('layoutToggle');
+  btn.textContent = layoutMode === 'vertical' ? '横 ↔' : '縦 ↕';
+  btn.classList.toggle('active', layoutMode === 'vertical');
+  document.getElementById('tlWrap').style.display    = layoutMode === 'horizontal' ? '' : 'none';
+  document.getElementById('scrollHint').style.display = layoutMode === 'horizontal' ? '' : 'none';
+  document.getElementById('vtlWrap').style.display   = layoutMode === 'vertical'   ? '' : 'none';
+  if (layoutMode === 'vertical') {
+    buildVerticalTimeline();
+    renderVtlNotionBlocks();
+    renderVtlBlocks();
+  } else {
+    renderNotionBlocks();
+    renderBlocks();
+  }
+}
+
+// ===== 縦レイアウト構築 =====
+const VTL_HOUR_H = 64; // px per hour (vertical)
+
+function buildVerticalTimeline() {
+  const wrap = document.getElementById('vtlWrap');
+  let html = '';
+  for (let h = 0; h < 24; h++) {
+    html += `<div class="vtl-hour" id="vtlhr-${h}" style="min-height:${VTL_HOUR_H}px;">
+      <div class="vtl-label">${p2(h)}:00</div>
+      <div class="vtl-slot" id="vtlslot-${h}" data-hour="${h}"
+           ondragover="e.preventDefault()" ontouchstart="">
+        <div class="half-line"></div>
+      </div>
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  // タッチで新規作成
+  for (let h = 0; h < 24; h++) {
+    const slot = document.getElementById(`vtlslot-${h}`);
+    if (slot) {
+      slot.addEventListener('mousedown', e => onVtlSlotDown(e, h));
+      slot.addEventListener('touchstart', e => onVtlSlotTouch(e, h), { passive: false });
+    }
+  }
+}
+
+function minToVY(min) { return ((min % 60) / 60) * VTL_HOUR_H; }
+
+function renderVtlBlocks() {
+  document.querySelectorAll('.vtl-block').forEach(el => el.remove());
+  schedBlocks.forEach(b => addVtlBlockEl(b));
+}
+
+function addVtlBlockEl(b) {
+  const start = b.startMin ?? 0;
+  const end   = b.endMin   ?? start + 60;
+  const startH = Math.floor(start / 60);
+  const endH   = Math.floor((end - 1) / 60);
+  const timeStr = `${p2(Math.floor(start/60))}:${p2(start%60)}〜${p2(Math.floor(end/60))}:${p2(end%60)}`;
+
+  // ブロックが複数時間にまたがる場合は最初の時間のスロットに描画して height を調整
+  const slot = document.getElementById(`vtlslot-${startH}`);
+  if (!slot) return;
+  const topPx    = minToVY(start);
+  const totalMin = end - start;
+  const heightPx = Math.max(20, (totalMin / 60) * VTL_HOUR_H);
+
+  const el = document.createElement('div');
+  el.className = `vtl-block ${BC[b.type]||'bc-custom'}`;
+  el.id = `vtlblk-${b.id}`;
+  el.style.top    = `${topPx}px`;
+  el.style.height = `${heightPx}px`;
+  el.innerHTML = `
+    <span class="vb-text">${esc(b.text)}</span>
+    <span class="vb-time">${timeStr}</span>
+    <button class="vb-del" onclick="deleteBlock('${b.id}',event)">×</button>`;
+  slot.appendChild(el);
+}
+
+function renderVtlNotionBlocks() {
+  document.querySelectorAll('.vtl-notion').forEach(el => el.remove());
+  notionEvents.forEach(ev => {
+    if (!ev.startTime) return;
+    const startMin = timeToMin(ev.startTime);
+    const endMin   = ev.endTime ? timeToMin(ev.endTime) : startMin + 60;
+    const startH   = Math.floor(startMin / 60);
+    const slot = document.getElementById(`vtlslot-${startH}`);
+    if (!slot) return;
+    const topPx    = minToVY(startMin);
+    const heightPx = Math.max(20, ((endMin - startMin) / 60) * VTL_HOUR_H);
+    const timeStr  = `${ev.startTime}${ev.endTime ? '〜'+ev.endTime : ''}`;
+
+    const el = document.createElement('div');
+    el.className = 'vtl-notion';
+    el.id = `vtlnotion-${ev.id}`;
+    el.style.top    = `${topPx}px`;
+    el.style.height = `${heightPx}px`;
+    el.innerHTML = `
+      <span class="vn-text">🔒 ${esc(ev.title)}</span>
+      <span class="vn-time">${timeStr}</span>
+      <button class="vn-del" onclick="deleteNotionBlock('${ev.id}',event)">×</button>`;
+    slot.appendChild(el);
+  });
+}
+
+// 縦タイムライン：スロットクリックで新規ブロック
+function onVtlSlotDown(e, hour) {
+  if (e.target.closest('.vtl-block') || e.target.closest('.vtl-notion')) return;
+  e.preventDefault();
+  const rect   = e.currentTarget.getBoundingClientRect();
+  const rawY   = e.clientY - rect.top;
+  const snapMin = Math.round(((rawY / VTL_HOUR_H) * 60) / SNAP_M) * SNAP_M;
+  const startMin = clampMin(hour * 60 + snapMin);
+  createVtlBlock(startMin);
+}
+function onVtlSlotTouch(e, hour) {
+  if (e.target.closest('.vtl-block') || e.target.closest('.vtl-notion')) return;
+  e.preventDefault();
+  const touch  = e.touches[0];
+  const rect   = e.currentTarget.getBoundingClientRect();
+  const rawY   = touch.clientY - rect.top;
+  const snapMin = Math.round(((rawY / VTL_HOUR_H) * 60) / SNAP_M) * SNAP_M;
+  const startMin = clampMin(hour * 60 + snapMin);
+  createVtlBlock(startMin);
+}
+async function createVtlBlock(startMin) {
+  const block = { id: genId(), type: 'custom', text: '作業', startMin, endMin: startMin + 60 };
+  schedBlocks.push(block);
+  addVtlBlockEl(block);
+  updateClipUsed();
+  await saveBlock(block);
+}
+
+// ===== 現在時刻ライン =====
+function updateNowLine() {
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  lane.querySelectorAll('.now-line').forEach(el => el.remove());
+  if (currentDate !== getTodayStr()) return;
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const x = minToX(m);
+  const line = document.createElement('div');
+  line.className = 'now-line';
+  line.style.left = `${x}px`;
+  line.innerHTML = '<div class="now-dot"></div>';
+  lane.appendChild(line);
+}
+
+// ===== マウスインタラクション =====
+let interaction = null; // { type: 'create'|'move'|'resize-l'|'resize-r', ... }
+let previewEl = null;
+
+function laneX(e, lane) {
+  const rect = lane.getBoundingClientRect();
+  return e.clientX - rect.left;
+}
+
+function onLaneMouseDown(e) {
+  if (e.target.closest('.sched-block') || e.target.closest('.blk-handle-l') || e.target.closest('.blk-handle-r')) return;
+  e.preventDefault();
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  const m0 = clampMin(xToMin(x0));
+
+  // プレビューブロック
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = `${minToX(m0)}px`;
+  previewEl.style.width = '0px';
+  lane.appendChild(previewEl);
+
+  interaction = { type: 'create', startMin: m0, endMin: m0, x0 };
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+function onBlockMouseDown(e, blockId) {
+  const handle = e.target.closest('[data-action]');
+  if (handle) {
+    e.preventDefault(); e.stopPropagation();
+    const action = handle.dataset.action; // 'resize-l' or 'resize-r'
+    const b = schedBlocks.find(x => x.id === blockId);
+    if (!b) return;
+    interaction = { type: action, id: blockId, origStart: b.startMin, origEnd: b.endMin };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onMouseUp);
+    return;
+  }
+  if (e.target.classList.contains('blk-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  const b = schedBlocks.find(x => x.id === blockId);
+  if (!b) return;
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  interaction = {
+    type: 'move', id: blockId,
+    grabOffset: x0 - minToX(b.startMin),
+    duration: (b.endMin ?? b.startMin+60) - b.startMin,
+  };
+  document.getElementById(`blk-${blockId}`)?.classList.add('dragging');
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+function onMouseMove(e) {
+  if (!interaction) return;
+  const lane = document.getElementById('mainLane');
+  const x = laneX(e, lane);
+  const m = clampMin(xToMin(x));
+
+  if (interaction.type === 'create') {
+    const s = Math.min(interaction.startMin, m);
+    const en = Math.max(interaction.startMin, m);
+    interaction.endMin = en;
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(s)}px`;
+      previewEl.style.width = `${Math.max(2, minToX(en) - minToX(s))}px`;
+    }
+  } else if (interaction.type === 'move') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    let s = clampMin(xToMin(x - interaction.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - interaction.duration));
+    b.startMin = s;
+    b.endMin   = s + interaction.duration;
+    refreshBlockEl(b);
+  } else if (interaction.type === 'resize-l') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    const newStart = clampMin(Math.min(m, interaction.origEnd - SNAP_M));
+    b.startMin = newStart;
+    refreshBlockEl(b);
+  } else if (interaction.type === 'resize-r') {
+    const b = schedBlocks.find(x => x.id === interaction.id);
+    if (!b) return;
+    const newEnd = clampMin(Math.max(m, interaction.origStart + SNAP_M));
+    b.endMin = newEnd;
+    refreshBlockEl(b);
+  } else if (interaction.type === 'notion-move') {
+    const ev = notionEvents.find(x => x.id === interaction.id);
+    if (!ev) return;
+    let s = clampMin(xToMin(x - interaction.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - interaction.duration));
+    ev._startMin = s;
+    ev._endMin   = s + interaction.duration;
+    interaction.moved = true;
+    refreshNotionBlockEl(ev);
+  }
+}
+
+async function onMouseUp(e) {
+  document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('mouseup',   onMouseUp);
+  if (!interaction) return;
+  const ia = interaction;
+  interaction = null;
+
+  if (ia.type === 'create') {
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const s = Math.min(ia.startMin, ia.endMin);
+    const en = Math.max(ia.startMin, ia.endMin);
+    if (en - s < SNAP_M) return; // 短すぎ → キャンセル
+    startBlockWithInput(s, en);
+  } else if (ia.type === 'move' || ia.type === 'resize-l' || ia.type === 'resize-r') {
+    document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
+    const b = schedBlocks.find(x => x.id === ia.id);
+    if (b) {
+      refreshBlockEl(b);
+      await saveBlock(b);
+    }
+  } else if (ia.type === 'notion-move') {
+    const elN = document.getElementById(`notion-${ia.id}`);
+    elN?.classList.remove('dragging');
+    if (!ia.moved) return;
+    const ev = notionEvents.find(x => x.id === ia.id);
+    if (!ev) return;
+    const sh = `${p2(Math.floor(ev._startMin/60))}:${p2(ev._startMin%60)}`;
+    const eh = `${p2(Math.floor(ev._endMin/60))}:${p2(ev._endMin%60)}`;
+    const ok = confirm(`「${ev.title}」の時刻をNotionで\n${sh}〜${eh} に変更しますか？\n\nキャンセルすると元の時刻に戻ります。`);
+    if (!ok) {
+      ev._startMin = ia.origStart;
+      ev._endMin   = ia.origEnd;
+      refreshNotionBlockEl(ev);
+      return;
+    }
+    ev.startTime = sh;
+    ev.endTime   = eh;
+    elN?.classList.add('nb-unlocked');
+    try {
+      const r = await fetch(`${SERVER}/api/notion-event/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ia.id, date: currentDate, startMin: ev._startMin, endMin: ev._endMin }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showSaveToast('📅 Notionに反映しました');
+        elN?.classList.remove('nb-unlocked');
+      } else {
+        showSaveToast('⚠️ Notion更新に失敗しました');
+      }
+    } catch(err) {
+      showSaveToast('⚠️ Notion更新に失敗しました');
+    }
+  }
+}
+
+// ===== タッチ操作 =====
+let touchIA = null;
+
+function onLaneTouchStart(e) {
+  if (e.target.closest('.sched-block')) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  const m0    = clampMin(xToMin(x0));
+
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = `${minToX(m0)}px`;
+  previewEl.style.width = '0px';
+  lane.appendChild(previewEl);
+
+  touchIA = { type: 'create', startMin: m0, endMin: m0 };
+  document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  document.addEventListener('touchend',   onTouchEnd);
+  document.addEventListener('touchcancel',onTouchEnd);
+}
+
+function onBlockTouchStart(e, blockId) {
+  if (e.target.closest('[data-action]')) {
+    const action = e.target.closest('[data-action]').dataset.action;
+    e.preventDefault(); e.stopPropagation();
+    const b = schedBlocks.find(x => x.id === blockId);
+    if (!b) return;
+    touchIA = { type: action, id: blockId, origStart: b.startMin, origEnd: b.endMin };
+    document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    document.addEventListener('touchend',   onTouchEnd);
+    document.addEventListener('touchcancel',onTouchEnd);
+    return;
+  }
+  if (e.target.classList.contains('blk-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  const b = schedBlocks.find(x => x.id === blockId);
+  if (!b) return;
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  touchIA = {
+    type: 'move', id: blockId,
+    grabOffset: x0 - minToX(b.startMin),
+    duration: (b.endMin ?? b.startMin+60) - b.startMin,
+  };
+  document.getElementById(`blk-${blockId}`)?.classList.add('dragging');
+  document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  document.addEventListener('touchend',   onTouchEnd);
+  document.addEventListener('touchcancel',onTouchEnd);
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  if (!touchIA) return;
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x     = touch.clientX - rect.left;
+  const m     = clampMin(xToMin(x));
+
+  if (touchIA.type === 'create') {
+    const s  = Math.min(touchIA.startMin, m);
+    const en = Math.max(touchIA.startMin, m);
+    touchIA.endMin = en;
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(s)}px`;
+      previewEl.style.width = `${Math.max(2, minToX(en)-minToX(s))}px`;
+    }
+  } else if (touchIA.type === 'move') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    let s = clampMin(xToMin(x - touchIA.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - touchIA.duration));
+    b.startMin = s; b.endMin = s + touchIA.duration;
+    refreshBlockEl(b);
+  } else if (touchIA.type === 'resize-l') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    b.startMin = clampMin(Math.min(m, touchIA.origEnd - SNAP_M));
+    refreshBlockEl(b);
+  } else if (touchIA.type === 'resize-r') {
+    const b = schedBlocks.find(x => x.id === touchIA.id);
+    if (!b) return;
+    b.endMin = clampMin(Math.max(m, touchIA.origStart + SNAP_M));
+    refreshBlockEl(b);
+  } else if (touchIA.type === 'notion-move') {
+    const ev = notionEvents.find(x => x.id === touchIA.id);
+    if (!ev) return;
+    let s = clampMin(xToMin(x - touchIA.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - touchIA.duration));
+    ev._startMin = s;
+    ev._endMin   = s + touchIA.duration;
+    touchIA.moved = true;
+    refreshNotionBlockEl(ev);
+  }
+}
+
+async function onTouchEnd(e) {
+  document.removeEventListener('touchmove',  onTouchMove);
+  document.removeEventListener('touchend',   onTouchEnd);
+  document.removeEventListener('touchcancel',onTouchEnd);
+  if (!touchIA) return;
+  const ia = touchIA;
+  touchIA = null;
+
+  if (ia.type === 'create') {
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const s  = Math.min(ia.startMin, ia.endMin);
+    const en = Math.max(ia.startMin, ia.endMin);
+    if (en - s < SNAP_M) return;
+    startBlockWithInput(s, en);
+  } else if (ia.type === 'notion-move') {
+    const elN = document.getElementById(`notion-${ia.id}`);
+    elN?.classList.remove('dragging');
+    if (!ia.moved) return;
+    const ev = notionEvents.find(x => x.id === ia.id);
+    if (!ev) return;
+    const sh = `${p2(Math.floor(ev._startMin/60))}:${p2(ev._startMin%60)}`;
+    const eh = `${p2(Math.floor(ev._endMin/60))}:${p2(ev._endMin%60)}`;
+    const ok = confirm(`「${ev.title}」の時刻をNotionで\n${sh}〜${eh} に変更しますか？\n\nキャンセルすると元の時刻に戻ります。`);
+    if (!ok) {
+      ev._startMin = ia.origStart;
+      ev._endMin   = ia.origEnd;
+      refreshNotionBlockEl(ev);
+      return;
+    }
+    ev.startTime = sh;
+    ev.endTime   = eh;
+    elN?.classList.add('nb-unlocked');
+    try {
+      const r = await fetch(`${SERVER}/api/notion-event/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ia.id, date: currentDate, startMin: ev._startMin, endMin: ev._endMin }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showSaveToast('📅 Notionに反映しました');
+        elN?.classList.remove('nb-unlocked');
+      } else {
+        showSaveToast('⚠️ Notion更新に失敗しました');
+      }
+    } catch(err) {
+      showSaveToast('⚠️ Notion更新に失敗しました');
+    }
+  } else {
+    document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
+    const b = schedBlocks.find(x => x.id === ia.id);
+    if (b) { refreshBlockEl(b); await saveBlock(b); }
+  }
+}
+
+// ===== クリップドラッグ → タイムラインへ =====
+let clipDragInfo = null;
+
+function startClipDrag(e, clipId, type, text) {
+  // マウス
+  const lane = document.getElementById('mainLane');
+  if (!lane) return;
+  const onMove = (ev) => {
+    const rect = lane.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const m = clampMin(xToMin(x));
+    if (previewEl) {
+      previewEl.style.left  = `${minToX(m)}px`;
+      previewEl.style.width = `${HR_W}px`; // 1h preview
+    }
+  };
+  previewEl = document.createElement('div');
+  previewEl.className = 'preview-block';
+  previewEl.style.left  = '-9999px';
+  previewEl.style.width = `${HR_W}px`;
+  lane.appendChild(previewEl);
+  clipDragInfo = { clipId, type, text };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', async (ev) => {
+    document.removeEventListener('mousemove', onMove);
+    if (previewEl) { previewEl.remove(); previewEl = null; }
+    const rect = lane.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    if (x >= 0 && x <= TOTAL_W) {
+      const m = clampMin(xToMin(x));
+      await placeClip(clipDragInfo, m);
+    }
+    clipDragInfo = null;
+  }, { once: true });
+}
+
+async function placeClip(info, startMin) {
+  const existing = schedBlocks.find(b => b.sourceId === info.clipId);
+  if (existing) {
+    existing.startMin = startMin;
+    existing.endMin   = startMin + (existing.endMin - existing.startMin || 60);
+    refreshBlockEl(existing);
+    await saveBlock(existing);
+    return;
+  }
+  const block = { id: genId(), sourceId: info.clipId, type: info.type, text: info.text, startMin, endMin: startMin + 60 };
+  schedBlocks.push(block);
+  addBlockEl(block);
+  updateClipUsed();
+  await saveBlock(block);
+}
+
+function updateClipUsed() {
+  const usedSrc = schedBlocks.filter(b => b.sourceId).map(b => b.sourceId);
+  document.querySelectorAll('.clip-item[data-src]').forEach(el => {
+    el.classList.toggle('used', usedSrc.includes(el.dataset.src));
+  });
+}
+
+// ===== クリップ描画 =====
+function renderClips() {
+  const body = document.getElementById('clipsBody');
+  document.getElementById('clipsCount').textContent = `${handoverItems.length}件`;
+  const LABEL = { todo:'TODO', memo:'メモ', medium:'中期' };
+  const CC    = { todo:'cc-todo', memo:'cc-memo', medium:'cc-medium' };
+  if (!handoverItems.length) {
+    body.innerHTML = '<div class="clips-empty">今日の引き継ぎはありません</div>';
+    return;
+  }
+  body.innerHTML = handoverItems.map(item => `
+    <div class="clip-item ${CC[item.type]||''}" data-src="${item.id}"
+         onmousedown="startClipDrag(event,'${item.id}','${item.type}','${esc(item.text)}')"
+    >
+      <span class="clip-badge">${LABEL[item.type]||item.type}</span>
+      <span class="clip-text" title="${esc(item.text)}">${esc(item.text)}</span>
+    </div>`).join('');
+  updateClipUsed();
+}
+
+function renderDeadlines() {
+  const body = document.getElementById('deadlineBody');
+  // 納期 + 時刻なし予定（時刻なしNotionイベントはクリップとして表示）
+  const noTimeEvents = notionEvents.filter(e => !e.startTime);
+  const allItems = [...deadlineItems, ...noTimeEvents];
+  document.getElementById('deadlineCount').textContent = `${allItems.length}件`;
+  if (!allItems.length) {
+    body.innerHTML = '<div class="clips-empty">今日の締切はありません</div>';
+    return;
+  }
+  body.innerHTML = allItems.map(item => {
+    const isDeadline = item.type === 'deadline';
+    const did = `dl-${item.id||item.title}`;
+    const title = item.title || item.name || '';
+    const badge = isDeadline ? '納期' : '予定';
+    const cc    = isDeadline ? 'cc-deadline' : 'cc-medium';
+    return `<div class="clip-item ${cc}" data-src="${esc(did)}"
+                 onmousedown="startClipDrag(event,'${esc(did)}','${isDeadline?'deadline':'schedule'}','${esc(title)}')"
+            >
+      <span class="clip-badge">${badge}</span>
+      <span class="clip-text" title="${esc(title)}">${esc(title)}</span>
+    </div>`;
+  }).join('');
+  updateClipUsed();
+}
+
+// ===== カスタムブロック追加 =====
+async function addCustomBlock() {
+  const txt   = document.getElementById('customText').value.trim();
+  const type  = document.getElementById('customColor').value;
+  if (!txt) return;
+  const now = new Date();
+  const s = Math.round((now.getHours()*60 + now.getMinutes()) / SNAP_M) * SNAP_M;
+  const block = { id: genId(), type, text: txt, startMin: s, endMin: s + 60 };
+  schedBlocks.push(block);
+  addBlockEl(block);
+  document.getElementById('customText').value = '';
+  updateClipUsed();
+  await saveBlock(block);
+  // スクロールして見えるように
+  const wrap = document.getElementById('tlWrap');
+  wrap.scrollLeft = Math.max(0, minToX(s) - 100);
+}
+
+// ===== ブロック削除 =====
+async function deleteBlock(blockId, e) {
+  e.stopPropagation();
+  const block = schedBlocks.find(b => b.id === blockId);
+  // Notionと連携している場合は確認ダイアログ
+  if (block?.notionId) {
+    const alsoNotion = confirm(`「${block.text || '予定'}」をNotionからも削除しますか？\n\nOK → Notionからも完全削除\nキャンセル → このアプリのみ削除`);
+    if (alsoNotion) {
+      try {
+        await fetch(`${SERVER}/api/calendar/delete`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ id: block.notionId }),
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch(err) {}
+    }
+  }
+  schedBlocks = schedBlocks.filter(b => b.id !== blockId);
+  document.getElementById(`blk-${blockId}`)?.remove();
+  document.getElementById(`tag-${blockId}`)?.remove();
+  updateClipUsed();
+  try {
+    await fetch(`${SERVER}/api/daily-schedule/delete`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date: currentDate, id: blockId }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(e) {}
+}
+
+// ===== API =====
+async function loadBlocks() {
+  try {
+    const r = await fetch(`${SERVER}/api/daily-schedule?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    schedBlocks = d.blocks || [];
+  } catch(e) { schedBlocks = []; }
+}
+async function loadHandover() {
+  try {
+    const r = await fetch(`${SERVER}/api/handover?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    handoverItems = d.items || [];
+  } catch(e) { handoverItems = []; }
+}
+async function loadCalendarEvents() {
+  try {
+    const r = await fetch(`${SERVER}/api/calendar/day?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    const events = d.events || [];
+    deadlineItems = events.filter(e => e.type === 'deadline');
+    notionEvents  = events.filter(e => e.type === 'schedule');
+  } catch(e) { deadlineItems = []; notionEvents = []; }
+}
+async function loadNotionEvents() {
+  await loadCalendarEvents();
+  renderNotionBlocks();
+}
+let saveToastTimer = null;
+async function saveBlock(b) {
+  try {
+    const r = await fetch(`${SERVER}/api/daily-schedule/save`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date: currentDate, block: b }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (r.ok) showSaveToast();
+  } catch(e) {}
+}
+function showSaveToast() {
+  const el = document.getElementById('saveToast');
+  if (!el) return;
+  el.classList.add('show');
+  clearTimeout(saveToastTimer);
+  saveToastTimer = setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+function genId() { return Math.random().toString(36).slice(2,10); }
+
+// ===== 初期化 =====
+async function init() {
+  document.getElementById('headerDate').textContent = formatDateJP(currentDate);
+  buildTimeline();
+  await Promise.all([loadBlocks(), loadHandover(), loadCalendarEvents()]);
+  renderNotionBlocks();  // Notion固定ブロックを先に（背景扱い）
+  renderBlocks();        // 保存済みブロックを描画
+  renderClips();
+  renderDeadlines();
+  updateNowLine();
+
+  // スクロール位置：Notionブロックがあればその開始時刻へ、なければ現在時刻 or 8時
+  let scrollTarget = 8 * 60;
+  if (currentDate === getTodayStr()) {
+    const now = new Date();
+    scrollTarget = now.getHours() * 60 + now.getMinutes();
+  }
+  // Notionブロックがある場合は最初のブロック開始時刻を優先
+  const firstNotion = notionEvents.filter(e => e.startTime).sort((a,b) => timeToMin(a.startTime) - timeToMin(b.startTime))[0];
+  if (firstNotion) scrollTarget = Math.min(scrollTarget, timeToMin(firstNotion.startTime));
+
+  const wrap = document.getElementById('tlWrap');
+  wrap.scrollLeft = Math.max(0, minToX(scrollTarget) - 120);
+
+  // ヘッダーのサブテキスト更新
+  const sub = document.getElementById('headerSub');
+  if (sub) {
+    sub.textContent = schedBlocks.length > 0
+      ? `${schedBlocks.length}件保存済み — ドラッグで編集`
+      : 'ドラッグで作成 · 移動 · リサイズ';
+  }
+
+  // スマホでは縦レイアウトをデフォルトに
+  if (window.innerWidth < 600 && layoutMode === 'horizontal') {
+    // ユーザーが明示的に切り替えていない場合のみ自動切り替え
+    if (!sessionStorage.getItem('layoutPref')) {
+      layoutMode = 'vertical';
+      document.getElementById('layoutToggle').textContent = '横 ↔';
+      document.getElementById('layoutToggle').classList.add('active');
+      document.getElementById('tlWrap').style.display    = 'none';
+      document.getElementById('scrollHint').style.display = 'none';
+      document.getElementById('vtlWrap').style.display   = '';
+      buildVerticalTimeline();
+      renderVtlNotionBlocks();
+      renderVtlBlocks();
+      return;
+    }
+  }
+}
+
+init();
+setInterval(updateNowLine, 60000);
+</script>
+</body>
+</html>
