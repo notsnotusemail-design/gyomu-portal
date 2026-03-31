@@ -165,6 +165,49 @@ body {
 }
 .blk-input::placeholder { color: rgba(255,255,255,0.6); font-weight: 400; }
 
+/* ===== Notion追加選択パネル ===== */
+.notion-add-panel {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  padding: 12px 14px 10px;
+  z-index: 10000;
+  min-width: 220px;
+  animation: nap-in 0.15s ease;
+}
+@keyframes nap-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nap-label {
+  font-size: 11px; color: #6b7280; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 5px;
+}
+.nap-time {
+  font-size: 12px; font-weight: 700; color: #111827;
+  margin-bottom: 10px; line-height: 1.4;
+}
+.nap-btns { display: flex; gap: 7px; }
+.nap-btn {
+  flex: 1; padding: 7px 10px; border-radius: 8px;
+  border: 1.5px solid transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.nap-btn-local {
+  background: #f3f4f6; color: #374151;
+  border-color: #e5e7eb;
+}
+.nap-btn-local:hover { background: #e5e7eb; }
+.nap-btn-notion {
+  background: #111827; color: #fff;
+  border-color: #111827;
+}
+.nap-btn-notion:hover { background: #1f2937; }
+
 /* Notion固定ブロック（バイト・会議等） */
 .notion-block {
   position: absolute; top: 28px; bottom: 0;
@@ -608,7 +651,6 @@ function startBlockWithInput(s, en) {
   const el = document.getElementById(`blk-${block.id}`);
   if (!el) return;
 
-  // インライン入力フィールドを追加
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = '内容を入力… (Enter確定 / Esc削除)';
@@ -624,14 +666,12 @@ function startBlockWithInput(s, en) {
     input.remove();
     const text = input.value.trim();
     if (cancel || !text) {
-      // キャンセル or 空 → ブロック削除
       schedBlocks = schedBlocks.filter(b => b.id !== block.id);
       el.remove();
       document.getElementById(`tag-${block.id}`)?.remove();
       return;
     }
     block.text = text;
-    // 名前タグを更新
     const tag = document.getElementById(`tag-${block.id}`);
     if (tag) tag.textContent = text;
     el.dataset.text = text;
@@ -639,12 +679,95 @@ function startBlockWithInput(s, en) {
     if (inner) inner.textContent = text;
     updateClipUsed();
     await saveBlock(block);
+    // 保存後にNotion追加選択パネルを表示
+    showNotionAddPanel(block, el);
   };
-  input.addEventListener('blur', () => commit(false));
+  input.addEventListener('blur', () => {
+    // パネルがあればblurは無視（パネルのボタンクリック中）
+    setTimeout(() => { if (!document.querySelector('.notion-add-panel')) commit(false); }, 120);
+  });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
     if (e.key === 'Escape') { e.preventDefault(); commit(true); }
   });
+}
+
+// ===== Notion追加選択パネル =====
+function showNotionAddPanel(block, blockEl) {
+  // 既存パネルを除去
+  document.querySelector('.notion-add-panel')?.remove();
+
+  const sh = `${p2(Math.floor(block.startMin/60))}:${p2(block.startMin%60)}`;
+  const eh = `${p2(Math.floor(block.endMin/60))}:${p2(block.endMin%60)}`;
+
+  const panel = document.createElement('div');
+  panel.className = 'notion-add-panel';
+  panel.innerHTML = `
+    <div class="nap-label">📅 Notionカレンダーにも追加しますか？</div>
+    <div class="nap-time">${sh}〜${eh}　「${esc(block.text)}」</div>
+    <div class="nap-btns">
+      <button class="nap-btn nap-btn-local">このアプリのみ</button>
+      <button class="nap-btn nap-btn-notion">＋ Notionにも登録</button>
+    </div>`;
+  document.body.appendChild(panel);
+
+  // ブロック上部に配置（画面端対応）
+  const rect = blockEl.getBoundingClientRect();
+  const PW = panel.offsetWidth || 230;
+  let left = rect.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - PW - 8));
+  if (rect.top > 130) {
+    panel.style.top  = `${rect.top - 130}px`;
+  } else {
+    panel.style.top  = `${rect.bottom + 8}px`;
+  }
+  panel.style.left = `${left}px`;
+
+  const close = () => panel.remove();
+
+  panel.querySelector('.nap-btn-local').addEventListener('click', () => {
+    close();
+    showSaveToast('✅ 保存しました');
+  });
+
+  panel.querySelector('.nap-btn-notion').addEventListener('click', async () => {
+    close();
+    await addBlockToNotion(block, sh, eh);
+  });
+
+  // 外クリックで閉じる（少し遅延させてボタンクリックと競合させない）
+  setTimeout(() => {
+    const onOutside = (e) => {
+      if (!panel.contains(e.target)) { close(); document.removeEventListener('click', onOutside); }
+    };
+    document.addEventListener('click', onOutside);
+  }, 200);
+}
+
+async function addBlockToNotion(block, sh, eh) {
+  try {
+    const r = await fetch(`${SERVER}/api/calendar/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: block.text,
+        date: currentDate,
+        startTime: sh,
+        endTime: eh,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showSaveToast('📅 Notionに登録しました');
+      // Notionブロックとして描画するためにページをリロード
+      setTimeout(() => loadNotionEvents(), 1200);
+    } else {
+      showSaveToast('⚠️ Notion登録に失敗しました');
+    }
+  } catch(err) {
+    showSaveToast('⚠️ Notion登録に失敗しました');
+  }
 }
 
 function refreshBlockEl(b) {
@@ -1454,11 +1577,13 @@ async function loadCalendarEvents() {
     const r = await fetch(`${SERVER}/api/calendar/day?date=${currentDate}`, { signal: AbortSignal.timeout(8000) });
     const d = await r.json();
     const events = d.events || [];
-    // 納期 → クリップパネル用
     deadlineItems = events.filter(e => e.type === 'deadline');
-    // 予定（バイト・会議等） → タイムライン固定ブロック用
     notionEvents  = events.filter(e => e.type === 'schedule');
   } catch(e) { deadlineItems = []; notionEvents = []; }
+}
+async function loadNotionEvents() {
+  await loadCalendarEvents();
+  renderNotionBlocks();
 }
 let saveToastTimer = null;
 async function saveBlock(b) {

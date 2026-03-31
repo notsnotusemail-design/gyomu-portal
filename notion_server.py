@@ -817,15 +817,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_add_schedule(self, data):
         """予定を案件表に追加（お客様なしエントリー → Notionカレンダーに同期）"""
-        title    = data.get("title","").strip()
-        date_str = data.get("date","")
-        memo     = data.get("memo","").strip()
+        title      = data.get("title","").strip()
+        date_str   = data.get("date","")
+        memo       = data.get("memo","").strip()
+        start_time = data.get("startTime","").strip()  # e.g. "09:00"
+        end_time   = data.get("endTime","").strip()    # e.g. "10:00"
         if not title or not date_str:
             self.send_json(400, {"ok": False, "error": "タイトルと日付は必須"}); return
 
+        # 時刻つきの場合はdatetimeフォーマットに変換
+        start_dt = f"{date_str}T{start_time}:00+09:00" if start_time else date_str
+        end_dt   = f"{date_str}T{end_time}:00+09:00"   if end_time   else None
+
+        date_value = {"start": start_dt}
+        if end_dt:
+            date_value["end"] = end_dt
+
         props = {
             "当方案件番号":     {"title": [{"text": {"content": title}}]},
-            "案件締切日・進行": {"date":  {"start": date_str}},
+            "案件締切日・進行": {"date": date_value},
             "進捗":            {"status": {"name": "未着手"}},
         }
         if memo:
@@ -836,6 +846,7 @@ class Handler(BaseHTTPRequestHandler):
             "properties": props,
         })
         if result:
+            print(f"  📅 Notion予定追加: 「{title}」{start_dt}")
             self.send_json(200, {"ok": True, "id": result.get("id","")})
         else:
             self.send_json(400, {"ok": False, "error": err})
