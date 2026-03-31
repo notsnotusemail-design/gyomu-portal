@@ -345,6 +345,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_save_daily_block(data)
         elif self.path == "/api/daily-schedule/delete":
             self.handle_delete_daily_block(data)
+        elif self.path == "/api/notion-event/move":
+            self.handle_move_notion_event(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -793,6 +795,25 @@ class Handler(BaseHTTPRequestHandler):
         save_daily_schedules(schedules)
         print(f"  🗑️  日次ブロック削除: {date} id={block_id}")
         self.send_json(200, {"ok": True})
+
+    def handle_move_notion_event(self, data):
+        """Notion予定ブロックの時刻を更新"""
+        page_id   = data.get("id", "")
+        date      = data.get("date", "")
+        start_min = int(data.get("startMin", 0))
+        end_min   = int(data.get("endMin", 60))
+        if not page_id or not date:
+            self.send_json(400, {"ok": False, "error": "id/dateが必要"}); return
+        sh = f"{start_min // 60:02d}:{start_min % 60:02d}"
+        eh = f"{end_min   // 60:02d}:{end_min   % 60:02d}"
+        start_dt = f"{date}T{sh}:00+09:00"
+        end_dt   = f"{date}T{eh}:00+09:00"
+        props = {"案件締切日・進行": {"date": {"start": start_dt, "end": end_dt}}}
+        result, err = notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
+        if err:
+            self.send_json(500, {"ok": False, "error": err}); return
+        print(f"  📅 Notion予定移動: {page_id[:8]} {sh}〜{eh}")
+        self.send_json(200, {"ok": True, "startTime": sh, "endTime": eh})
 
     def handle_add_schedule(self, data):
         """予定を案件表に追加（お客様なしエントリー → Notionカレンダーに同期）"""

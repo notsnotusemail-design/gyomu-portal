@@ -177,9 +177,19 @@ body {
   color: rgba(255,255,255,0.95);
   z-index: 3;
   overflow: hidden;
-  cursor: default;
+  cursor: grab;
   user-select: none;
   border-left: 3px solid #60a5fa;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+.notion-block.dragging {
+  cursor: grabbing; opacity: 0.75;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  z-index: 10;
+}
+.notion-block.nb-unlocked {
+  border-left-color: #f59e0b;
+  background: linear-gradient(135deg,#451a03,#78350f);
 }
 .notion-block .nb-inner { display: flex; align-items: baseline; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
 .notion-block .nb-text  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
@@ -200,14 +210,16 @@ body {
 
 /* ===== ツールチップ ===== */
 .blk-tooltip {
-  position: fixed; background: #1a1a1a; color: white;
-  font-size: 12px; padding: 7px 11px; border-radius: 8px;
-  z-index: 999; pointer-events: none; max-width: 220px;
-  line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-  opacity: 0; transition: opacity 0.15s;
-  white-space: pre-line;
+  position: fixed; background: #1e1e2e; color: #f0f0f8;
+  font-size: 12px; padding: 8px 12px; border-radius: 9px;
+  z-index: 9999; pointer-events: none; max-width: 260px;
+  line-height: 1.6; box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  opacity: 0; transition: opacity 0.12s;
+  white-space: pre-line; border: 1px solid rgba(255,255,255,0.1);
 }
 .blk-tooltip.show { opacity: 1; }
+.blk-tooltip .tt-name { font-weight: 700; font-size: 13px; color: #fff; display: block; margin-bottom: 2px; }
+.blk-tooltip .tt-time { font-size: 11px; color: #a0a8c8; display: block; }
 
 /* リサイズハンドル */
 .sched-block .blk-handle-l,
@@ -582,6 +594,8 @@ function addBlockEl(b) {
 
   el.addEventListener('mousedown', e => onBlockMouseDown(e, b.id));
   el.addEventListener('touchstart', e => onBlockTouchStart(e, b.id), { passive: false });
+  el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
+  el.addEventListener('mouseleave', () => hideTooltip());
   lane.appendChild(el);
 }
 
@@ -683,10 +697,83 @@ function renderNotionBlocks() {
         <span class="nb-time">${timeStr}</span>
       </div>
       <button class="nb-del" onclick="deleteNotionBlock('${ev.id}',event)" title="スケジュールから除去">×</button>`;
+    el.dataset.startMin = startMin;
+    el.dataset.endMin   = endMin;
+    ev._startMin = startMin;
+    ev._endMin   = endMin;
     el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
     el.addEventListener('mouseleave', () => hideTooltip());
+    el.addEventListener('mousedown',  e => onNotionBlockMouseDown(e, ev.id));
+    el.addEventListener('touchstart', e => onNotionBlockTouchStart(e, ev.id), { passive: false });
     lane.appendChild(el);
   });
+}
+
+function refreshNotionBlockEl(ev) {
+  const el = document.getElementById(`notion-${ev.id}`);
+  if (!el) return;
+  const s = ev._startMin ?? 0;
+  const en = ev._endMin ?? s + 60;
+  const x = minToX(s);
+  const w = Math.max(8, minToX(en) - x);
+  el.style.left  = `${x}px`;
+  el.style.width = `${w}px`;
+  const sh = `${p2(Math.floor(s/60))}:${p2(s%60)}`;
+  const eh = `${p2(Math.floor(en/60))}:${p2(en%60)}`;
+  const timeStr = `${sh}〜${eh}`;
+  el.dataset.time = timeStr;
+  el.dataset.startMin = s;
+  el.dataset.endMin   = en;
+  const timeEl = el.querySelector('.nb-time');
+  if (timeEl) timeEl.textContent = timeStr;
+  el.classList.toggle('nb-narrow', w < 80);
+}
+
+function onNotionBlockMouseDown(e, notionId) {
+  if (e.target.classList.contains('nb-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  hideTooltip();
+  const ev = notionEvents.find(x => x.id === notionId);
+  if (!ev) return;
+  const lane = document.getElementById('mainLane');
+  const x0 = laneX(e, lane);
+  interaction = {
+    type: 'notion-move',
+    id: notionId,
+    origStart: ev._startMin,
+    origEnd:   ev._endMin,
+    grabOffset: x0 - minToX(ev._startMin),
+    duration: (ev._endMin ?? ev._startMin + 60) - ev._startMin,
+    moved: false,
+  };
+  document.getElementById(`notion-${notionId}`)?.classList.add('dragging');
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   onMouseUp);
+}
+
+function onNotionBlockTouchStart(e, notionId) {
+  if (e.target.classList.contains('nb-del')) return;
+  e.preventDefault(); e.stopPropagation();
+  hideTooltip();
+  const ev = notionEvents.find(x => x.id === notionId);
+  if (!ev) return;
+  const touch = e.touches[0];
+  const lane  = document.getElementById('mainLane');
+  const rect  = lane.getBoundingClientRect();
+  const x0    = touch.clientX - rect.left;
+  touchIA = {
+    type: 'notion-move',
+    id: notionId,
+    origStart: ev._startMin,
+    origEnd:   ev._endMin,
+    grabOffset: x0 - minToX(ev._startMin),
+    duration: (ev._endMin ?? ev._startMin + 60) - ev._startMin,
+    moved: false,
+  };
+  document.getElementById(`notion-${notionId}`)?.classList.add('dragging');
+  document.addEventListener('touchmove',   onTouchMove,  { passive: false });
+  document.addEventListener('touchend',    onTouchEnd);
+  document.addEventListener('touchcancel', onTouchEnd);
 }
 
 function timeToMin(timeStr) {
@@ -703,14 +790,25 @@ function showTooltip(target, touch) {
     tooltipEl.className = 'blk-tooltip';
     document.body.appendChild(tooltipEl);
   }
-  const name = target.dataset.text || '';
+  const name = target.dataset.text || '（無題）';
   const time = target.dataset.time || '';
-  tooltipEl.textContent = `${name}\n${time}`;
+  tooltipEl.innerHTML = `<span class="tt-name">${esc(name)}</span>${time ? `<span class="tt-time">🕐 ${esc(time)}</span>` : ''}`;
   tooltipEl.classList.add('show');
+
+  // 位置計算（ブロックの上・画面端に被らないよう調整）
   const rect = target.getBoundingClientRect();
-  const tx = touch ? touch.clientX : rect.left + rect.width/2;
-  tooltipEl.style.left = `${Math.min(tx, window.innerWidth - 230)}px`;
-  tooltipEl.style.top  = `${rect.top - 60}px`;
+  const cx = touch ? touch.clientX : rect.left + rect.width / 2;
+  const TT_W = 200;
+  let left = cx - TT_W / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - TT_W - 8));
+  // 上に出す余裕がなければ下に出す
+  const spaceAbove = rect.top;
+  if (spaceAbove < 72) {
+    tooltipEl.style.top = `${rect.bottom + 8}px`;
+  } else {
+    tooltipEl.style.top = `${rect.top - 68}px`;
+  }
+  tooltipEl.style.left = `${left}px`;
 }
 function hideTooltip() {
   if (tooltipEl) tooltipEl.classList.remove('show');
@@ -970,6 +1068,15 @@ function onMouseMove(e) {
     const newEnd = clampMin(Math.max(m, interaction.origStart + SNAP_M));
     b.endMin = newEnd;
     refreshBlockEl(b);
+  } else if (interaction.type === 'notion-move') {
+    const ev = notionEvents.find(x => x.id === interaction.id);
+    if (!ev) return;
+    let s = clampMin(xToMin(x - interaction.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - interaction.duration));
+    ev._startMin = s;
+    ev._endMin   = s + interaction.duration;
+    interaction.moved = true;
+    refreshNotionBlockEl(ev);
   }
 }
 
@@ -992,6 +1099,41 @@ async function onMouseUp(e) {
     if (b) {
       refreshBlockEl(b);
       await saveBlock(b);
+    }
+  } else if (ia.type === 'notion-move') {
+    const elN = document.getElementById(`notion-${ia.id}`);
+    elN?.classList.remove('dragging');
+    if (!ia.moved) return;
+    const ev = notionEvents.find(x => x.id === ia.id);
+    if (!ev) return;
+    const sh = `${p2(Math.floor(ev._startMin/60))}:${p2(ev._startMin%60)}`;
+    const eh = `${p2(Math.floor(ev._endMin/60))}:${p2(ev._endMin%60)}`;
+    const ok = confirm(`「${ev.title}」の時刻をNotionで\n${sh}〜${eh} に変更しますか？\n\nキャンセルすると元の時刻に戻ります。`);
+    if (!ok) {
+      ev._startMin = ia.origStart;
+      ev._endMin   = ia.origEnd;
+      refreshNotionBlockEl(ev);
+      return;
+    }
+    ev.startTime = sh;
+    ev.endTime   = eh;
+    elN?.classList.add('nb-unlocked');
+    try {
+      const r = await fetch(`${SERVER}/api/notion-event/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ia.id, date: currentDate, startMin: ev._startMin, endMin: ev._endMin }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showSaveToast('📅 Notionに反映しました');
+        elN?.classList.remove('nb-unlocked');
+      } else {
+        showSaveToast('⚠️ Notion更新に失敗しました');
+      }
+    } catch(err) {
+      showSaveToast('⚠️ Notion更新に失敗しました');
     }
   }
 }
@@ -1085,6 +1227,15 @@ function onTouchMove(e) {
     if (!b) return;
     b.endMin = clampMin(Math.max(m, touchIA.origStart + SNAP_M));
     refreshBlockEl(b);
+  } else if (touchIA.type === 'notion-move') {
+    const ev = notionEvents.find(x => x.id === touchIA.id);
+    if (!ev) return;
+    let s = clampMin(xToMin(x - touchIA.grabOffset));
+    s = Math.max(0, Math.min(s, TOTAL_M - touchIA.duration));
+    ev._startMin = s;
+    ev._endMin   = s + touchIA.duration;
+    touchIA.moved = true;
+    refreshNotionBlockEl(ev);
   }
 }
 
@@ -1102,6 +1253,41 @@ async function onTouchEnd(e) {
     const en = Math.max(ia.startMin, ia.endMin);
     if (en - s < SNAP_M) return;
     startBlockWithInput(s, en);
+  } else if (ia.type === 'notion-move') {
+    const elN = document.getElementById(`notion-${ia.id}`);
+    elN?.classList.remove('dragging');
+    if (!ia.moved) return;
+    const ev = notionEvents.find(x => x.id === ia.id);
+    if (!ev) return;
+    const sh = `${p2(Math.floor(ev._startMin/60))}:${p2(ev._startMin%60)}`;
+    const eh = `${p2(Math.floor(ev._endMin/60))}:${p2(ev._endMin%60)}`;
+    const ok = confirm(`「${ev.title}」の時刻をNotionで\n${sh}〜${eh} に変更しますか？\n\nキャンセルすると元の時刻に戻ります。`);
+    if (!ok) {
+      ev._startMin = ia.origStart;
+      ev._endMin   = ia.origEnd;
+      refreshNotionBlockEl(ev);
+      return;
+    }
+    ev.startTime = sh;
+    ev.endTime   = eh;
+    elN?.classList.add('nb-unlocked');
+    try {
+      const r = await fetch(`${SERVER}/api/notion-event/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ia.id, date: currentDate, startMin: ev._startMin, endMin: ev._endMin }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showSaveToast('📅 Notionに反映しました');
+        elN?.classList.remove('nb-unlocked');
+      } else {
+        showSaveToast('⚠️ Notion更新に失敗しました');
+      }
+    } catch(err) {
+      showSaveToast('⚠️ Notion更新に失敗しました');
+    }
   } else {
     document.getElementById(`blk-${ia.id}`)?.classList.remove('dragging');
     const b = schedBlocks.find(x => x.id === ia.id);
