@@ -84,6 +84,32 @@ CUSTOMER_PAGES = {
     "3302-302":  "31a3288b-84b0-80c9-a868-d2198a02784c",
 }
 
+CUSTOMER_NAME_CACHE = {}   # {customer_no: customer_name}  キャッシュ
+
+def get_customer_name_map():
+    """全顧客のNo→名前マップを返す（初回だけNotionから取得してキャッシュ）"""
+    if CUSTOMER_NAME_CACHE:
+        return CUSTOMER_NAME_CACHE
+    body = {"page_size": 100}
+    cursor = None
+    while True:
+        if cursor: body["start_cursor"] = cursor
+        result, _ = notion_request("POST", f"/databases/{CUSTOMER_DB_ID}/query", body)
+        if not result: break
+        for page in result.get("results", []):
+            try:
+                props = page["properties"]
+                no   = (props["お客様No."]["rich_text"]   or [{}])[0].get("plain_text","").strip()
+                name = (props["クライアント名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
+                if no and name:
+                    CUSTOMER_NAME_CACHE[no] = name
+            except Exception:
+                pass
+        if not result.get("has_more"): break
+        cursor = result.get("next_cursor")
+    print(f"  👥 顧客名キャッシュ構築: {len(CUSTOMER_NAME_CACHE)}件")
+    return CUSTOMER_NAME_CACHE
+
 NOTION_API = "https://api.notion.com/v1"
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -885,6 +911,8 @@ class Handler(BaseHTTPRequestHandler):
                         if m:
                             try: profit = int(m.group(1).replace(',',''))
                             except: pass
+                    if not customer:
+                        continue   # 客番号なし（バイト・会議等の予定）は除外
                     cases.append({
                         "id": page["id"], "number": number, "customer": customer,
                         "price": price, "note": note, "filename": filename,
@@ -896,6 +924,11 @@ class Handler(BaseHTTPRequestHandler):
                     pass
             if not result.get("has_more"): break
             cursor = result.get("next_cursor")
+
+        # 顧客名を付与（キャッシュから引く）
+        name_map = get_customer_name_map()
+        for c in cases:
+            c["customerName"] = name_map.get(c["customer"], "")
 
         print(f"\n📋 案件履歴取得: {len(cases)}件 (q={q_term!r} status={status_f!r} cust={cust_f!r})")
         self.send_json(200, {"ok": True, "cases": cases, "total": len(cases)})

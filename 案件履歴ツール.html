@@ -341,7 +341,8 @@ function renderList() {
   const sh = k => sortKey === k ? sa : '';
   let html = `<table class="cases-table"><thead><tr>
     <th onclick="setSort('number')">案件番号${sh('number')}</th>
-    <th onclick="setSort('customer')">お客様${sh('customer')}</th>
+    <th onclick="setSort('customer')">客番号${sh('customer')}</th>
+    <th onclick="setSort('customerName')">客名${sh('customerName')}</th>
     <th onclick="setSort('profit')">粗利/単価${sh('profit')}</th>
     <th onclick="setSort('status')">進捗${sh('status')}</th>
     <th onclick="setSort('date')">締切日${sh('date')}</th>
@@ -357,7 +358,8 @@ function renderList() {
       : `<div class="num-cell ${c.price ? 'price-only' : 'zero-cell'}">${fmtYen(c.price)}</div>`;
     html += `<tr class="case-row" id="row-${c.id}">
       <td><a href="${esc(c.url)}" target="_blank" style="color:#4f46e5;font-weight:700;text-decoration:none;font-size:12px">${esc(c.number||'―')}</a></td>
-      <td style="font-size:12px">${esc(c.customer||'―')}</td>
+      <td style="font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(c.customer||'―')}</td>
+      <td style="font-size:13px;white-space:nowrap">${esc(c.customerName||'')}</td>
       <td>${amtHtml}</td>
       <td><span class="s-badge ${sClass(c.status)}">${esc(c.status||'―')}</span></td>
       <td style="font-size:12px;color:#6b7280">${fmtDate(c.date)}</td>
@@ -489,7 +491,11 @@ function renderGroup() {
   const groups = {};
   for (const c of allCases) {
     const key = c.customer || '（顧客なし）';
-    if (!groups[key]) groups[key] = { customer: key, cases: [], totalPrice: 0, totalProfit: 0, profitCount: 0 };
+    if (!groups[key]) groups[key] = {
+      customer: key,
+      customerName: c.customerName || '',
+      cases: [], totalPrice: 0, totalProfit: 0, profitCount: 0
+    };
     groups[key].cases.push(c);
     groups[key].totalPrice += Number(c.price) || 0;
     if (c.profit !== null && c.profit !== undefined) {
@@ -506,7 +512,7 @@ function renderGroup() {
       : `<span class="ccard-price">${fmtYen(g.totalPrice)}</span>`;
     html += `<div class="ccard" id="${cid}">
       <div class="ccard-hdr" onclick="toggleCard('${cid}')">
-        <span class="ccard-name">${esc(cust)}</span>
+        <span class="ccard-name">${esc(g.customer)}<span style="font-size:12px;color:#6b7280;font-weight:500;margin-left:6px">${esc(g.customerName)}</span></span>
         <span class="ccard-cnt">${g.cases.length}件</span>
         ${profitLabel}
         <span class="ccard-chev">▼</span>
@@ -611,9 +617,9 @@ async function recordNotion(cust, cid) {
 // ===== CSV =====
 function exportCSV(cases, filename) {
   if (!cases?.length) { toast('⚠️ データなし'); return; }
-  const heads = ['案件番号','お客様','単価','粗利','進捗','締切日','備考/素材名','ファイル名','備考'];
+  const heads = ['案件番号','客番号','客名','単価','粗利','進捗','締切日','備考/素材名','ファイル名','備考'];
   const rows = cases.map(c => [
-    c.number, c.customer, c.price, c.profit??'', c.status, c.date, c.note, c.filename, c.memo
+    c.number, c.customer, c.customerName||'', c.price, c.profit??'', c.status, c.date, c.note, c.filename, c.memo
   ].map(v => `"${String(v??'').replace(/"/g,'""')}"`));
   const csv = [heads.join(','), ...rows.map(r=>r.join(','))].join('\n');
   const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
