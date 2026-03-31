@@ -265,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("引き継ぎ完了済み.html")
         elif path == "/日次スケジュール.html":
             self.send_html("日次スケジュール.html")
+        elif path == "/案件履歴ツール.html":
+            self.send_html("案件履歴ツール.html")
         elif path == "/api/health":
             self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
         elif path == "/api/next-customer-no":
@@ -289,6 +291,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_handover_all()
         elif path == "/api/handover/done-list":
             self.handle_get_handover_done_list()
+        elif path.startswith("/api/cases/list"):
+            self.handle_get_cases_list()
         elif path.startswith("/api/daily-schedule/dates"):
             self.handle_get_schedule_dates()
         elif path.startswith("/api/daily-schedule"):
@@ -347,6 +351,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_delete_daily_block(data)
         elif self.path == "/api/notion-event/move":
             self.handle_move_notion_event(data)
+        elif self.path == "/api/cases/update":
+            self.handle_update_case(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -814,6 +820,100 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": err}); return
         print(f"  📅 Notion予定移動: {page_id[:8]} {sh}〜{eh}")
         self.send_json(200, {"ok": True, "startTime": sh, "endTime": eh})
+
+    def handle_get_cases_list(self):
+        """全案件を検索・フィルタして返す（案件履歴ツール用）"""
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(self.path).query)
+        q_term   = (qs.get("q")        or [""])[0].strip()
+        status_f = (qs.get("status")   or [""])[0].strip()
+        cust_f   = (qs.get("customer") or [""])[0].strip()
+
+        filters = []
+        if cust_f:
+            filters.append({"property": "お客様no/名", "rich_text": {"contains": cust_f}})
+        if status_f:
+            filters.append({"property": "進捗", "status": {"equals": status_f}})
+        if q_term:
+            filters.append({"or": [
+                {"property": "当方案件番号", "title": {"contains": q_term}},
+                {"property": "備考/素材名",  "rich_text": {"contains": q_term}},
+                {"property": "お客様no/名",  "rich_text": {"contains": q_term}},
+            ]})
+
+        query_body = {
+            "page_size": 100,
+            "sorts": [{"property": "案件締切日・進行", "direction": "descending"}],
+        }
+        if len(filters) == 1:   query_body["filter"] = filters[0]
+        elif len(filters) > 1:  query_body["filter"] = {"and": filters}
+
+        cases = []
+        cursor = None
+        while True:
+            if cursor: query_body["start_cursor"] = cursor
+            result, err = notion_request("POST", f"/databases/{CASE_DB_ID}/query", query_body)
+            if not result:
+                self.send_json(400, {"ok": False, "error": err}); return
+            for page in result.get("results", []):
+                try:
+                    props    = page["properties"]
+                    number   = (props["当方案件番号"]["title"]      or [{}])[0].get("plain_text","").strip()
+                    customer = (props["お客様no/名"]["rich_text"]   or [{}])[0].get("plain_text","").strip()
+                    price_v  = props["単価"]["number"]
+                    price    = price_v if price_v is not None else 0
+                    note     = (props.get("備考/素材名",{}).get("rich_text") or [{}])[0].get("plain_text","")
+                    filename = (props.get("指定案件ファイル名",{}).get("rich_text") or [{}])[0].get("plain_text","")
+                    memo     = (props.get("備考",{}).get("rich_text")        or [{}])[0].get("plain_text","")
+                    gross    = (props.get("粗利（単価-外注費）",{}).get("rich_text") or [{}])[0].get("plain_text","")
+                    dl       = (props.get("案件締切日・進行",{}).get("date") or {}).get("start","")
+                    status   = (props.get("進捗",{}).get("status") or {}).get("name","")
+                    cases.append({
+                        "id": page["id"], "number": number, "customer": customer,
+                        "price": price, "note": note, "filename": filename,
+                        "memo": memo, "gross": gross,
+                        "date": dl[:10] if dl else "", "status": status,
+                        "url": page.get("url",""),
+                    })
+                except Exception:
+                    pass
+            if not result.get("has_more"): break
+            cursor = result.get("next_cursor")
+
+        print(f"\n📋 案件履歴取得: {len(cases)}件 (q={q_term!r} status={status_f!r} cust={cust_f!r})")
+        self.send_json(200, {"ok": True, "cases": cases, "total": len(cases)})
+
+    def handle_update_case(self, data):
+        """案件のプロパティを更新"""
+        page_id = data.get("id","")
+        if not page_id:
+            self.send_json(400, {"ok": False, "error": "idが必要"}); return
+        props = {}
+        if "number"   in data: props["当方案件番号"]        = {"title": [{"text": {"content": data["number"]}}]}
+        if "customer" in data: props["お客様no/名"]         = {"rich_text": [{"text": {"content": data["customer"]}}]}
+        if "note"     in data: props["備考/素材名"]          = {"rich_text": [{"text": {"content": data["note"]}}]}
+        if "memo"     in data: props["備考"]                = {"rich_text": [{"text": {"content": data["memo"]}}]}
+        if "filename" in data: props["指定案件ファイル名"]  = {"rich_text": [{"text": {"content": data["filename"]}}]}
+        if "status"   in data: props["進捗"]                = {"status": {"name": data["status"]}}
+        if "date"     in data:
+            props["案件締切日・進行"] = {"date": {"start": data["date"]}} if data["date"] else {"date": None}
+        if "price" in data:
+            try:    props["単価"] = {"number": float(data["price"])}
+            except: pass
+        if "outsourceCost" in data and "price" in data:
+            try:
+                pv = float(data["price"]); cv = float(data["outsourceCost"])
+                gross_text = f"{int(pv):,} - {int(cv):,} = {int(pv-cv):,}"
+                props["粗利（単価-外注費）"] = {"rich_text": [{"text": {"content": gross_text}}]}
+            except: pass
+        if not props:
+            self.send_json(400, {"ok": False, "error": "更新項目なし"}); return
+        result, err = notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
+        if result:
+            print(f"  ✅ 案件更新: {page_id[:8]} → {list(props.keys())}")
+            self.send_json(200, {"ok": True})
+        else:
+            self.send_json(500, {"ok": False, "error": err})
 
     def handle_add_schedule(self, data):
         """予定を案件表に追加（お客様なしエントリー → Notionカレンダーに同期）"""

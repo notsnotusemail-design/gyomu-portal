@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案件履歴ツール</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
+
+/* ===== ヘッダー ===== */
+.header {
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  padding: 14px 20px; display: flex; align-items: center; gap: 14px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+}
+.header-title { font-size: 17px; font-weight: 800; color: #111; white-space: nowrap; }
+.back-btn {
+  background: #f3f4f6; border: none; border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer; color: #374151;
+}
+.back-btn:hover { background: #e5e7eb; }
+.header-spacer { flex: 1; }
+.view-toggle { display: flex; gap: 4px; }
+.view-btn {
+  padding: 6px 14px; border-radius: 7px; border: 1.5px solid #e5e7eb;
+  font-size: 12px; font-weight: 600; cursor: pointer; background: #f9fafb; color: #6b7280;
+}
+.view-btn.active { background: #111827; color: #fff; border-color: #111827; }
+
+/* ===== 検索バー ===== */
+.search-bar {
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  padding: 12px 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.search-input {
+  flex: 1; min-width: 180px; padding: 8px 12px; border: 1.5px solid #d1d5db;
+  border-radius: 8px; font-size: 13px; font-family: inherit; outline: none;
+}
+.search-input:focus { border-color: #6366f1; }
+.filter-select {
+  padding: 8px 10px; border: 1.5px solid #d1d5db; border-radius: 8px;
+  font-size: 13px; font-family: inherit; outline: none; background: #fff;
+  cursor: pointer;
+}
+.search-btn {
+  padding: 8px 18px; background: #4f46e5; color: #fff; border: none;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.search-btn:hover { background: #4338ca; }
+.csv-all-btn {
+  padding: 8px 14px; background: #fff; color: #374151; border: 1.5px solid #d1d5db;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.csv-all-btn:hover { background: #f3f4f6; }
+.count-badge {
+  font-size: 12px; color: #6b7280; white-space: nowrap; align-self: center;
+}
+
+/* ===== コンテンツ ===== */
+.content { padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
+
+/* ===== ローディング ===== */
+.loading { text-align: center; padding: 60px 20px; color: #9ca3af; font-size: 14px; }
+.loading-spinner {
+  width: 36px; height: 36px; border: 3px solid #e5e7eb;
+  border-top-color: #6366f1; border-radius: 50%;
+  animation: spin 0.7s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== 一覧テーブル ===== */
+.cases-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.07); }
+.cases-table th {
+  background: #f8fafc; padding: 10px 12px; font-size: 11px; font-weight: 700;
+  color: #6b7280; text-align: left; border-bottom: 1.5px solid #e5e7eb; white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+.cases-table th:hover { color: #374151; }
+.cases-table td {
+  padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6;
+  vertical-align: middle;
+}
+.cases-table tr:last-child td { border-bottom: none; }
+.cases-table tr:hover td { background: #f9fafb; }
+.case-row.editing td { background: #eff6ff !important; }
+
+/* ステータスバッジ */
+.status-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.st-未着手  { background: #f3f4f6; color: #6b7280; }
+.st-進行中  { background: #dbeafe; color: #1d4ed8; }
+.st-完了    { background: #dcfce7; color: #15803d; }
+.st-請求済み { background: #fef9c3; color: #92400e; }
+.st-その他  { background: #f3f4f6; color: #6b7280; }
+
+/* 金額 */
+.price-cell { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.price-cell.zero { color: #d1d5db; }
+
+/* アクションボタン */
+.act-btns { display: flex; gap: 5px; }
+.act-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1.5px solid #e5e7eb;
+  font-size: 11px; font-weight: 600; cursor: pointer; background: #fff; color: #374151;
+  white-space: nowrap;
+}
+.act-btn:hover { background: #f3f4f6; }
+.act-btn.btn-edit   { border-color: #6366f1; color: #4f46e5; }
+.act-btn.btn-edit:hover { background: #eff6ff; }
+.act-btn.btn-del    { border-color: #fca5a5; color: #dc2626; }
+.act-btn.btn-del:hover  { background: #fef2f2; }
+.act-btn.btn-notion { border-color: #111; color: #111; }
+.act-btn.btn-notion:hover { background: #f9fafb; }
+
+/* ===== インライン編集パネル ===== */
+.edit-panel {
+  background: #eff6ff; padding: 14px 16px;
+  border-bottom: 2px solid #c7d2fe;
+}
+.edit-panel-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+  margin-bottom: 12px;
+}
+.edit-field label { display: block; font-size: 11px; font-weight: 700; color: #6b7280; margin-bottom: 3px; }
+.edit-field input, .edit-field select, .edit-field textarea {
+  width: 100%; padding: 6px 10px; border: 1.5px solid #c7d2fe;
+  border-radius: 7px; font-size: 13px; font-family: inherit; background: #fff; outline: none;
+}
+.edit-field input:focus, .edit-field select:focus, .edit-field textarea:focus { border-color: #6366f1; }
+.edit-field textarea { resize: vertical; min-height: 54px; }
+.edit-actions { display: flex; gap: 8px; }
+.ep-save-btn {
+  padding: 7px 20px; background: #4f46e5; color: #fff; border: none;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ep-save-btn:hover { background: #4338ca; }
+.ep-cancel-btn {
+  padding: 7px 14px; background: #fff; color: #374151; border: 1.5px solid #d1d5db;
+  border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+.ep-cancel-btn:hover { background: #f3f4f6; }
+.ep-saving { opacity: 0.6; pointer-events: none; }
+
+/* ===== 顧客別ビュー ===== */
+.customer-cards { display: flex; flex-direction: column; gap: 16px; }
+.customer-card {
+  background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+}
+.customer-card-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; background: #f8fafc; border-bottom: 1.5px solid #e5e7eb;
+  cursor: pointer; user-select: none;
+}
+.customer-card-header:hover { background: #f0f4ff; }
+.ccard-name { font-size: 15px; font-weight: 700; flex: 1; }
+.ccard-count { font-size: 12px; color: #6b7280; }
+.ccard-total { font-size: 14px; font-weight: 700; color: #4f46e5; }
+.ccard-chevron { color: #9ca3af; font-size: 14px; transition: transform 0.2s; }
+.customer-card.collapsed .ccard-chevron { transform: rotate(-90deg); }
+.customer-card.collapsed .ccard-body { display: none; }
+.ccard-body { padding: 0; }
+.ccard-case-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 18px; border-bottom: 1px solid #f3f4f6; font-size: 13px;
+}
+.ccard-case-row:last-of-type { border-bottom: none; }
+.ccard-case-row:hover { background: #f9fafb; }
+.ccard-num  { font-weight: 600; color: #4f46e5; min-width: 80px; }
+.ccard-note { flex: 1; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccard-date { font-size: 11px; color: #9ca3af; white-space: nowrap; }
+.ccard-price { font-weight: 600; text-align: right; min-width: 80px; font-variant-numeric: tabular-nums; }
+.ccard-status { }
+
+/* 請求書ゾーン */
+.invoice-zone {
+  padding: 12px 18px; background: #f8fafc;
+  border-top: 1.5px dashed #e5e7eb;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
+.invoice-date-label { font-size: 12px; color: #6b7280; }
+.invoice-date-input {
+  padding: 6px 10px; border: 1.5px solid #d1d5db; border-radius: 7px;
+  font-size: 12px; font-family: inherit; outline: none;
+}
+.invoice-date-input:focus { border-color: #6366f1; }
+.invoice-btn {
+  padding: 7px 16px; background: #111827; color: #fff; border: none;
+  border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.invoice-btn:hover { background: #1f2937; }
+.invoice-csv-btn {
+  padding: 7px 14px; background: #fff; color: #374151; border: 1.5px solid #d1d5db;
+  border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.invoice-csv-btn:hover { background: #f3f4f6; }
+.invoice-record-btn {
+  padding: 7px 14px; background: #eff6ff; color: #2563eb; border: 1.5px solid #bfdbfe;
+  border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.invoice-record-btn:hover { background: #dbeafe; }
+.inv-total-label { font-size: 13px; font-weight: 700; color: #111; margin-left: auto; }
+
+/* ===== トースト ===== */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px);
+  background: #1f2937; color: #fff; padding: 10px 20px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; z-index: 9999;
+  opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ===== 空メッセージ ===== */
+.empty-msg { text-align: center; padding: 60px 20px; color: #9ca3af; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button class="back-btn" onclick="history.back()">← 戻る</button>
+  <span class="header-title">📋 案件履歴</span>
+  <div class="header-spacer"></div>
+  <div class="view-toggle">
+    <button class="view-btn active" id="viewList" onclick="setView('list')">一覧</button>
+    <button class="view-btn" id="viewGroup" onclick="setView('group')">顧客別</button>
+  </div>
+</div>
+
+<div class="search-bar">
+  <input class="search-input" id="searchQ" placeholder="案件番号・お客様・備考で検索…" onkeydown="if(e.key==='Enter')doSearch()">
+  <select class="filter-select" id="statusFilter" onchange="doSearch()">
+    <option value="">全ステータス</option>
+    <option value="未着手">未着手</option>
+    <option value="進行中">進行中</option>
+    <option value="完了">完了</option>
+    <option value="請求済み">請求済み</option>
+  </select>
+  <button class="search-btn" onclick="doSearch()">🔍 検索</button>
+  <button class="csv-all-btn" onclick="exportAllCSV()">📥 CSV出力</button>
+  <span class="count-badge" id="countBadge"></span>
+</div>
+
+<div class="content" id="mainContent">
+  <div class="loading"><div class="loading-spinner"></div>Notionから読み込み中…</div>
+</div>
+
+<div class="toast" id="toastEl"></div>
+
+<script>
+const SERVER = location.port === '8080' ? '' : (localStorage.getItem('serverURL') || 'http://localhost:8080');
+
+// ===== State =====
+let allCases = [];
+let viewMode = 'list';
+let sortKey = 'date';
+let sortAsc = false;
+let editingId = null;
+
+// ===== Utils =====
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtPrice(n) {
+  if (!n && n !== 0) return '―';
+  return '¥' + Number(n).toLocaleString();
+}
+function fmtDate(d) { return d ? d.replace(/-/g,'/') : '―'; }
+function statusClass(s) {
+  if (!s) return 'st-その他';
+  if (s.includes('未着手')) return 'st-未着手';
+  if (s.includes('進行')) return 'st-進行中';
+  if (s.includes('完了')) return 'st-完了';
+  if (s.includes('請求')) return 'st-請求済み';
+  return 'st-その他';
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toastEl');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ===== API =====
+async function fetchCases(q='', status='', customer='') {
+  const params = new URLSearchParams();
+  if (q)        params.set('q', q);
+  if (status)   params.set('status', status);
+  if (customer) params.set('customer', customer);
+  const r = await fetch(`${SERVER}/api/cases/list?${params}`, { signal: AbortSignal.timeout(15000) });
+  return r.json();
+}
+
+async function updateCase(id, fields) {
+  const r = await fetch(`${SERVER}/api/cases/update`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ id, ...fields }),
+    signal: AbortSignal.timeout(10000),
+  });
+  return r.json();
+}
+
+async function deleteCase(id) {
+  const r = await fetch(`${SERVER}/api/calendar/delete`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ id }),
+    signal: AbortSignal.timeout(10000),
+  });
+  return r.json();
+}
+
+async function generateInvoice(customerNo, customerName, invoiceDate, cases) {
+  const r = await fetch(`${SERVER}/api/generate-invoice`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ customerNo, customerName, invoiceDate, cases }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const cd = r.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+  a.href = url;
+  a.download = m ? decodeURIComponent(m[1]) : `請求書_${invoiceDate}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function recordInvoiceNotion(customerNo, invoiceDate, amount, caseNumbers, month) {
+  const r = await fetch(`${SERVER}/api/record-invoice`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      invoiceDate,
+      records: [{ customerNo, amount, month, caseNumbers }]
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
+  return r.json();
+}
+
+// ===== Search =====
+async function doSearch() {
+  const q      = document.getElementById('searchQ').value.trim();
+  const status = document.getElementById('statusFilter').value;
+  document.getElementById('mainContent').innerHTML = '<div class="loading"><div class="loading-spinner"></div>検索中…</div>';
+  try {
+    const d = await fetchCases(q, status);
+    if (!d.ok) throw new Error(d.error);
+    allCases = d.cases;
+    document.getElementById('countBadge').textContent = `${allCases.length}件`;
+    render();
+  } catch(e) {
+    document.getElementById('mainContent').innerHTML = `<div class="empty-msg">⚠️ 読み込み失敗: ${e.message}</div>`;
+  }
+}
+
+// ===== View toggle =====
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('viewList').classList.toggle('active', mode === 'list');
+  document.getElementById('viewGroup').classList.toggle('active', mode === 'group');
+  render();
+}
+
+// ===== Sort =====
+function setSort(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = false; }
+  render();
+}
+function sorted(arr) {
+  return [...arr].sort((a, b) => {
+    let va = a[sortKey] ?? ''; let vb = b[sortKey] ?? '';
+    if (sortKey === 'price') { va = Number(va)||0; vb = Number(vb)||0; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+}
+
+// ===== Render =====
+function render() {
+  if (viewMode === 'list') renderList();
+  else renderGroup();
+}
+
+function renderList() {
+  const mc = document.getElementById('mainContent');
+  if (!allCases.length) { mc.innerHTML = '<div class="empty-msg">案件が見つかりませんでした</div>'; return; }
+  const arr = sorted(allCases);
+  const sa = sortAsc ? '▲' : '▼';
+  const sh = k => sortKey === k ? ` ${sa}` : '';
+  let html = `<table class="cases-table">
+    <thead><tr>
+      <th onclick="setSort('number')">案件番号${sh('number')}</th>
+      <th onclick="setSort('customer')">お客様${sh('customer')}</th>
+      <th onclick="setSort('price')">単価${sh('price')}</th>
+      <th onclick="setSort('status')">進捗${sh('status')}</th>
+      <th onclick="setSort('date')">締切日${sh('date')}</th>
+      <th>備考/素材名</th>
+      <th>操作</th>
+    </tr></thead><tbody>`;
+  for (const c of arr) {
+    const priceClass = c.price ? 'price-cell' : 'price-cell zero';
+    html += `<tr class="case-row" id="row-${c.id}">
+      <td><a href="${esc(c.url)}" target="_blank" style="color:#4f46e5;font-weight:700;text-decoration:none">${esc(c.number||'―')}</a></td>
+      <td>${esc(c.customer||'―')}</td>
+      <td class="${priceClass}">${fmtPrice(c.price)}</td>
+      <td><span class="status-badge ${statusClass(c.status)}">${esc(c.status||'―')}</span></td>
+      <td style="font-size:12px;color:#6b7280">${fmtDate(c.date)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.note)}">${esc(c.note||'')}</td>
+      <td><div class="act-btns">
+        <button class="act-btn btn-edit" onclick="toggleEdit('${c.id}')">✏️ 編集</button>
+        <button class="act-btn btn-del"  onclick="confirmDelete('${c.id}')">🗑️</button>
+      </div></td>
+    </tr>
+    <tr id="editrow-${c.id}" style="display:none"><td colspan="7" style="padding:0">
+      ${buildEditPanel(c)}
+    </td></tr>`;
+  }
+  html += '</tbody></table>';
+  mc.innerHTML = html;
+}
+
+function buildEditPanel(c) {
+  const statuses = ['未着手','進行中','完了','請求済み'];
+  const opts = statuses.map(s => `<option value="${s}" ${c.status===s?'selected':''}>${s}</option>`).join('');
+  return `<div class="edit-panel" id="ep-${c.id}">
+    <div class="edit-panel-grid">
+      <div class="edit-field"><label>案件番号</label><input id="ef-num-${c.id}" value="${esc(c.number)}"></div>
+      <div class="edit-field"><label>お客様No/名</label><input id="ef-cust-${c.id}" value="${esc(c.customer)}"></div>
+      <div class="edit-field"><label>単価（円）</label><input id="ef-price-${c.id}" type="number" value="${c.price||''}"></div>
+      <div class="edit-field"><label>外注費（円）</label><input id="ef-cost-${c.id}" value="${esc(c.gross ? c.gross.split('-')[1]?.split('=')[0]?.trim().replace(/,/g,'') : '')}"></div>
+      <div class="edit-field"><label>進捗</label><select id="ef-status-${c.id}">${opts}</select></div>
+      <div class="edit-field"><label>締切日</label><input id="ef-date-${c.id}" type="date" value="${c.date||''}"></div>
+      <div class="edit-field"><label>備考/素材名</label><input id="ef-note-${c.id}" value="${esc(c.note)}"></div>
+      <div class="edit-field"><label>ファイル名</label><input id="ef-file-${c.id}" value="${esc(c.filename)}"></div>
+      <div class="edit-field" style="grid-column:1/-1"><label>備考</label><textarea id="ef-memo-${c.id}">${esc(c.memo)}</textarea></div>
+    </div>
+    <div class="edit-actions">
+      <button class="ep-save-btn" onclick="saveEdit('${c.id}')">💾 保存</button>
+      <button class="ep-cancel-btn" onclick="toggleEdit('${c.id}')">キャンセル</button>
+    </div>
+  </div>`;
+}
+
+function toggleEdit(id) {
+  const row   = document.getElementById(`row-${id}`);
+  const erow  = document.getElementById(`editrow-${id}`);
+  if (!erow) return;
+  const opening = erow.style.display === 'none';
+  // 他を閉じる
+  document.querySelectorAll('[id^="editrow-"]').forEach(r => { r.style.display='none'; });
+  document.querySelectorAll('.case-row.editing').forEach(r => r.classList.remove('editing'));
+  if (opening) {
+    erow.style.display = '';
+    row?.classList.add('editing');
+    editingId = id;
+  } else {
+    editingId = null;
+  }
+}
+
+async function saveEdit(id) {
+  const ep = document.getElementById(`ep-${id}`);
+  if (!ep) return;
+  ep.classList.add('ep-saving');
+  const fields = {
+    number:   document.getElementById(`ef-num-${id}`)?.value.trim(),
+    customer: document.getElementById(`ef-cust-${id}`)?.value.trim(),
+    price:    document.getElementById(`ef-price-${id}`)?.value,
+    outsourceCost: document.getElementById(`ef-cost-${id}`)?.value,
+    status:   document.getElementById(`ef-status-${id}`)?.value,
+    date:     document.getElementById(`ef-date-${id}`)?.value,
+    note:     document.getElementById(`ef-note-${id}`)?.value.trim(),
+    filename: document.getElementById(`ef-file-${id}`)?.value.trim(),
+    memo:     document.getElementById(`ef-memo-${id}`)?.value.trim(),
+  };
+  try {
+    const d = await updateCase(id, fields);
+    if (d.ok) {
+      // ローカルデータも更新
+      const c = allCases.find(x => x.id === id);
+      if (c) { Object.assign(c, { number: fields.number, customer: fields.customer, price: Number(fields.price)||0, status: fields.status, date: fields.date, note: fields.note, filename: fields.filename, memo: fields.memo }); }
+      showToast('✅ 保存しました');
+      toggleEdit(id);
+      render();
+    } else {
+      showToast(`⚠️ 保存失敗: ${d.error}`);
+      ep.classList.remove('ep-saving');
+    }
+  } catch(e) {
+    showToast(`⚠️ エラー: ${e.message}`);
+    ep.classList.remove('ep-saving');
+  }
+}
+
+async function confirmDelete(id) {
+  const c = allCases.find(x => x.id === id);
+  const name = c?.number || '案件';
+  if (!confirm(`「${name}」をNotionから削除しますか？\n\nOK → Notionから完全削除\nキャンセル → 中止`)) return;
+  try {
+    const d = await deleteCase(id);
+    if (d.ok) {
+      allCases = allCases.filter(x => x.id !== id);
+      document.getElementById('countBadge').textContent = `${allCases.length}件`;
+      showToast('🗑️ 削除しました');
+      render();
+    } else {
+      showToast(`⚠️ 削除失敗: ${d.error}`);
+    }
+  } catch(e) {
+    showToast(`⚠️ エラー: ${e.message}`);
+  }
+}
+
+// ===== 顧客別ビュー =====
+function renderGroup() {
+  const mc = document.getElementById('mainContent');
+  if (!allCases.length) { mc.innerHTML = '<div class="empty-msg">案件が見つかりませんでした</div>'; return; }
+  // グループ化
+  const groups = {};
+  for (const c of allCases) {
+    const key = c.customer || '（顧客なし）';
+    if (!groups[key]) groups[key] = { customer: key, cases: [], total: 0 };
+    groups[key].cases.push(c);
+    groups[key].total += Number(c.price) || 0;
+  }
+  let html = '<div class="customer-cards">';
+  for (const [cust, g] of Object.entries(groups)) {
+    const custId = btoa(encodeURIComponent(cust)).replace(/=/g,'');
+    html += `<div class="customer-card" id="cc-${custId}">
+      <div class="customer-card-header" onclick="toggleCard('${custId}')">
+        <span class="ccard-name">${esc(cust)}</span>
+        <span class="ccard-count">${g.cases.length}件</span>
+        <span class="ccard-total">${fmtPrice(g.total)}</span>
+        <span class="ccard-chevron">▼</span>
+      </div>
+      <div class="ccard-body">`;
+    for (const c of g.cases) {
+      html += `<div class="ccard-case-row">
+        <span class="ccard-num">${esc(c.number||'')}</span>
+        <span class="ccard-note" title="${esc(c.note)}">${esc(c.note||c.number||'')}</span>
+        <span class="ccard-date">${fmtDate(c.date)}</span>
+        <span class="ccard-price">${fmtPrice(c.price)}</span>
+        <span class="ccard-status"><span class="status-badge ${statusClass(c.status)}">${esc(c.status||'―')}</span></span>
+        <div class="act-btns" style="margin-left:8px">
+          <button class="act-btn btn-edit" onclick="openCaseEdit('${c.id}','${custId}')">✏️</button>
+          <button class="act-btn btn-del"  onclick="confirmDelete('${c.id}')">🗑️</button>
+        </div>
+      </div>`;
+    }
+    // 請求書ゾーン
+    const today = new Date().toISOString().slice(0,10);
+    html += `<div class="invoice-zone">
+        <span class="invoice-date-label">請求日</span>
+        <input class="invoice-date-input" type="date" id="inv-date-${custId}" value="${today}">
+        <button class="invoice-btn" onclick="issueInvoice('${esc(cust)}','${custId}')">📄 請求書発行 (XLSX)</button>
+        <button class="invoice-csv-btn" onclick="exportCustomerCSV('${esc(cust)}')">CSV</button>
+        <button class="invoice-record-btn" onclick="recordInvoice('${esc(cust)}','${custId}')">📝 Notionに記録</button>
+        <span class="inv-total-label">合計: ${fmtPrice(g.total)}</span>
+      </div>`;
+    html += `</div></div>`;
+  }
+  html += '</div>';
+  mc.innerHTML = html;
+}
+
+function toggleCard(custId) {
+  document.getElementById(`cc-${custId}`)?.classList.toggle('collapsed');
+}
+
+function openCaseEdit(caseId, custId) {
+  // 一覧モードに切り替えてedit表示
+  setView('list');
+  setTimeout(() => { toggleEdit(caseId); document.getElementById(`row-${caseId}`)?.scrollIntoView({behavior:'smooth',block:'center'}); }, 100);
+}
+
+// ===== 請求書発行 =====
+async function issueInvoice(customer, custId) {
+  const dateEl = document.getElementById(`inv-date-${custId}`);
+  if (!dateEl || !dateEl.value) { showToast('⚠️ 請求日を設定してください'); return; }
+  const d = new Date(dateEl.value);
+  const invoiceDate = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  const cases = allCases.filter(c => c.customer === customer && c.price > 0);
+  if (!cases.length) { showToast('⚠️ 金額のある案件がありません'); return; }
+  const customerNo = customer.replace(/[様御]/g,'').trim();
+  showToast('📄 XLSX生成中…');
+  try {
+    await generateInvoice(customerNo, customer, invoiceDate, cases.map(c => ({
+      number: c.number, note: c.note || c.number, amount: c.price,
+    })));
+    showToast('✅ 請求書をダウンロードしました');
+  } catch(e) {
+    showToast(`⚠️ 発行失敗: ${e.message}`);
+  }
+}
+
+async function recordInvoice(customer, custId) {
+  const dateEl = document.getElementById(`inv-date-${custId}`);
+  if (!dateEl || !dateEl.value) { showToast('⚠️ 請求日を設定してください'); return; }
+  const d = new Date(dateEl.value);
+  const invoiceDate = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  const month       = `${d.getFullYear()}年${d.getMonth()+1}月`;
+  const cases = allCases.filter(c => c.customer === customer && c.price > 0);
+  const total = cases.reduce((s,c) => s + (Number(c.price)||0), 0);
+  const customerNo = customer.replace(/[様御]/g,'').trim();
+  showToast('📝 Notionに記録中…');
+  try {
+    const res = await recordInvoiceNotion(customerNo, invoiceDate, total, cases.map(c=>c.number), month);
+    if (res.ok) showToast('✅ Notionに記録しました');
+    else showToast(`⚠️ 記録失敗: ${JSON.stringify(res.results)}`);
+  } catch(e) {
+    showToast(`⚠️ エラー: ${e.message}`);
+  }
+}
+
+// ===== CSV出力 =====
+function exportAllCSV() {
+  if (!allCases.length) { showToast('⚠️ データなし'); return; }
+  downloadCSV(allCases, '案件履歴_全件.csv');
+}
+
+function exportCustomerCSV(customer) {
+  const cases = allCases.filter(c => c.customer === customer);
+  downloadCSV(cases, `案件履歴_${customer}.csv`);
+}
+
+function downloadCSV(cases, filename) {
+  const headers = ['案件番号','お客様','単価','進捗','締切日','備考/素材名','ファイル名','備考','粗利'];
+  const rows = cases.map(c => [
+    c.number, c.customer, c.price, c.status, c.date, c.note, c.filename, c.memo, c.gross
+  ].map(v => `"${String(v||'').replace(/"/g,'""')}"`));
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  showToast('📥 CSVをダウンロードしました');
+}
+
+// ===== Init =====
+doSearch();
+</script>
+</body>
+</html>

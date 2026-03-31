@@ -759,8 +759,9 @@ async function addBlockToNotion(block, sh, eh) {
     });
     const d = await r.json();
     if (d.ok) {
+      block.notionId = d.id;
+      await saveBlock(block);
       showSaveToast('📅 Notionに登録しました');
-      // Notionブロックとして描画するためにページをリロード
       setTimeout(() => loadNotionEvents(), 1200);
     } else {
       showSaveToast('⚠️ Notion登録に失敗しました');
@@ -938,12 +939,23 @@ function hideTooltip() {
 }
 
 // ===== Notion削除確認 =====
-function deleteNotionBlock(notionId, e) {
+async function deleteNotionBlock(notionId, e) {
   e.stopPropagation();
   const ev = notionEvents.find(x => x.id === notionId);
   const name = ev ? ev.title : '予定';
-  if (!confirm(`「${name}」をこの日のスケジュールから除去しますか？\n\nNotionのデータは変更されません。`)) return;
-  // ビューから除去（notionEventsから除外して再描画）
+  const alsoNotion = confirm(`「${name}」をNotionから削除しますか？\n\nOK → Notionからも完全削除\nキャンセル → この画面からのみ除去`);
+  if (alsoNotion) {
+    try {
+      await fetch(`${SERVER}/api/calendar/delete`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ id: notionId }),
+        signal: AbortSignal.timeout(8000),
+      });
+      showSaveToast('🗑️ Notionから削除しました');
+    } catch(err) {
+      showSaveToast('⚠️ Notion削除に失敗しました');
+    }
+  }
   notionEvents = notionEvents.filter(x => x.id !== notionId);
   document.getElementById(`notion-${notionId}`)?.remove();
   document.getElementById(`vtlnotion-${notionId}`)?.remove();
@@ -1544,6 +1556,20 @@ async function addCustomBlock() {
 // ===== ブロック削除 =====
 async function deleteBlock(blockId, e) {
   e.stopPropagation();
+  const block = schedBlocks.find(b => b.id === blockId);
+  // Notionと連携している場合は確認ダイアログ
+  if (block?.notionId) {
+    const alsoNotion = confirm(`「${block.text || '予定'}」をNotionからも削除しますか？\n\nOK → Notionからも完全削除\nキャンセル → このアプリのみ削除`);
+    if (alsoNotion) {
+      try {
+        await fetch(`${SERVER}/api/calendar/delete`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ id: block.notionId }),
+          signal: AbortSignal.timeout(8000),
+        });
+      } catch(err) {}
+    }
+  }
   schedBlocks = schedBlocks.filter(b => b.id !== blockId);
   document.getElementById(`blk-${blockId}`)?.remove();
   document.getElementById(`tag-${blockId}`)?.remove();
