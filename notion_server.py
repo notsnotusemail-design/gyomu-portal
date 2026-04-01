@@ -379,6 +379,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_move_notion_event(data)
         elif self.path == "/api/cases/update":
             self.handle_update_case(data)
+        elif self.path == "/api/invoice/template":
+            self.handle_invoice_template(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -964,6 +966,94 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"ok": True})
         else:
             self.send_json(500, {"ok": False, "error": err})
+
+    def handle_invoice_template(self, data):
+        """テンプレートXLSXを書き換えて請求書を生成"""
+        import shutil, calendar, re, subprocess
+        from openpyxl import load_workbook
+
+        template_path = os.path.join(SCRIPT_DIR, "請求書雛形.xlsx")
+        if not os.path.exists(template_path):
+            self.send_json(404, {"ok": False, "error": "請求書雛形.xlsxが見つかりません"}); return
+
+        customer_name = data.get("customerName", "")
+        invoice_date  = data.get("invoiceDate", "")   # "2026年4月1日"
+        cases         = data.get("cases", [])          # [{number, note, amount}]
+        customer_no   = data.get("customerNo", "")
+
+        # 支払い期日：次月末
+        due_date = ""
+        m = re.match(r"(\d+)年(\d+)月(\d+)日", invoice_date)
+        if m:
+            y, mo = int(m.group(1)), int(m.group(2))
+            nm = mo + 1 if mo < 12 else 1
+            ny = y if mo < 12 else y + 1
+            last = calendar.monthrange(ny, nm)[1]
+            due_date = f"{ny}年{nm}月{last}日"
+
+        # テンプレートコピー
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        tmp.close()
+        shutil.copy(template_path, tmp.name)
+
+        wb = load_workbook(tmp.name)
+        ws = wb.active
+
+        # 宛名
+        ws["B2"] = f"  {customer_name}様"
+
+        # 請求日 / 支払い期日
+        ws["B8"] = f"請求日：{invoice_date}"
+        ws["B9"] = f"支払い期日：{due_date}"
+
+        # 内容（C9 は結合セル C9:C11）
+        content_parts = [c.get("note") or c.get("number", "") for c in cases if c.get("note") or c.get("number")]
+        ws["C9"] = "、".join(content_parts) if content_parts else "動画編集案件の件"
+
+        # 明細テーブル行（B13:C18 → 最大6行）
+        DATA_START = 13
+        DATA_END   = 18
+        total_rows = DATA_END - DATA_START + 1  # 6
+
+        # 既存値クリア
+        for i in range(total_rows):
+            ws[f"B{DATA_START+i}"] = None
+            ws[f"C{DATA_START+i}"] = None
+
+        # ケースが6件を超える場合はテーブル行を追加
+        if len(cases) > total_rows:
+            extra = len(cases) - total_rows
+            ws.insert_rows(DATA_END, amount=extra)
+            DATA_END += extra
+
+        for i, case in enumerate(cases):
+            detail = case.get("note") or case.get("number", "")
+            amount = int(float(case.get("amount") or case.get("price") or 0))
+            ws[f"B{DATA_START+i}"] = detail
+            ws[f"C{DATA_START+i}"] = amount
+
+        # 合計を直値で上書き（テーブル数式が消えた場合のフォールバック）
+        total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
+        subtotal_row = DATA_END + 1
+        ws[f"C{subtotal_row}"] = total       # 小計
+        ws[f"C{subtotal_row+3}"] = total     # 集計（税率0・その他0前提）
+
+        wb.save(tmp.name)
+
+        # LibreOfficeで再計算
+        recalc = os.path.join(SCRIPT_DIR, "..", ".claude", "skills", "xlsx", "scripts", "recalc.py")
+        if os.path.exists(recalc):
+            try:
+                subprocess.run(["python3", recalc, tmp.name, "30"], capture_output=True, timeout=40)
+            except Exception:
+                pass
+
+        safe_date = invoice_date.replace("年", "").replace("月", "").replace("日", "")
+        filename = f"{customer_no}_請求書_{safe_date}.xlsx"
+        print(f"\n📄 テンプレート請求書生成: {filename}")
+        self.send_file(tmp.name, filename,
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        os.unlink(tmp.name)
 
     def handle_add_schedule(self, data):
         """予定を案件表に追加（お客様なしエントリー → Notionカレンダーに同期）"""

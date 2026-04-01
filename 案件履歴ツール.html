@@ -166,6 +166,28 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .empty-msg { text-align: center; padding: 50px 20px; color: #9ca3af; font-size: 14px; }
+
+/* ===== ダイヤル式月ピッカー ===== */
+.dial-picker {
+  display: flex; align-items: center; gap: 2px;
+  background: #fff; border: 1.5px solid #d1d5db; border-radius: 10px;
+  padding: 4px 6px; user-select: none; cursor: default;
+}
+.dial-col { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.dial-arrow {
+  background: none; border: none; cursor: pointer; color: #9ca3af;
+  font-size: 9px; line-height: 1; padding: 2px 8px; border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+}
+.dial-arrow:hover { background: #f3f4f6; color: #111; }
+.dial-arrow:active { background: #e5e7eb; }
+.dial-value {
+  font-size: 15px; font-weight: 700; color: #111827;
+  min-width: 36px; text-align: center; line-height: 1.3;
+  transition: transform 0.1s;
+}
+.dial-value.bump { transform: scale(1.15); }
+.dial-sep { font-size: 13px; color: #6b7280; padding: 0 1px; line-height: 1; }
 </style>
 </head>
 <body>
@@ -181,7 +203,21 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 </div>
 
 <div class="search-bar">
-  <input class="month-input" type="month" id="monthPicker" oninput="doSearch()">
+  <!-- ダイヤル式月ピッカー -->
+  <div class="dial-picker" title="月を選択">
+    <div class="dial-col">
+      <button class="dial-arrow" onclick="dialAdjust('y',-1)">▲</button>
+      <div class="dial-value" id="dialY">2026</div>
+      <button class="dial-arrow" onclick="dialAdjust('y', 1)">▼</button>
+    </div>
+    <span class="dial-sep">年</span>
+    <div class="dial-col">
+      <button class="dial-arrow" onclick="dialAdjust('m',-1)">▲</button>
+      <div class="dial-value" id="dialM">1</div>
+      <button class="dial-arrow" onclick="dialAdjust('m', 1)">▼</button>
+    </div>
+    <span class="dial-sep">月</span>
+  </div>
   <input class="search-input" id="searchQ" placeholder="案件番号で検索…"
          onkeydown="if(event.key==='Enter') doSearch()">
   <select class="filter-select" id="statusFilter" onchange="doSearch()">
@@ -213,13 +249,48 @@ let viewMode = 'list';
 let sortKey  = 'date';
 let sortAsc  = false;
 
-// ===== 初期化：当月をデフォルト =====
-(function initMonth() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  document.getElementById('monthPicker').value = `${y}-${m}`;
-})();
+// ===== ダイヤル式月ピッカー =====
+let dialYear  = new Date().getFullYear();
+let dialMonth = new Date().getMonth() + 1;
+
+function renderDial() {
+  const yEl = document.getElementById('dialY');
+  const mEl = document.getElementById('dialM');
+  yEl.textContent = dialYear;
+  mEl.textContent = dialMonth;
+  // バンプアニメーション
+  [yEl, mEl].forEach(el => {
+    el.classList.add('bump');
+    setTimeout(() => el.classList.remove('bump'), 120);
+  });
+}
+
+function dialAdjust(type, delta) {
+  if (type === 'y') {
+    dialYear = Math.max(2020, Math.min(2035, dialYear + delta));
+  } else {
+    dialMonth += delta;
+    if (dialMonth > 12) { dialMonth = 1;  dialYear = Math.min(2035, dialYear + 1); }
+    if (dialMonth < 1)  { dialMonth = 12; dialYear = Math.max(2020, dialYear - 1); }
+  }
+  renderDial();
+  doSearch();
+}
+
+function getDialMonthStr() {
+  return `${dialYear}-${String(dialMonth).padStart(2, '0')}`;
+}
+
+// ホイールスクロールでも操作可
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dialY')?.parentElement?.addEventListener('wheel', e => {
+    e.preventDefault(); dialAdjust('y', e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+  document.getElementById('dialM')?.parentElement?.addEventListener('wheel', e => {
+    e.preventDefault(); dialAdjust('m', e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+  renderDial();
+});
 
 // ===== ユーティリティ =====
 function esc(s) {
@@ -263,7 +334,7 @@ async function apiFetch(path, opts) {
 }
 
 async function doSearch() {
-  const month  = document.getElementById('monthPicker').value;
+  const month  = getDialMonthStr();
   const q      = document.getElementById('searchQ').value.trim();
   const status = document.getElementById('statusFilter').value;
 
@@ -570,13 +641,20 @@ async function issueXLSX(cust, cid) {
   const cases = allCases.filter(c => c.customer === cust && c.price > 0);
   if (!cases.length) { toast('⚠️ 金額のある案件がありません'); return; }
   const custNo = cust.replace(/[様御中]/g, '').trim();
-  toast('📄 XLSX生成中…');
+  const custName = cases[0]?.customerName || cust;
+  toast('📄 請求書生成中…');
   try {
-    const r = await apiFetch('/api/generate-invoice', {
+    const r = await apiFetch('/api/invoice/template', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        customerNo: custNo, customerName: cust, invoiceDate: invDate,
-        cases: cases.map(c => ({ number: c.number, note: c.note || c.number, amount: c.price })),
+        customerNo:   custNo,
+        customerName: custName,
+        invoiceDate:  invDate,
+        cases: cases.map(c => ({
+          number: c.number,
+          note:   c.note || c.number,
+          amount: c.price,
+        })),
       }),
     });
     const blob = await r.blob();
@@ -584,8 +662,10 @@ async function issueXLSX(cust, cid) {
     const a = document.createElement('a');
     const cd = r.headers.get('Content-Disposition') || '';
     const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-    a.href = url; a.download = m ? decodeURIComponent(m[1]) : `${custNo}_請求書.xlsx`;
-    a.click(); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = m ? decodeURIComponent(m[1]) : `${custNo}_請求書.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
     toast('✅ 請求書をダウンロードしました');
   } catch(e) { toast(`⚠️ 発行失敗: ${e.message}`); }
 }
