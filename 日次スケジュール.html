@@ -155,6 +155,34 @@ body {
 }
 .sched-block:hover .blk-del { display: block; }
 
+/* ===== ブロック コンテキストメニュー ===== */
+.blk-ctx {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.16);
+  padding: 5px 0;
+  z-index: 20000;
+  min-width: 170px;
+  animation: ctx-in 0.1s ease;
+}
+@keyframes ctx-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.blk-ctx-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; font-size: 13px; font-family: inherit;
+  background: none; border: none; width: 100%;
+  cursor: pointer; color: #111827; text-align: left;
+  transition: background 0.08s;
+}
+.blk-ctx-item:hover { background: #f3f4f6; }
+.blk-ctx-item.danger { color: #dc2626; }
+.blk-ctx-item.danger:hover { background: #fef2f2; }
+.blk-ctx-sep { border: none; border-top: 1px solid #f3f4f6; margin: 4px 0; }
+
 /* インライン入力 */
 .blk-input {
   position: absolute; inset: 0; width: 100%; height: 100%;
@@ -639,6 +667,14 @@ function addBlockEl(b) {
   el.addEventListener('touchstart', e => onBlockTouchStart(e, b.id), { passive: false });
   el.addEventListener('mouseenter', e => showTooltip(e.currentTarget));
   el.addEventListener('mouseleave', () => hideTooltip());
+  // 右クリック / 長押しでコンテキストメニュー
+  el.addEventListener('contextmenu', e => { e.preventDefault(); showBlockCtxMenu(e, b.id); });
+  let _lpTimer = null;
+  el.addEventListener('touchstart', e => {
+    _lpTimer = setTimeout(() => showBlockCtxMenu(e.touches[0], b.id), 600);
+  }, { passive: true });
+  el.addEventListener('touchend',   () => clearTimeout(_lpTimer));
+  el.addEventListener('touchmove',  () => clearTimeout(_lpTimer));
   lane.appendChild(el);
 }
 
@@ -686,6 +722,101 @@ function startBlockWithInput(s, en) {
     // パネルがあればblurは無視（パネルのボタンクリック中）
     setTimeout(() => { if (!document.querySelector('.notion-add-panel')) commit(false); }, 120);
   });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
+    if (e.key === 'Escape') { e.preventDefault(); commit(true); }
+  });
+}
+
+// ===== ブロック コンテキストメニュー =====
+function showBlockCtxMenu(e, blockId) {
+  hideTooltip();
+  document.querySelector('.blk-ctx')?.remove();
+
+  const block = schedBlocks.find(b => b.id === blockId);
+  if (!block) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'blk-ctx';
+
+  const items = [
+    { icon: '✏️', label: '名前を変更', action: () => renameBlock(blockId) },
+  ];
+  if (!block.notionId) {
+    items.push({ icon: '📅', label: 'Notionに追加', action: () => {
+      const sh = `${p2(Math.floor(block.startMin/60))}:${p2(block.startMin%60)}`;
+      const eh = `${p2(Math.floor(block.endMin/60))}:${p2(block.endMin%60)}`;
+      addBlockToNotion(block, sh, eh);
+    }});
+  }
+  items.push({ sep: true });
+  items.push({ icon: '🗑️', label: '削除', danger: true, action: () => {
+    const fakeEvt = { stopPropagation: () => {} };
+    deleteBlock(blockId, fakeEvt);
+  }});
+
+  items.forEach(item => {
+    if (item.sep) { const hr = document.createElement('hr'); hr.className='blk-ctx-sep'; menu.appendChild(hr); return; }
+    const btn = document.createElement('button');
+    btn.className = 'blk-ctx-item' + (item.danger ? ' danger' : '');
+    btn.innerHTML = `<span>${item.icon}</span><span>${item.label}</span>`;
+    btn.addEventListener('click', () => { menu.remove(); item.action(); });
+    menu.appendChild(btn);
+  });
+
+  // 位置決め
+  const x = e.clientX ?? e.pageX;
+  const y = e.clientY ?? e.pageY;
+  document.body.appendChild(menu);
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = `${Math.min(x, window.innerWidth  - mw - 8)}px`;
+  menu.style.top  = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+
+  const dismiss = (ev) => {
+    if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('mousedown', dismiss); document.removeEventListener('touchstart', dismiss); }
+  };
+  setTimeout(() => {
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('touchstart', dismiss);
+  }, 50);
+}
+
+// ===== ブロック名前変更（インライン編集）=====
+function renameBlock(blockId) {
+  const block = schedBlocks.find(b => b.id === blockId);
+  const el    = document.getElementById(`blk-${blockId}`);
+  if (!block || !el) return;
+
+  // 既存inputがあれば除去
+  el.querySelector('.blk-input')?.remove();
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = block.text || '';
+  input.placeholder = '内容を入力…';
+  input.className = 'blk-input';
+  input.maxLength = 50;
+  el.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = async (cancel = false) => {
+    if (done) return;
+    done = true;
+    input.remove();
+    const text = input.value.trim();
+    if (cancel || !text) return;
+    block.text = text;
+    const tag = document.getElementById(`tag-${blockId}`);
+    if (tag) tag.textContent = text;
+    el.dataset.text = text;
+    const inner = el.querySelector('.blk-text');
+    if (inner) inner.textContent = text;
+    await saveBlock(block);
+    showSaveToast('✅ 名前を変更しました');
+  };
+  input.addEventListener('blur',    () => setTimeout(() => commit(false), 120));
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
     if (e.key === 'Escape') { e.preventDefault(); commit(true); }
@@ -1622,12 +1753,13 @@ async function saveBlock(b) {
     if (r.ok) showSaveToast();
   } catch(e) {}
 }
-function showSaveToast() {
+function showSaveToast(msg) {
   const el = document.getElementById('saveToast');
   if (!el) return;
+  if (msg) el.textContent = msg;
   el.classList.add('show');
   clearTimeout(saveToastTimer);
-  saveToastTimer = setTimeout(() => el.classList.remove('show'), 1500);
+  saveToastTimer = setTimeout(() => { el.classList.remove('show'); el.textContent = '✓ 保存しました'; }, 1800);
 }
 
 function genId() { return Math.random().toString(36).slice(2,10); }
