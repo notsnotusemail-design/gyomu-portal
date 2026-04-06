@@ -42,5 +42,37 @@
       "startMin": 660,
       "endMin": 900
     }
+  ],
+  "2026-04-03": [
+    {
+      "id": "d43wgpd4",
+      "type": "custom",
+      "text": "MTG",
+      "startMin": 990,
+      "endMin": 1080
+    }
+  ],
+  "2026-04-07": [
+    {
+      "id": "j4lmi6yz",
+      "type": "custom",
+      "text": "コッシーチャンネル確認",
+      "startMin": 840,
+      "endMin": 1080
+    },
+    {
+      "id": "lej3ejeu",
+      "type": "custom",
+      "text": "たけまる",
+      "startMin": 1140,
+      "endMin": 1260
+    },
+    {
+      "id": "q2kabab7",
+      "type": "custom",
+      "text": "AIGMA修正",
+      "startMin": 1320,
+      "endMin": 1410
+    }
   ]
 }
