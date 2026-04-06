@@ -37,6 +37,13 @@ body {
   background: none; color: white; cursor: pointer; transition: all 0.15s;
 }
 .nav-btn:hover { background: rgba(255,255,255,0.1); }
+.csv-export-btn {
+  font-size: 11px; padding: 5px 9px;
+  border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85);
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.csv-export-btn:hover { background: rgba(255,255,255,0.18); color: white; }
 
 /* ===== タイムライン外枠 ===== */
 .tl-wrap {
@@ -488,6 +495,7 @@ body {
     <div class="header-date" id="headerDate">読み込み中…</div>
     <div class="header-sub" id="headerSub">ドラッグで作成 · 移動 · リサイズ</div>
   </div>
+  <button class="csv-export-btn" onclick="exportScheduleCSV()" title="この日のスケジュールをCSV出力">📥 CSV</button>
   <button class="layout-toggle" id="layoutToggle" onclick="toggleLayout()">縦 ↕</button>
   <div class="date-nav">
     <button class="nav-btn" onclick="changeDate(-1)">‹</button>
@@ -718,13 +726,17 @@ function startBlockWithInput(s, en) {
     // 保存後にNotion追加選択パネルを表示
     showNotionAddPanel(block, el);
   };
+  // IME変換中はEnterで確定しない
+  let composing = false;
+  input.addEventListener('compositionstart', () => { composing = true; });
+  input.addEventListener('compositionend',   () => { composing = false; });
   input.addEventListener('blur', () => {
     // パネルがあればblurは無視（パネルのボタンクリック中）
     setTimeout(() => { if (!document.querySelector('.notion-add-panel')) commit(false); }, 120);
   });
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
-    if (e.key === 'Escape') { e.preventDefault(); commit(true); }
+    if (e.key === 'Enter'  && !composing) { e.preventDefault(); commit(false); }
+    if (e.key === 'Escape' && !composing) { e.preventDefault(); commit(true); }
   });
 }
 
@@ -816,10 +828,14 @@ function renameBlock(blockId) {
     await saveBlock(block);
     showSaveToast('✅ 名前を変更しました');
   };
+  // IME変換中はEnterで確定しない
+  let composingR = false;
+  input.addEventListener('compositionstart', () => { composingR = true; });
+  input.addEventListener('compositionend',   () => { composingR = false; });
   input.addEventListener('blur',    () => setTimeout(() => commit(false), 120));
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter')  { e.preventDefault(); commit(false); }
-    if (e.key === 'Escape') { e.preventDefault(); commit(true); }
+    if (e.key === 'Enter'  && !composingR) { e.preventDefault(); commit(false); }
+    if (e.key === 'Escape' && !composingR) { e.preventDefault(); commit(true); }
   });
 }
 
@@ -1763,6 +1779,62 @@ function showSaveToast(msg) {
 }
 
 function genId() { return Math.random().toString(36).slice(2,10); }
+
+// ===== CSV出力 =====
+function exportScheduleCSV() {
+  // 自分のブロック + Notionブロックを結合して時刻順に並べる
+  const TYPE_LABEL = { todo:'TODO', memo:'メモ', medium:'中期', custom:'作業', deadline:'納期' };
+
+  const rows = [];
+
+  // 自前ブロック
+  schedBlocks.forEach(b => {
+    const sh = `${p2(Math.floor((b.startMin??0)/60))}:${p2((b.startMin??0)%60)}`;
+    const eh = `${p2(Math.floor((b.endMin??0)/60))}:${p2((b.endMin??0)%60)}`;
+    rows.push({
+      sortMin: b.startMin ?? 0,
+      date:    currentDate,
+      start:   sh,
+      end:     eh,
+      text:    b.text || '',
+      type:    TYPE_LABEL[b.type] || b.type || '作業',
+      notion:  b.notionId ? '連携済み' : '',
+    });
+  });
+
+  // Notionブロック（カレンダー連携予定）
+  notionEvents.forEach(ev => {
+    if (!ev.startTime) return;
+    rows.push({
+      sortMin: timeToMin(ev.startTime),
+      date:    currentDate,
+      start:   ev.startTime,
+      end:     ev.endTime || '',
+      text:    ev.title || '',
+      type:    'Notion予定',
+      notion:  '◯',
+    });
+  });
+
+  rows.sort((a, b) => a.sortMin - b.sortMin);
+
+  const header = ['日付', '開始', '終了', '内容', '種別', 'Notion連携'];
+  const lines  = [header.join(',')];
+  rows.forEach(r => {
+    const cols = [r.date, r.start, r.end, `"${r.text.replace(/"/g,'""')}"`, r.type, r.notion];
+    lines.push(cols.join(','));
+  });
+
+  const bom  = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv; charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `スケジュール_${currentDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showSaveToast('📥 CSVをダウンロードしました');
+}
 
 // ===== 初期化 =====
 async function init() {
