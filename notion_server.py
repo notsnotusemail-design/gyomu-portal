@@ -1038,8 +1038,11 @@ class Handler(BaseHTTPRequestHandler):
         def af(sz=9, bold=False, color="FFFFFF"):
             return Font(name="Arial", size=sz, bold=bold, color=color)
 
-        # 1行目：タイトル
-        ws.merge_cells(f"A1:{get_column_letter(SLOTS+2)}1")
+        # 列オフセット：A=内容, B=種別, C=時刻, D以降=ガントバー
+        BAR_OFFSET = 4   # ガントバーが始まる列番号（1-indexed）
+
+        # 1行目：タイトル（A〜最終ガント列まで結合）
+        ws.merge_cells(f"A1:{get_column_letter(SLOTS + BAR_OFFSET - 1)}1")
         tc = ws["A1"]
         tc.value     = f"日次スケジュール　ガントチャート　{date_str}"
         tc.font      = af(11, True)
@@ -1047,20 +1050,21 @@ class Handler(BaseHTTPRequestHandler):
         tc.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 22
 
-        # 2行目：ヘッダー
-        for col, label in [(1, "内容"), (2, "種別")]:
+        # 2行目：固定ヘッダー（内容／種別／時刻）
+        for col, label in [(1, "内容"), (2, "種別"), (3, "時刻")]:
             c = ws.cell(2, col)
             c.value     = label
             c.font      = af(9, True)
             c.fill      = HEADER_FILL
             c.alignment = Alignment(horizontal="center", vertical="center")
 
+        # 2行目：24時間軸ラベル（1時間ごとに表示）
         for i in range(SLOTS):
             mins = i * SLOT_MINS
             h, m = divmod(mins, 60)
-            c = ws.cell(2, i + 3)
-            c.value     = f"{h:02d}:{m:02d}" if m == 0 else ""
-            c.font      = af(8, m == 0)
+            c = ws.cell(2, i + BAR_OFFSET)
+            c.value     = f"{h:02d}:00" if m == 0 else ""
+            c.font      = af(8, bold=(m == 0))
             c.fill      = HOUR_FILL if m == 0 else HEADER_FILL
             c.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[2].height = 16
@@ -1068,16 +1072,18 @@ class Handler(BaseHTTPRequestHandler):
         # 列幅
         ws.column_dimensions["A"].width = 22
         ws.column_dimensions["B"].width = 9
+        ws.column_dimensions["C"].width = 13   # 時刻列
         for i in range(SLOTS):
-            ws.column_dimensions[get_column_letter(i + 3)].width = 2.2
+            ws.column_dimensions[get_column_letter(i + BAR_OFFSET)].width = 2.2
 
         # データ行
         for ri, entry in enumerate(entries):
-            row  = ri + 3
+            row   = ri + 3
             bfill = EVEN_ROW if ri % 2 == 0 else ODD_ROW
             color = TYPE_COLORS.get(entry["type"], "7C3AED")
             gfill = PatternFill("solid", start_color=color, end_color=color)
 
+            # 内容
             nc = ws.cell(row, 1)
             nc.value     = ("📅 " if entry["notion_linked"] else "") + entry["text"]
             nc.font      = Font(name="Arial", size=9)
@@ -1085,17 +1091,29 @@ class Handler(BaseHTTPRequestHandler):
             nc.alignment = Alignment(vertical="center")
             nc.border    = bdr
 
-            tc = ws.cell(row, 2)
-            tc.value     = TYPE_LABELS.get(entry["type"], entry["type"])
-            tc.font      = Font(name="Arial", size=8)
+            # 種別
+            sc = ws.cell(row, 2)
+            sc.value     = TYPE_LABELS.get(entry["type"], entry["type"])
+            sc.font      = Font(name="Arial", size=8)
+            sc.fill      = bfill
+            sc.alignment = Alignment(horizontal="center", vertical="center")
+            sc.border    = bdr
+
+            # 時刻（専用列）
+            sh = f"{entry['start'] // 60:02d}:{entry['start'] % 60:02d}"
+            eh = f"{entry['end']   // 60:02d}:{entry['end']   % 60:02d}"
+            tc = ws.cell(row, 3)
+            tc.value     = f"{sh}〜{eh}"
+            tc.font      = Font(name="Arial", size=9, bold=True, color="111827")
             tc.fill      = bfill
             tc.alignment = Alignment(horizontal="center", vertical="center")
             tc.border    = bdr
 
+            # ガントバー
             start_slot = entry["start"] // SLOT_MINS
             end_slot   = (entry["end"] + SLOT_MINS - 1) // SLOT_MINS
             for s in range(SLOTS):
-                c = ws.cell(row, s + 3)
+                c = ws.cell(row, s + BAR_OFFSET)
                 c.fill   = gfill if start_slot <= s < end_slot else bfill
                 c.border = bdr
             ws.row_dimensions[row].height = 16
