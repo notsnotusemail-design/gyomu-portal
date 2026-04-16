@@ -908,13 +908,16 @@ class Handler(BaseHTTPRequestHandler):
                     dl       = (props.get("案件締切日・進行",{}).get("date") or {}).get("start","")
                     status   = (props.get("進捗",{}).get("status") or {}).get("name","")
                     # 粗利テキストから利益額を抽出（例: "10,000 - 3,000 = 7,000" → 7000）
+                    # grossが空の場合は外注費ゼロとみなし粗利=単価として扱う
+                    import re as _re
                     profit = None
                     if gross:
-                        import re as _re
                         m = _re.search(r'=\s*([\d,]+)', gross)
                         if m:
                             try: profit = int(m.group(1).replace(',',''))
                             except: pass
+                    if profit is None and price:
+                        profit = int(price)   # 外注費未入力 → 粗利=単価
                     if not customer:
                         continue   # 客番号なし（バイト・会議等の予定）は除外
                     cases.append({
@@ -952,14 +955,16 @@ class Handler(BaseHTTPRequestHandler):
         if "date"     in data:
             props["案件締切日・進行"] = {"date": {"start": data["date"]}} if data["date"] else {"date": None}
         if "price" in data:
-            try:    props["単価"] = {"number": float(data["price"])}
-            except: pass
-        if "outsourceCost" in data and "price" in data:
             try:
-                pv = float(data["price"]); cv = float(data["outsourceCost"])
-                gross_text = f"{int(pv):,} - {int(cv):,} = {int(pv-cv):,}"
+                pv = float(data["price"]) if str(data["price"]).strip() != "" else 0.0
+                props["単価"] = {"number": pv}
+                # 外注費：空・未送信はすべて0扱い
+                raw_cost = str(data.get("outsourceCost", "")).strip()
+                cv = float(raw_cost) if raw_cost != "" else 0.0
+                gross_text = f"{int(pv):,} - {int(cv):,} = {int(pv - cv):,}"
                 props["粗利（単価-外注費）"] = {"rich_text": [{"text": {"content": gross_text}}]}
-            except: pass
+            except Exception as e:
+                print(f"  ⚠️ 粗利計算エラー: {e}")
         if not props:
             self.send_json(400, {"ok": False, "error": "更新項目なし"}); return
         result, err = notion_request("PATCH", f"/pages/{page_id}", {"properties": props})

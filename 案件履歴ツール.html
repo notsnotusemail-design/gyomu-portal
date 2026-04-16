@@ -429,7 +429,8 @@ function buildEP(c) {
   const statuses = ['未着手','進行中','完了','請求済み'];
   const opts = statuses.map(s => `<option value="${s}"${c.status===s?' selected':''}>${s}</option>`).join('');
   // 外注費を粗利テキストから逆算（例: "10,000 - 3,000 = 7,000" → 3,000）
-  let cost = '';
+  // 未記録の場合はデフォルト0（外注なしは0で粗利=単価として扱う）
+  let cost = '0';
   if (c.gross) {
     const m = c.gross.match(/[\d,]+\s*-\s*([\d,]+)/);
     if (m) cost = m[1].replace(/,/g, '');
@@ -439,7 +440,7 @@ function buildEP(c) {
       <div class="ep-field"><label>案件番号</label><input id="ef-num-${c.id}"    value="${esc(c.number)}"></div>
       <div class="ep-field"><label>お客様No/名</label><input id="ef-cust-${c.id}" value="${esc(c.customer)}"></div>
       <div class="ep-field"><label>単価（円）</label><input id="ef-price-${c.id}" type="number" value="${c.price||''}"></div>
-      <div class="ep-field"><label>外注費（円）</label><input id="ef-cost-${c.id}" type="number" value="${cost}" placeholder="なければ空欄"></div>
+      <div class="ep-field"><label>外注費（円）</label><input id="ef-cost-${c.id}" type="number" value="${cost}" placeholder="なければ0として計算"></div>
       <div class="ep-field"><label>進捗</label><select id="ef-status-${c.id}">${opts}</select></div>
       <div class="ep-field"><label>締切日</label><input id="ef-date-${c.id}" type="date" value="${c.date||''}"></div>
       <div class="ep-field"><label>備考/素材名</label><input id="ef-note-${c.id}" value="${esc(c.note)}"></div>
@@ -489,13 +490,13 @@ async function saveEdit(id) {
       const c = allCases.find(x => x.id === id);
       if (c) {
         const price = Number(fields.price) || 0;
-        const cost  = Number(fields.outsourceCost) || 0;
+        const cost  = Number(fields.outsourceCost) || 0;  // 空欄・未入力は0
         Object.assign(c, {
           number: fields.number, customer: fields.customer,
           price, status: fields.status, date: fields.date,
           note: fields.note, filename: fields.filename, memo: fields.memo,
-          profit: (fields.outsourceCost !== '' && fields.price !== '') ? price - cost : null,
-          gross: (fields.outsourceCost && fields.price)
+          profit: fields.price !== '' ? price - cost : null,
+          gross: fields.price !== ''
             ? `${price.toLocaleString()} - ${cost.toLocaleString()} = ${(price-cost).toLocaleString()}`
             : '',
         });
