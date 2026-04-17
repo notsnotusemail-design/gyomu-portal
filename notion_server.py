@@ -1141,8 +1141,11 @@ class Handler(BaseHTTPRequestHandler):
         os.unlink(tmp.name)
 
     def handle_invoice_numbers(self, data):
-        """AppleScript経由でNumbersテンプレートを書き換えて請求書を生成"""
+        """Numbers.appにAppleScriptファイル経由でテンプレートを書き換えて請求書を生成"""
         import shutil, calendar, re, subprocess, tempfile
+
+        if not shutil.which("osascript"):
+            self.send_json(500, {"ok": False, "error": "osascriptが見つかりません。macOS上でサーバーを起動してください"}); return
 
         template_path = os.path.join(SCRIPT_DIR, "請求書雛形のコピー.numbers")
         if not os.path.exists(template_path):
@@ -1158,90 +1161,117 @@ class Handler(BaseHTTPRequestHandler):
         md = re.match(r"(\d+)年(\d+)月(\d+)日", invoice_date)
         if md:
             y, mo = int(md.group(1)), int(md.group(2))
-            nm = mo + 1 if mo < 12 else 1; ny = y if mo < 12 else y + 1
+            nm = mo + 1 if mo < 12 else 1
+            ny = y if mo < 12 else y + 1
             due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
 
-        content_parts = [c.get("note") or c.get("number","") for c in cases if c.get("note") or c.get("number")]
-        content_str   = "、".join(content_parts) or "動画編集案件の件"
+        content_parts = [c.get("note") or c.get("number", "") for c in cases
+                         if c.get("note") or c.get("number")]
+        content_str = "、".join(content_parts) or "動画編集案件の件"
 
-        # テンプレートを一時コピー（日本語パスを避けるためASCIIパス）
-        tmp_dir  = tempfile.mkdtemp(prefix="inv_")
-        tmp_path = os.path.join(tmp_dir, "invoice.numbers")
-        shutil.copy(template_path, tmp_path)
+        total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
 
-        # テンプレートのデータ行は13〜14（2行）、小計は15行目
-        TEMPLATE_DATA_ROWS = 2
-        extra_rows   = max(0, len(cases) - TEMPLATE_DATA_ROWS)
-        subtotal_row = 15 + extra_rows
-        total        = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
-
-        def eas(s):
+        def qs(s):
+            """AppleScript文字列用クォートエスケープ"""
             return str(s).replace("\\", "\\\\").replace('"', '\\"')
 
-        # 行追加コマンド（小計行の前に余分な行を挿入）
-        insert_cmds = "\n                    ".join(
-            [f"add row above row {15 + i}" for i in range(extra_rows)] or [""]
-        )
+        # テンプレート構造: データ行13〜14、小計15行目
+        # 3件以上の場合は小計行(15)の直前に1行ずつ挿入
+        TEMPLATE_ROWS = 2
+        extra_rows   = max(0, len(cases) - TEMPLATE_ROWS)
+        subtotal_row = 15 + extra_rows
+
+        # 行挿入ブロック（挿入ごとに delay 0.5 で Numbers が処理を完了するのを待つ）
+        insert_lines = []
+        for i in range(extra_rows):
+            insert_lines.append(f'                    add row above row {15 + i}')
+            insert_lines.append(f'                    delay 0.5')
+        insert_block = "\n".join(insert_lines) + "\n" if insert_lines else ""
 
         # データ行セット
-        row_cmds = "\n                    ".join(
-            f'set value of cell "B{13+i}" to "{eas(c.get("note") or c.get("number",""))}"\n'
-            f'                    set value of cell "C{13+i}" to {int(float(c.get("amount") or c.get("price") or 0))}'
-            for i, c in enumerate(cases)
-        )
+        row_lines = []
+        for i, c in enumerate(cases):
+            row    = 13 + i
+            detail = qs(c.get("note") or c.get("number", ""))
+            amount = int(float(c.get("amount") or c.get("price") or 0))
+            row_lines.append(f'                    set value of cell "B{row}" to "{detail}"')
+            row_lines.append(f'                    set value of cell "C{row}" to {amount}')
+        row_block = "\n".join(row_lines)
 
-        applescript = f'''tell application "Numbers"
-    set wasRunning to running
-    set theDoc to open POSIX file "{tmp_path}"
-    delay 2
-    tell theDoc
-        tell sheet 1
-            tell table 1
-                {insert_cmds}
-                set value of cell "B2"  to "  {eas(customer_name)}様"
-                set value of cell "B8"  to "請求日：{eas(invoice_date)}"
-                set value of cell "B9"  to "支払い期日：{eas(due_date)}"
-                set value of cell "C9"  to "{eas(content_str)}"
-                {row_cmds}
-                set value of cell "C{subtotal_row}" to {total}
+        # 一時ディレクトリ（ASCIIパス）
+        tmp_dir   = tempfile.mkdtemp(prefix="inv_")
+        tmp_path  = os.path.join(tmp_dir, "invoice.numbers")
+        scpt_path = os.path.join(tmp_dir, "fill.applescript")
+        shutil.copy(template_path, tmp_path)
+
+        # AppleScriptをUTF-8ファイルとして書き出し（-e フラグだと日本語が文字化けするため）
+        scpt = f'''\
+-- Numbers請求書自動記入スクリプト
+with timeout of 120 seconds
+    set docFile to POSIX file "{tmp_path}"
+    tell application "Numbers"
+        set wasRunning to running
+        set theDoc to open docFile
+        -- ファイルが完全に開くまで待機
+        delay 5
+        tell theDoc
+            tell sheet 1
+                tell table 1
+{insert_block}                    set value of cell "B2" to "{qs(customer_name)}様"
+                    set value of cell "B8" to "請求日：{qs(invoice_date)}"
+                    set value of cell "B9" to "支払い期日：{qs(due_date)}"
+                    set value of cell "C9" to "{qs(content_str)}"
+{row_block}
+                    set value of cell "C{subtotal_row}" to {total}
+                end tell
             end tell
+            save
+            delay 1
         end tell
-        save
+        close theDoc saving no
+        if not wasRunning then quit
     end tell
-    close theDoc saving no
-    if not wasRunning then quit
-end tell'''
+end timeout
+'''
+        with open(scpt_path, "w", encoding="utf-8") as f:
+            f.write(scpt)
+
+        print(f"\n📄 Numbers AppleScript:\n{scpt}")
 
         try:
             result = subprocess.run(
-                ["osascript", "-e", applescript],
-                capture_output=True, text=True, timeout=45,
-                env={**os.environ, "LANG": "ja_JP.UTF-8"}
+                ["osascript", scpt_path],
+                capture_output=True, text=True, timeout=150
             )
+            if result.stdout.strip():
+                print(f"  stdout: {result.stdout.strip()}")
+            if result.stderr.strip():
+                print(f"  stderr: {result.stderr.strip()}")
             if result.returncode != 0:
-                raise Exception(result.stderr[:400])
+                raise Exception(f"AppleScript失敗: {result.stderr.strip()[:600]}")
+
             safe_date = invoice_date.replace("年","").replace("月","").replace("日","")
             filename  = f"{customer_no}_請求書_{safe_date}.numbers"
-            print(f"\n📄 Numbers請求書生成: {filename}")
+            print(f"  ✅ {filename}")
             self.send_file(tmp_path, filename, "application/x-iwork-numbers-sffnumbers")
+        except subprocess.TimeoutExpired:
+            print("  ❌ タイムアウト（Numbers起動に150秒以上かかりました）")
+            self.send_json(500, {"ok": False, "error": "タイムアウト：Numbers.appの起動に時間がかかりすぎました"})
         except Exception as e:
             print(f"  ❌ Numbers生成エラー: {e}")
-            self.send_json(500, {"ok": False, "error": f"Numbers生成エラー: {e}"})
+            self.send_json(500, {"ok": False, "error": str(e)})
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def handle_invoice_template(self, data):
-        """テンプレートXLSXを書き換えて請求書を生成"""
-        import shutil, calendar, re, subprocess
-        from openpyxl import load_workbook
-
-        template_path = os.path.join(SCRIPT_DIR, "請求書雛形.xlsx")
-        if not os.path.exists(template_path):
-            self.send_json(404, {"ok": False, "error": "請求書雛形.xlsxが見つかりません"}); return
+        """Numbers雛形と同じレイアウトでXLSX請求書をゼロから生成（外部テンプレート不要）"""
+        import calendar, re
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
         customer_name = data.get("customerName", "")
-        invoice_date  = data.get("invoiceDate", "")   # "2026年4月1日"
-        cases         = data.get("cases", [])          # [{number, note, amount}]
+        invoice_date  = data.get("invoiceDate", "")
+        cases         = data.get("cases", [])
         customer_no   = data.get("customerNo", "")
 
         # 支払い期日：次月末
@@ -1251,69 +1281,163 @@ end tell'''
             y, mo = int(m.group(1)), int(m.group(2))
             nm = mo + 1 if mo < 12 else 1
             ny = y if mo < 12 else y + 1
-            last = calendar.monthrange(ny, nm)[1]
-            due_date = f"{ny}年{nm}月{last}日"
+            due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
 
-        # テンプレートコピー
+        content_parts = [c.get("note") or c.get("number", "") for c in cases
+                         if c.get("note") or c.get("number")]
+        content_str = "、".join(content_parts) or "動画編集案件の件"
+        total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
+
+        # ---- ワークブック作成 ----
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "請求書"
+
+        # ---- ヘルパー ----
+        def S(style='thin'):
+            return Side(style=style, color='000000')
+        def B(t=None, r=None, b=None, l=None):
+            return Border(
+                top    = S(t) if t else Side(style=None),
+                right  = S(r) if r else Side(style=None),
+                bottom = S(b) if b else Side(style=None),
+                left   = S(l) if l else Side(style=None),
+            )
+        def fill(hex_color):
+            return PatternFill(fill_type='solid', fgColor=hex_color)
+
+        GRAY  = 'D9D9D9'
+        GOLD  = 'FFF2CC'
+
+        # ---- 列幅（Numbers雛形に合わせた比率） ----
+        ws.column_dimensions['A'].width = 2
+        ws.column_dimensions['B'].width = 32
+        ws.column_dimensions['C'].width = 18
+        ws.column_dimensions['D'].width = 2
+
+        # ---- Row 1: タイトル ----
+        ws.row_dimensions[1].height = 36
+        ws.merge_cells('B1:C1')
+        c = ws['B1']
+        c.value     = '請　求　書'
+        c.font      = Font(size=22, bold=True)
+        c.alignment = Alignment(horizontal='center', vertical='center')
+
+        # ---- Row 2: 宛名 ----
+        ws.row_dimensions[2].height = 28
+        c = ws['B2']
+        c.value     = f'{customer_name}　様'
+        c.font      = Font(size=14, bold=True)
+        c.alignment = Alignment(vertical='center')
+        c.border    = B(b='medium')
+
+        # ---- Rows 3-7: 空白（会社名等スペース） ----
+        for r in range(3, 8):
+            ws.row_dimensions[r].height = 14
+
+        # ---- Row 8: 請求日 ＋ 「内容」ラベル ----
+        ws.row_dimensions[8].height = 18
+        c = ws['B8']
+        c.value     = f'請求日：{invoice_date}'
+        c.font      = Font(size=11)
+        c.alignment = Alignment(vertical='center')
+        c = ws['C8']
+        c.value     = '内　容'
+        c.font      = Font(size=10, bold=True)
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border    = B(t='thin', r='thin', b='thin', l='thin')
+        c.fill      = fill(GRAY)
+
+        # ---- Row 9: 支払期日 ＋ 内容テキスト ----
+        ws.row_dimensions[9].height = 18
+        c = ws['B9']
+        c.value     = f'支払い期日：{due_date}'
+        c.font      = Font(size=11)
+        c.alignment = Alignment(vertical='center')
+        c = ws['C9']
+        c.value     = content_str
+        c.font      = Font(size=10)
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        c.border    = B(r='thin', b='thin', l='thin')
+
+        # ---- Rows 10-11: 空白 ----
+        for r in [10, 11]:
+            ws.row_dimensions[r].height = 10
+
+        # ---- Row 12: 明細ヘッダー ----
+        ws.row_dimensions[12].height = 20
+        for col, label in [('B', '項　目'), ('C', '金　額（円）')]:
+            c = ws[f'{col}12']
+            c.value     = label
+            c.font      = Font(bold=True, size=10)
+            c.alignment = Alignment(horizontal='center', vertical='center')
+            c.border    = B(t='medium', r='thin', b='thin', l='thin')
+            c.fill      = fill(GRAY)
+
+        # ---- Rows 13+: 明細データ ----
+        for i, case in enumerate(cases):
+            r      = 13 + i
+            note   = case.get("note") or case.get("number", "")
+            amount = int(float(case.get("amount") or case.get("price") or 0))
+            ws.row_dimensions[r].height = 18
+            bc = ws[f'B{r}']
+            bc.value     = note
+            bc.font      = Font(size=10)
+            bc.alignment = Alignment(vertical='center')
+            bc.border    = B(t='thin', r='thin', b='thin', l='thin')
+            cc = ws[f'C{r}']
+            cc.value         = amount
+            cc.font          = Font(size=10)
+            cc.number_format = '#,##0'
+            cc.alignment     = Alignment(horizontal='right', vertical='center')
+            cc.border        = B(t='thin', r='thin', b='thin', l='thin')
+
+        # ---- 小計行 ----
+        sr = 13 + len(cases)
+        ws.row_dimensions[sr].height = 18
+        c = ws[f'B{sr}']
+        c.value     = '小　計'
+        c.font      = Font(bold=True, size=10)
+        c.alignment = Alignment(vertical='center')
+        c.border    = B(t='thin', r='thin', b='thin', l='thin')
+        c = ws[f'C{sr}']
+        c.value         = total
+        c.font          = Font(bold=True, size=10)
+        c.number_format = '#,##0'
+        c.alignment     = Alignment(horizontal='right', vertical='center')
+        c.border        = B(t='thin', r='thin', b='thin', l='thin')
+
+        # ---- 消費税・調整欄（Numbers の C16/C17 相当：空白） ----
+        for dr in [sr + 1, sr + 2]:
+            ws.row_dimensions[dr].height = 18
+            ws[f'B{dr}'].border = B(r='thin', b='thin', l='thin')
+            ws[f'C{dr}'].border = B(r='thin', b='thin', l='thin')
+
+        # ---- 合計行（Numbers の C18 相当） ----
+        tr = sr + 3
+        ws.row_dimensions[tr].height = 24
+        c = ws[f'B{tr}']
+        c.value     = '合　計'
+        c.font      = Font(bold=True, size=13)
+        c.alignment = Alignment(vertical='center')
+        c.border    = B(t='medium', r='thin', b='medium', l='medium')
+        c.fill      = fill(GOLD)
+        c = ws[f'C{tr}']
+        c.value         = total
+        c.font          = Font(bold=True, size=13)
+        c.number_format = '#,##0'
+        c.alignment     = Alignment(horizontal='right', vertical='center')
+        c.border        = B(t='medium', r='medium', b='medium', l='thin')
+        c.fill          = fill(GOLD)
+
+        # ---- 保存 ----
         tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
         tmp.close()
-        shutil.copy(template_path, tmp.name)
-
-        wb = load_workbook(tmp.name)
-        ws = wb.active
-
-        # 宛名
-        ws["B2"] = f"  {customer_name}様"
-
-        # 請求日 / 支払い期日
-        ws["B8"] = f"請求日：{invoice_date}"
-        ws["B9"] = f"支払い期日：{due_date}"
-
-        # 内容（C9 は結合セル C9:C11）
-        content_parts = [c.get("note") or c.get("number", "") for c in cases if c.get("note") or c.get("number")]
-        ws["C9"] = "、".join(content_parts) if content_parts else "動画編集案件の件"
-
-        # 明細テーブル行（B13:C18 → 最大6行）
-        DATA_START = 13
-        DATA_END   = 18
-        total_rows = DATA_END - DATA_START + 1  # 6
-
-        # 既存値クリア
-        for i in range(total_rows):
-            ws[f"B{DATA_START+i}"] = None
-            ws[f"C{DATA_START+i}"] = None
-
-        # ケースが6件を超える場合はテーブル行を追加
-        if len(cases) > total_rows:
-            extra = len(cases) - total_rows
-            ws.insert_rows(DATA_END, amount=extra)
-            DATA_END += extra
-
-        for i, case in enumerate(cases):
-            detail = case.get("note") or case.get("number", "")
-            amount = int(float(case.get("amount") or case.get("price") or 0))
-            ws[f"B{DATA_START+i}"] = detail
-            ws[f"C{DATA_START+i}"] = amount
-
-        # 合計を直値で上書き（テーブル数式が消えた場合のフォールバック）
-        total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
-        subtotal_row = DATA_END + 1
-        ws[f"C{subtotal_row}"] = total       # 小計
-        ws[f"C{subtotal_row+3}"] = total     # 集計（税率0・その他0前提）
-
         wb.save(tmp.name)
 
-        # LibreOfficeで再計算
-        recalc = os.path.join(SCRIPT_DIR, "..", ".claude", "skills", "xlsx", "scripts", "recalc.py")
-        if os.path.exists(recalc):
-            try:
-                subprocess.run(["python3", recalc, tmp.name, "30"], capture_output=True, timeout=40)
-            except Exception:
-                pass
-
-        safe_date = invoice_date.replace("年", "").replace("月", "").replace("日", "")
+        safe_date = invoice_date.replace("年","").replace("月","").replace("日","")
         filename = f"{customer_no}_請求書_{safe_date}.xlsx"
-        print(f"\n📄 テンプレート請求書生成: {filename}")
+        print(f"\n📄 XLSX請求書生成: {filename}  ({len(cases)}件 合計{total:,}円)")
         self.send_file(tmp.name, filename,
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         os.unlink(tmp.name)
