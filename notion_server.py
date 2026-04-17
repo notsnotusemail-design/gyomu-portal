@@ -383,6 +383,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_gantt_excel(data)
         elif self.path == "/api/invoice/template":
             self.handle_invoice_template(data)
+        elif self.path == "/api/invoice/numbers":
+            self.handle_invoice_numbers(data)
         else:
             self.send_json(404, {"error": "Not found"})
 
@@ -1137,6 +1139,96 @@ class Handler(BaseHTTPRequestHandler):
         self.send_file(tmp.name, filename,
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         os.unlink(tmp.name)
+
+    def handle_invoice_numbers(self, data):
+        """AppleScript経由でNumbersテンプレートを書き換えて請求書を生成"""
+        import shutil, calendar, re, subprocess, tempfile
+
+        template_path = os.path.join(SCRIPT_DIR, "請求書雛形のコピー.numbers")
+        if not os.path.exists(template_path):
+            self.send_json(404, {"ok": False, "error": "請求書雛形のコピー.numbersが見つかりません"}); return
+
+        customer_name = data.get("customerName", "")
+        invoice_date  = data.get("invoiceDate", "")
+        cases         = data.get("cases", [])
+        customer_no   = data.get("customerNo", "")
+
+        # 支払い期日（翌月末）
+        due_date = ""
+        md = re.match(r"(\d+)年(\d+)月(\d+)日", invoice_date)
+        if md:
+            y, mo = int(md.group(1)), int(md.group(2))
+            nm = mo + 1 if mo < 12 else 1; ny = y if mo < 12 else y + 1
+            due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
+
+        content_parts = [c.get("note") or c.get("number","") for c in cases if c.get("note") or c.get("number")]
+        content_str   = "、".join(content_parts) or "動画編集案件の件"
+
+        # テンプレートを一時コピー（日本語パスを避けるためASCIIパス）
+        tmp_dir  = tempfile.mkdtemp(prefix="inv_")
+        tmp_path = os.path.join(tmp_dir, "invoice.numbers")
+        shutil.copy(template_path, tmp_path)
+
+        # テンプレートのデータ行は13〜14（2行）、小計は15行目
+        TEMPLATE_DATA_ROWS = 2
+        extra_rows   = max(0, len(cases) - TEMPLATE_DATA_ROWS)
+        subtotal_row = 15 + extra_rows
+        total        = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
+
+        def eas(s):
+            return str(s).replace("\\", "\\\\").replace('"', '\\"')
+
+        # 行追加コマンド（小計行の前に余分な行を挿入）
+        insert_cmds = "\n                    ".join(
+            [f"add row above row {15 + i}" for i in range(extra_rows)] or [""]
+        )
+
+        # データ行セット
+        row_cmds = "\n                    ".join(
+            f'set value of cell "B{13+i}" to "{eas(c.get("note") or c.get("number",""))}"\n'
+            f'                    set value of cell "C{13+i}" to {int(float(c.get("amount") or c.get("price") or 0))}'
+            for i, c in enumerate(cases)
+        )
+
+        applescript = f'''tell application "Numbers"
+    set wasRunning to running
+    set theDoc to open POSIX file "{tmp_path}"
+    delay 2
+    tell theDoc
+        tell sheet 1
+            tell table 1
+                {insert_cmds}
+                set value of cell "B2"  to "  {eas(customer_name)}様"
+                set value of cell "B8"  to "請求日：{eas(invoice_date)}"
+                set value of cell "B9"  to "支払い期日：{eas(due_date)}"
+                set value of cell "C9"  to "{eas(content_str)}"
+                {row_cmds}
+                set value of cell "C{subtotal_row}" to {total}
+            end tell
+        end tell
+        save
+    end tell
+    close theDoc saving no
+    if not wasRunning then quit
+end tell'''
+
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", applescript],
+                capture_output=True, text=True, timeout=45,
+                env={**os.environ, "LANG": "ja_JP.UTF-8"}
+            )
+            if result.returncode != 0:
+                raise Exception(result.stderr[:400])
+            safe_date = invoice_date.replace("年","").replace("月","").replace("日","")
+            filename  = f"{customer_no}_請求書_{safe_date}.numbers"
+            print(f"\n📄 Numbers請求書生成: {filename}")
+            self.send_file(tmp_path, filename, "application/x-iwork-numbers-sffnumbers")
+        except Exception as e:
+            print(f"  ❌ Numbers生成エラー: {e}")
+            self.send_json(500, {"ok": False, "error": f"Numbers生成エラー: {e}"})
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def handle_invoice_template(self, data):
         """テンプレートXLSXを書き換えて請求書を生成"""

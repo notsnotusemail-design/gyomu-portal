@@ -155,6 +155,8 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 .inv-csv:hover  { background: #f3f4f6; }
 .inv-rec  { padding: 6px 12px; background: #eff6ff; color: #2563eb; border: 1.5px solid #bfdbfe; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .inv-rec:hover  { background: #dbeafe; }
+.inv-btn-num { padding: 6px 14px; background: #f5f3ff; color: #6d28d9; border: 1.5px solid #ddd6fe; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.inv-btn-num:hover { background: #ede9fe; }
 .inv-total { font-size: 13px; font-weight: 700; color: #111; margin-left: auto; white-space: nowrap; }
 
 /* トースト */
@@ -589,7 +591,8 @@ function renderGroup() {
     html += `<div class="inv-zone">
         <span class="inv-lbl">請求日</span>
         <input class="inv-date" type="date" id="id-${cid}" value="${today}">
-        <button class="inv-btn" onclick="issueXLSX('${esc(cust)}','${cid}')">📄 請求書 XLSX</button>
+        <button class="inv-btn" onclick="issueXLSX('${esc(cust)}','${cid}')">📄 XLSX</button>
+        <button class="inv-btn-num" onclick="issueNumbers('${esc(cust)}','${cid}')">🔢 Numbers</button>
         <button class="inv-csv" onclick="exportCSV(allCases.filter(x=>x.customer==='${esc(cust)}'),'${esc(cust)}_案件.csv')">CSV</button>
         <button class="inv-rec" onclick="recordNotion('${esc(cust)}','${cid}')">📝 Notionに記録</button>
         <span class="inv-total">請求: ${fmtYen(g.totalPrice)}</span>
@@ -647,6 +650,40 @@ async function issueXLSX(cust, cid) {
     a.click();
     URL.revokeObjectURL(url);
     toast('✅ 請求書をダウンロードしました');
+  } catch(e) { toast(`⚠️ 発行失敗: ${e.message}`); }
+}
+
+// ===== Numbers請求書発行 =====
+async function issueNumbers(cust, cid) {
+  const dateEl = document.getElementById(`id-${cid}`);
+  if (!dateEl?.value) { toast('⚠️ 請求日を入力してください'); return; }
+  const d = new Date(dateEl.value);
+  const invDate = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  const cases = allCases.filter(c => c.customer === cust && c.price > 0);
+  if (!cases.length) { toast('⚠️ 金額のある案件がありません'); return; }
+  const custNo   = cust.replace(/[様御中]/g, '').trim();
+  const custName = cases[0]?.customerName || cust;
+  toast('🔢 Numbers生成中… Numbers.appが一時的に起動します');
+  try {
+    const r = await apiFetch('/api/invoice/numbers', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        customerNo:   custNo,
+        customerName: custName,
+        invoiceDate:  invDate,
+        cases: cases.map(c => ({ number: c.number, note: c.note || c.number, amount: c.price })),
+      }),
+    });
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const cd   = r.headers.get('Content-Disposition') || '';
+    const m    = cd.match(/filename\*=UTF-8''([^;]+)/);
+    a.href     = url;
+    a.download = m ? decodeURIComponent(m[1]) : `${custNo}_請求書.numbers`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✅ Numbers請求書をダウンロードしました');
   } catch(e) { toast(`⚠️ 発行失敗: ${e.message}`); }
 }
 
