@@ -188,6 +188,180 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 }
 .month-picker-num:focus { color: #4f46e5; }
 .month-picker-sep { font-size: 13px; color: #6b7280; }
+
+/* ===== 案件登録モーダル ===== */
+.crm-overlay {
+  display: none; position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+  align-items: flex-start; justify-content: center;
+  padding: 20px 12px 40px;
+  overflow-y: auto;
+}
+.crm-overlay.open { display: flex; }
+.crm-modal {
+  background: #f2f2ef; border-radius: 16px; width: 100%; max-width: 660px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); position: relative;
+  animation: crm-in 0.18s ease;
+}
+@keyframes crm-in { from { opacity:0; transform: scale(0.96) translateY(-8px); } to { opacity:1; transform: none; } }
+.crm-modal-hdr {
+  display: flex; align-items: center; padding: 16px 20px 14px;
+  border-bottom: 1px solid #e0e0e0;
+}
+.crm-modal-title { font-size: 16px; font-weight: 800; flex: 1; color: #1a1a1a; }
+.crm-close-btn {
+  width: 32px; height: 32px; border-radius: 50%; border: none; background: #e5e7eb;
+  cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+  color: #374151; transition: background 0.15s;
+}
+.crm-close-btn:hover { background: #d1d5db; }
+.crm-body { padding: 16px 20px 24px; }
+
+/* カード */
+.crm-card {
+  background: white; border-radius: 12px; padding: 16px 18px;
+  margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.crm-card-title {
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.crm-form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 11px; }
+.crm-form-group:last-child { margin-bottom: 0; }
+.crm-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.crm-label { font-size: 13px; font-weight: 500; color: #444; }
+.crm-label .req { color: #e53; }
+.crm-label .sub { font-weight: 400; color: #999; font-size: 11px; margin-left: 4px; }
+.crm-input {
+  padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa;
+  transition: border-color 0.15s, background 0.15s; outline: none;
+}
+.crm-input:focus { border-color: #4f6ef7; background: white; }
+.crm-textarea { resize: vertical; min-height: 56px; }
+
+/* お客様ボタン */
+.crm-cust-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.crm-cust-btn {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 7px 11px; border: 1.5px solid #e2e2e2; border-radius: 10px;
+  cursor: pointer; background: white; transition: all 0.15s; min-width: 90px;
+}
+.crm-cust-btn:hover { border-color: #4f6ef7; background: #f5f7ff; }
+.crm-cust-btn.selected { border-color: #4f6ef7; background: #eef1ff; }
+.crm-cb-no { font-size: 12px; font-weight: 700; color: #4f6ef7; }
+.crm-cb-name { font-size: 12px; font-weight: 500; color: #1a1a1a; line-height: 1.3; margin-top: 1px; }
+.crm-cb-status { font-size: 10px; margin-top: 3px; padding: 1px 6px; border-radius: 20px; }
+.crm-s-active { background: #dcfce7; color: #166534; }
+.crm-s-low    { background: #fef9c3; color: #854d0e; }
+.crm-s-prep   { background: #ede9fe; color: #5b21b6; }
+
+/* 検索 */
+.crm-search-wrap { position: relative; margin-bottom: 4px; }
+.crm-search-input { width: 100%; padding: 9px 36px 9px 12px; }
+.crm-search-clear {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  cursor: pointer; color: #bbb; font-size: 16px; display: none; background: none; border: none; line-height: 1;
+}
+.crm-search-clear.show { display: block; }
+.crm-dropdown {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: white; border: 1.5px solid #e0e0e0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;
+  max-height: 220px; overflow-y: auto;
+}
+.crm-dropdown.open { display: block; }
+.crm-dd-item {
+  padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid #f5f5f5; transition: background 0.1s;
+}
+.crm-dd-item:last-child { border-bottom: none; }
+.crm-dd-item:hover { background: #f5f7ff; }
+.crm-dd-no { font-weight: 700; color: #4f6ef7; font-size: 13px; min-width: 40px; }
+.crm-dd-name { font-size: 13px; flex: 1; }
+.crm-dd-st { font-size: 10px; padding: 2px 7px; border-radius: 20px; flex-shrink: 0; }
+.crm-no-result { padding: 12px 14px; font-size: 13px; color: #aaa; text-align: center; }
+
+/* 選択済みバナー */
+.crm-sel-banner {
+  display: none; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #eef1ff; border: 1.5px solid #c7d2fd;
+  border-radius: 10px; margin-top: 8px;
+}
+.crm-sel-banner.show { display: flex; }
+.crm-sb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.crm-sb-no { font-weight: 700; color: #4338ca; font-size: 13px; }
+.crm-sb-name { font-size: 14px; flex: 1; }
+.crm-sb-clear { font-size: 11px; color: #999; cursor: pointer; padding: 2px 6px; border: 1px solid #ddd; border-radius: 5px; background: white; }
+.crm-sb-clear:hover { color: #e53; border-color: #e53; }
+
+/* 案件チップ */
+.crm-case-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.crm-case-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1.5px solid #e2e2e2; border-radius: 20px;
+  cursor: pointer; background: white; font-size: 13px; color: #444; transition: all 0.15s;
+}
+.crm-case-chip:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.crm-case-chip.selected { border-color: #4f6ef7; background: #4f6ef7; color: white; }
+.crm-case-chip.new-chip { border-style: dashed; border-color: #94a3b8; color: #94a3b8; }
+.crm-case-chip.new-chip:hover { border-color: #f59e0b; color: #f59e0b; }
+.crm-case-label { font-weight: 700; font-size: 11px; }
+.crm-new-case-input { margin-top: 10px; display: none; }
+.crm-new-case-input.show { display: block; }
+.crm-new-case-confirm {
+  margin-top: 8px; padding: 12px 14px;
+  background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+  font-size: 13px; color: #78350f; line-height: 1.6; display: none;
+}
+.crm-new-case-confirm.show { display: block; }
+.crm-confirm-btns { display: flex; gap: 8px; margin-top: 8px; }
+.crm-btn-yes { padding: 6px 14px; background: #f59e0b; color: white; border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.crm-btn-no  { padding: 6px 14px; background: white; color: #666; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; cursor: pointer; }
+
+/* プレビュー */
+.crm-preview-card {
+  background: linear-gradient(135deg, #312e81 0%, #4f6ef7 100%);
+  border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; color: white;
+}
+.crm-pv-label { font-size: 11px; opacity: 0.7; margin-bottom: 6px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.crm-pv-number { font-size: 22px; font-weight: 700; font-family: 'SF Mono','Courier New',monospace; letter-spacing: 0.04em; word-break: break-all; min-height: 30px; margin-bottom: 4px; }
+.crm-pv-number.empty { font-size: 13px; font-weight: 400; font-family: inherit; opacity: 0.5; }
+.crm-pv-rule { font-size: 12px; opacity: 0.65; line-height: 1.5; }
+.crm-btn-copy { display: none; margin-top: 8px; padding: 5px 12px; background: rgba(255,255,255,0.18); color: white; border: 1.5px solid rgba(255,255,255,0.35); border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.crm-btn-copy:hover { background: rgba(255,255,255,0.28); }
+
+/* トグル */
+.crm-toggle-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8f8f8; border-radius: 8px; margin-bottom: 8px; }
+.crm-toggle-row:last-child { margin-bottom: 0; }
+.crm-toggle-label { font-size: 14px; flex: 1; }
+.crm-toggle { width: 40px; height: 22px; background: #ccc; border-radius: 11px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; border: none; }
+.crm-toggle.on { background: #4f6ef7; }
+.crm-toggle::after { content: ''; position: absolute; width: 18px; height: 18px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+.crm-toggle.on::after { left: 20px; }
+.crm-sub-panel { display: none; padding: 12px; background: #f0f4ff; border-radius: 8px; border-left: 3px solid #4f6ef7; margin-bottom: 8px; }
+.crm-sub-panel.show { display: block; }
+
+/* 進捗 */
+.crm-prog-row { display: flex; gap: 8px; margin-top: 4px; }
+.crm-prog-chip { flex: 1; padding: 7px 4px; border: 1.5px solid #e2e2e2; border-radius: 8px; text-align: center; font-size: 12px; cursor: pointer; transition: all 0.15s; background: white; }
+.crm-prog-chip.on { border-color: #4f6ef7; background: #eef1ff; color: #3730a3; font-weight: 600; }
+
+/* 登録ボタン */
+.crm-btn-register {
+  width: 100%; padding: 13px; background: #1a1a1a; color: white;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.crm-btn-register:hover:not(:disabled) { background: #333; }
+.crm-btn-register:disabled { background: #aaa; cursor: default; }
+
+/* メッセージ */
+.crm-msg-box { display: none; padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-top: 10px; line-height: 1.6; }
+.crm-msg-box.show { display: block; }
+.crm-msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.crm-msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
 </style>
 </head>
 <body>
@@ -196,6 +370,7 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
   <button class="back-btn" onclick="history.back()">← 戻る</button>
   <span class="header-title">📋 案件履歴</span>
   <div class="header-spacer"></div>
+  <button onclick="openRegModal()" style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;margin-right:8px">＋ 案件作成</button>
   <div class="view-toggle">
     <button class="view-btn active" id="vbList"  onclick="setView('list')">一覧</button>
     <button class="view-btn"        id="vbGroup" onclick="setView('group')">顧客別</button>
@@ -231,6 +406,159 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 </div>
 
 <div class="toast" id="toastEl"></div>
+
+<!-- ===== 案件登録モーダル ===== -->
+<div class="crm-overlay" id="crmOverlay" onclick="crmOverlayClick(event)">
+  <div class="crm-modal">
+    <div class="crm-modal-hdr">
+      <span class="crm-modal-title">📁 案件登録</span>
+      <button class="crm-close-btn" onclick="closeRegModal()">✕</button>
+    </div>
+    <div class="crm-body">
+      <!-- プレビュー -->
+      <div class="crm-preview-card">
+        <div class="crm-pv-label">生成される管理番号</div>
+        <div class="crm-pv-number empty" id="crmPvNum">お客様と締切日を選択してください</div>
+        <div class="crm-pv-rule" id="crmPvRule"></div>
+        <button class="crm-btn-copy" id="crmBtnCopy" onclick="crmCopyNum()">📋 コピー</button>
+      </div>
+
+      <!-- お客様選択 -->
+      <div class="crm-card">
+        <div class="crm-card-title">
+          <span>お客様を選択 <span style="color:#e53">*</span></span>
+          <button onclick="crmLoadCustomers(true)" style="font-size:11px;padding:3px 10px;border:1px solid #d1d5db;border-radius:6px;background:white;cursor:pointer;color:#555">
+            🔄 更新
+          </button>
+        </div>
+        <div class="crm-cust-grid" id="crmCustGrid">
+          <div id="crmCustLoading" style="color:#aaa;font-size:13px;padding:6px 0">読み込み中...</div>
+        </div>
+        <div class="crm-search-wrap">
+          <input type="text" class="crm-input crm-search-input" id="crmSearchIn"
+            placeholder="🔍 名前・番号で検索…" oninput="crmOnSearch()" onfocus="crmOnSearch()" autocomplete="off">
+          <button class="crm-search-clear" id="crmSearchClear" onclick="crmClearSearch()">×</button>
+          <div class="crm-dropdown" id="crmDropdown"></div>
+        </div>
+        <div class="crm-sel-banner" id="crmSelBanner">
+          <span class="crm-sb-dot" id="crmSbDot"></span>
+          <span class="crm-sb-no" id="crmSbNo"></span>
+          <span class="crm-sb-name" id="crmSbName"></span>
+          <button class="crm-sb-clear" onclick="crmClearCustomer()">変更</button>
+        </div>
+      </div>
+
+      <!-- 案件種別 -->
+      <div class="crm-card" id="crmCaseCard" style="display:none">
+        <div class="crm-card-title">案件種別 <span style="color:#e53">*</span>
+          <span style="font-size:11px;color:#aaa;text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px">A以外は必ず選択</span>
+        </div>
+        <div class="crm-case-chips" id="crmCaseChips"></div>
+        <div class="crm-new-case-input" id="crmNewCaseWrap">
+          <div class="crm-form-group" style="margin-bottom:0">
+            <label class="crm-label">新しいチャンネル/案件名</label>
+            <input type="text" class="crm-input" id="crmNewCaseName"
+              placeholder="例: 山田税理士チャンネル" oninput="crmOnNewCaseInput()">
+          </div>
+          <div class="crm-new-case-confirm" id="crmNewCaseConfirm">
+            <strong id="crmNewCaseConfirmText"></strong>
+            <div style="margin-top:4px;font-size:12px;color:#92400e">「はい」を選ぶとNotionの顧客情報にも追記します。</div>
+            <div class="crm-confirm-btns">
+              <button class="crm-btn-yes" onclick="crmConfirmNewCase()">はい・新案件として登録</button>
+              <button class="crm-btn-no"  onclick="crmCancelNewCase()">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 案件詳細 -->
+      <div class="crm-card">
+        <div class="crm-card-title">案件詳細</div>
+        <div class="crm-form-row">
+          <div class="crm-form-group">
+            <label class="crm-label">締切日 <span class="req">*</span></label>
+            <input type="date" class="crm-input" id="crmDeadline" oninput="crmUpdatePreview()">
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-label">単価</label>
+            <input type="number" class="crm-input" id="crmPrice" placeholder="例: 8000" oninput="crmUpdateGrossProfit()">
+          </div>
+        </div>
+        <div class="crm-form-group">
+          <label class="crm-label">備考/素材名</label>
+          <input type="text" class="crm-input" id="crmMatName" placeholder="例: 名古屋大学情報学部">
+        </div>
+        <div class="crm-form-group">
+          <label class="crm-label">指定ファイル名</label>
+          <input type="text" class="crm-input" id="crmFileName">
+        </div>
+        <div class="crm-form-group">
+          <label class="crm-label">進捗</label>
+          <div class="crm-prog-row">
+            <div class="crm-prog-chip on" onclick="crmSelProg(this,'未着手')">未着手</div>
+            <div class="crm-prog-chip"    onclick="crmSelProg(this,'進行中')">進行中</div>
+            <div class="crm-prog-chip"    onclick="crmSelProg(this,'完了')">完了</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 番号オプション -->
+      <div class="crm-card">
+        <div class="crm-card-title">番号オプション</div>
+        <div class="crm-toggle-row">
+          <span class="crm-toggle-label">📅 納期未定（13月方式）</span>
+          <button class="crm-toggle" id="crmTogUnknown" onclick="crmTog('unknown')"></button>
+        </div>
+        <div class="crm-toggle-row">
+          <span class="crm-toggle-label">🔢 数字枝番を追加</span>
+          <button class="crm-toggle" id="crmTogBranch" onclick="crmTog('branch')"></button>
+        </div>
+        <div class="crm-sub-panel" id="crmPanBranch">
+          <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">枝番を選択または入力</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+            <div class="crm-case-chip" onclick="crmSetBranch(this,'1')"><span>-1</span></div>
+            <div class="crm-case-chip" onclick="crmSetBranch(this,'2')"><span>-2</span></div>
+            <div class="crm-case-chip" onclick="crmSetBranch(this,'3')"><span>-3</span></div>
+          </div>
+          <input type="text" class="crm-input" id="crmBranchIn" placeholder="カスタム入力（例: 4）" oninput="crmUpdatePreview()">
+        </div>
+        <div class="crm-toggle-row" style="margin-bottom:0">
+          <span class="crm-toggle-label">👷 外注あり</span>
+          <button class="crm-toggle" id="crmTogOut" onclick="crmTog('outsource')"></button>
+        </div>
+        <div class="crm-sub-panel" id="crmPanOut">
+          <div class="crm-form-row">
+            <div class="crm-form-group">
+              <label class="crm-label">外注先No.</label>
+              <input type="text" class="crm-input" id="crmWorkerNo" placeholder="W1" oninput="crmUpdatePreview()">
+            </div>
+            <div class="crm-form-group">
+              <label class="crm-label">外注への納期</label>
+              <input type="date" class="crm-input" id="crmWorkerDL" oninput="crmUpdatePreview()">
+            </div>
+          </div>
+          <div class="crm-form-group" style="margin-top:4px">
+            <label class="crm-label">外注費</label>
+            <input type="number" class="crm-input" id="crmOutsourceCost" placeholder="例: 6000" min="0" oninput="crmUpdateGrossProfit()">
+          </div>
+          <div id="crmGrossProfitPreview" style="display:none;margin-top:8px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:14px;color:#166534;font-weight:500"></div>
+        </div>
+      </div>
+
+      <!-- 備考 -->
+      <div class="crm-card">
+        <div class="crm-card-title">備考</div>
+        <textarea class="crm-input crm-textarea" id="crmMemo" placeholder="補足事項"></textarea>
+      </div>
+
+      <!-- 登録ボタン -->
+      <button class="crm-btn-register" id="crmBtnReg" onclick="crmDoRegister()">
+        ✅ Notionに案件を登録する
+      </button>
+      <div class="crm-msg-box" id="crmMsgBox"></div>
+    </div>
+  </div>
+</div>
 
 <script>
 // サーバーURL（同一オリジンから配信される想定）
@@ -728,6 +1056,379 @@ function exportCSV(cases, filename) {
 
 // ===== 初回ロード =====
 doSearch();
+
+// ============================================================
+// ===== 案件登録モーダル =====
+// ============================================================
+const CRM_STATUS_DOT  = { '取引中':'#22c55e', '頻度低め':'#f59e0b', '取引開始準備中':'#a78bfa' };
+const CRM_STATUS_CHIP = { '取引中':'crm-s-active', '頻度低め':'crm-s-low', '取引開始準備中':'crm-s-prep' };
+
+let crmCustomers = [];
+let crmSel = null, crmSelCase = null, crmNewCaseConfirmed = false;
+let crmState = { unknown:false, branch:false, outsource:false, progress:'未着手', branchVal:'' };
+
+function openRegModal() {
+  const overlay = document.getElementById('crmOverlay');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  // 初回は顧客リストを取得
+  if (crmCustomers.length === 0) crmLoadCustomers();
+  // 締切日を今日にリセット
+  document.getElementById('crmDeadline').value = new Date().toISOString().split('T')[0];
+  crmUpdatePreview();
+}
+function closeRegModal() {
+  document.getElementById('crmOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function crmOverlayClick(e) {
+  if (e.target === document.getElementById('crmOverlay')) closeRegModal();
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeRegModal();
+});
+
+// ----- 顧客ロード -----
+async function crmLoadCustomers(manual = false) {
+  const grid = document.getElementById('crmCustGrid');
+  const loading = document.getElementById('crmCustLoading') || (() => {
+    const el = document.createElement('div');
+    el.id = 'crmCustLoading';
+    el.style.cssText = 'color:#aaa;font-size:12px;padding:4px 0';
+    grid.before(el); return el;
+  })();
+  loading.textContent = '⏳ 取得中...';
+  try {
+    const r = await fetch(SERVER + '/api/customers', { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (d.customers?.length) {
+      crmCustomers = d.customers.map(c => ({
+        ...c, short: c.name.length > 6 ? c.name.slice(0,5)+'…' : c.name
+      }));
+      crmBuildGrid();
+      loading.style.color = '#166534';
+      loading.textContent = `✅ ${crmCustomers.length}件`;
+      setTimeout(() => { if(loading) loading.textContent = ''; }, 2500);
+    } else {
+      loading.textContent = 'お客様が見つかりません';
+    }
+  } catch(e) {
+    loading.style.color = '#e53';
+    loading.textContent = '⚠️ 取得失敗 ';
+  }
+}
+
+function crmBuildGrid() {
+  const grid = document.getElementById('crmCustGrid');
+  grid.innerHTML = '';
+  crmCustomers.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'crm-cust-btn';
+    btn.id = 'crm-cb-' + c.no;
+    btn.innerHTML = `<span class="crm-cb-no">${c.no}</span>
+      <span class="crm-cb-name">${c.short || c.name}</span>
+      <span class="crm-cb-status ${CRM_STATUS_CHIP[c.status] || ''}">${c.status}</span>`;
+    btn.onclick = () => crmPickCustomer(c.no);
+    grid.appendChild(btn);
+  });
+}
+
+// ----- 検索 -----
+function crmOnSearch() {
+  const q = document.getElementById('crmSearchIn').value.trim().toLowerCase();
+  document.getElementById('crmSearchClear').classList.toggle('show', q.length > 0);
+  if (!q) { crmCloseDD(); return; }
+  const hits = crmCustomers.filter(c =>
+    c.no.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) ||
+    (c.channels || []).some(ch => ch.name.toLowerCase().includes(q))
+  );
+  const dd = document.getElementById('crmDropdown');
+  dd.innerHTML = hits.length
+    ? hits.map(c => `<div class="crm-dd-item" onclick="crmPickCustomer('${c.no}')">
+        <span class="crm-dd-no">${c.no}</span>
+        <span class="crm-dd-name">${c.name}</span>
+        <span class="crm-dd-st ${CRM_STATUS_CHIP[c.status] || ''}">${c.status}</span>
+      </div>`).join('')
+    : '<div class="crm-no-result">見つかりません</div>';
+  dd.classList.add('open');
+}
+function crmClearSearch() {
+  document.getElementById('crmSearchIn').value = '';
+  document.getElementById('crmSearchClear').classList.remove('show');
+  crmCloseDD();
+}
+function crmCloseDD() { document.getElementById('crmDropdown').classList.remove('open'); }
+document.addEventListener('click', e => { if (!e.target.closest('.crm-search-wrap')) crmCloseDD(); });
+
+// ----- お客様選択 -----
+function crmPickCustomer(no) {
+  crmSel = crmCustomers.find(c => c.no === no);
+  if (!crmSel) return;
+  crmSelCase = null; crmNewCaseConfirmed = false;
+  document.querySelectorAll('.crm-cust-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('crm-cb-' + no)?.classList.add('selected');
+  document.getElementById('crmSbNo').textContent   = crmSel.no;
+  document.getElementById('crmSbName').textContent  = crmSel.name + '様';
+  document.getElementById('crmSbDot').style.background = CRM_STATUS_DOT[crmSel.status] || '#ccc';
+  document.getElementById('crmSelBanner').classList.add('show');
+  document.getElementById('crmSearchIn').value = '';
+  document.getElementById('crmSearchClear').classList.remove('show');
+  crmCloseDD();
+  crmBuildCaseSection();
+  crmUpdatePreview();
+}
+function crmClearCustomer() {
+  crmSel = null; crmSelCase = null; crmNewCaseConfirmed = false;
+  document.querySelectorAll('.crm-cust-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('crmSelBanner').classList.remove('show');
+  document.getElementById('crmCaseCard').style.display = 'none';
+  crmUpdatePreview();
+}
+
+// ----- 案件種別 -----
+function crmBuildCaseSection() {
+  const card  = document.getElementById('crmCaseCard');
+  const chips = document.getElementById('crmCaseChips');
+  card.style.display = 'block';
+  const nextLbl = crmNextLabel(crmSel.channels || []);
+  let html = (crmSel.channels || []).map(ch => {
+    const isA = ch.lbl === 'A';
+    return `<div class="crm-case-chip" id="crm-chip-${ch.lbl}" onclick="crmPickCase('${ch.lbl}','${ch.name}',false)">
+      <span class="crm-case-label">${ch.lbl}案件</span>${ch.name}
+      ${isA ? '<span style="font-size:10px;margin-left:4px;opacity:0.6">（枝番なし）</span>' : ''}
+    </div>`;
+  }).join('');
+  if (!(crmSel.channels || []).find(c => c.lbl === 'A')) {
+    html = `<div class="crm-case-chip" id="crm-chip-none" onclick="crmPickCase('','none',false)">
+      <span class="crm-case-label">枝番なし</span>（基本案件）
+    </div>` + html;
+  }
+  html += `<div class="crm-case-chip new-chip" onclick="crmShowNewCaseInput('${nextLbl}')">＋ ${nextLbl}案件を新規追加</div>`;
+  chips.innerHTML = html;
+  document.getElementById('crmNewCaseWrap').classList.remove('show');
+  document.getElementById('crmNewCaseName').value = '';
+  document.getElementById('crmNewCaseConfirm').classList.remove('show');
+}
+function crmNextLabel(channels) {
+  const used = channels.map(c => c.lbl);
+  for (const l of 'ABCDEFGHIJ') { if (!used.includes(l)) return l; }
+  return 'Z';
+}
+function crmPickCase(lbl, name, isNew) {
+  crmSelCase = { lbl, name, isNew: isNew || false };
+  crmNewCaseConfirmed = isNew;
+  document.querySelectorAll('.crm-case-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('crm-chip-' + (lbl || 'none'))?.classList.add('selected');
+  document.getElementById('crmNewCaseWrap').classList.remove('show');
+  crmUpdatePreview();
+}
+function crmShowNewCaseInput(nextLbl) {
+  crmSelCase = null;
+  document.querySelectorAll('.crm-case-chip').forEach(c => c.classList.remove('selected'));
+  document.querySelector('.crm-case-chip.new-chip')?.classList.add('selected');
+  document.getElementById('crmNewCaseWrap').classList.add('show');
+  document.getElementById('crmNewCaseConfirm').classList.remove('show');
+  document.getElementById('crmNewCaseName').value = '';
+  document.getElementById('crmNewCaseName').dataset.nextLbl = nextLbl;
+  document.getElementById('crmNewCaseName').focus();
+}
+let crmNewCaseTimer = null;
+function crmOnNewCaseInput() {
+  clearTimeout(crmNewCaseTimer);
+  crmNewCaseTimer = setTimeout(() => {
+    const name = document.getElementById('crmNewCaseName').value.trim();
+    const lbl  = document.getElementById('crmNewCaseName').dataset.nextLbl || 'B';
+    if (name.length >= 2) {
+      document.getElementById('crmNewCaseConfirmText').textContent =
+        `「${crmSel.name}様」の${lbl}案件として「${name}」を新規登録しますか？`;
+      document.getElementById('crmNewCaseConfirm').classList.add('show');
+      crmNewCaseConfirmed = false; crmSelCase = null;
+    } else {
+      document.getElementById('crmNewCaseConfirm').classList.remove('show');
+    }
+    crmUpdatePreview();
+  }, 500);
+}
+function crmConfirmNewCase() {
+  const name = document.getElementById('crmNewCaseName').value.trim();
+  const lbl  = document.getElementById('crmNewCaseName').dataset.nextLbl || 'B';
+  crmSelCase = { lbl, name, isNew: true }; crmNewCaseConfirmed = true;
+  const el = document.getElementById('crmNewCaseConfirm');
+  el.style.cssText = 'background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;color:#14532d;display:block';
+  el.innerHTML = `✅ <strong>${lbl}案件「${name}」</strong>を新案件として登録します。`;
+  crmUpdatePreview();
+}
+function crmCancelNewCase() {
+  crmSelCase = null; crmNewCaseConfirmed = false;
+  document.querySelectorAll('.crm-case-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('crmNewCaseWrap').classList.remove('show');
+  document.getElementById('crmNewCaseName').value = '';
+  crmUpdatePreview();
+}
+
+// ----- オプション -----
+function crmUpdateGrossProfit() {
+  const price = Number(document.getElementById('crmPrice').value) || 0;
+  const cost  = Number(document.getElementById('crmOutsourceCost').value) || 0;
+  const prev  = document.getElementById('crmGrossProfitPreview');
+  if (price > 0 && cost > 0 && crmState.outsource) {
+    const fmt = n => n.toLocaleString('ja-JP');
+    prev.style.display = 'block';
+    prev.innerHTML = `粗利　¥${fmt(price)} − ¥${fmt(cost)} = <strong>¥${fmt(price - cost)}</strong>`;
+  } else {
+    prev.style.display = 'none';
+  }
+}
+function crmTog(key) {
+  crmState[key] = !crmState[key];
+  const map    = { unknown:'crmTogUnknown', branch:'crmTogBranch', outsource:'crmTogOut' };
+  const panMap = { branch:'crmPanBranch', outsource:'crmPanOut' };
+  document.getElementById(map[key]).classList.toggle('on', crmState[key]);
+  if (panMap[key]) document.getElementById(panMap[key]).classList.toggle('show', crmState[key]);
+  if (key === 'outsource') crmUpdateGrossProfit();
+  crmUpdatePreview();
+}
+function crmSetBranch(el, val) {
+  document.querySelectorAll('#crmPanBranch .crm-case-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('crmBranchIn').value = val;
+  crmState.branchVal = val;
+  crmUpdatePreview();
+}
+function crmSelProg(el, val) {
+  document.querySelectorAll('.crm-prog-chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  crmState.progress = val;
+}
+
+// ----- 番号生成 -----
+function crmBuildNumber() {
+  if (!crmSel) return null;
+  const dlVal = document.getElementById('crmDeadline').value;
+  if (!dlVal && !crmState.unknown) return null;
+  let base = '';
+  if (crmState.unknown) {
+    const yr = dlVal ? new Date(dlVal).getFullYear() : new Date().getFullYear();
+    base = `${crmSel.no}-${String(yr).slice(-2)}-1301`;
+  } else {
+    const d = new Date(dlVal);
+    const yy = String(d.getFullYear()).slice(-2);
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd2= String(d.getDate()).padStart(2,'0');
+    base = `${crmSel.no}-${yy}-${mm}${dd2}`;
+  }
+  if (crmSelCase?.lbl && crmSelCase.lbl !== '') base += `-${crmSelCase.lbl}`;
+  if (crmState.branch) {
+    const bv = document.getElementById('crmBranchIn').value.trim() || crmState.branchVal;
+    if (bv) base += `-${bv}`;
+  }
+  if (crmState.outsource) {
+    const wn = document.getElementById('crmWorkerNo').value.trim();
+    if (wn) {
+      const wdv = document.getElementById('crmWorkerDL').value;
+      let wds = '';
+      if (wdv) { const wd = new Date(wdv); wds = String(wd.getMonth()+1).padStart(2,'0') + String(wd.getDate()).padStart(2,'0'); }
+      base = `${wn}-${wds}-${base}`;
+    }
+  }
+  return base;
+}
+function crmUpdatePreview() {
+  const numEl = document.getElementById('crmPvNum');
+  const ruleEl= document.getElementById('crmPvRule');
+  const cpBtn = document.getElementById('crmBtnCopy');
+  const num   = crmBuildNumber();
+  if (!num) {
+    numEl.textContent = !crmSel ? 'お客様を選択してください' : '締切日を入力してください';
+    numEl.className = 'crm-pv-number empty';
+    ruleEl.textContent = ''; cpBtn.style.display = 'none'; return;
+  }
+  numEl.textContent = num; numEl.className = 'crm-pv-number';
+  const dlv = document.getElementById('crmDeadline').value;
+  let rule = `${crmSel.no}番 ${crmSel.name}様`;
+  if (dlv && !crmState.unknown) {
+    const d = new Date(dlv); rule += ` / ${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日締切`;
+  }
+  if (crmSelCase?.lbl) rule += ` / ${crmSelCase.lbl}案件: ${crmSelCase.name}`;
+  if (crmState.unknown) rule += ' / 納期未定（13月）';
+  ruleEl.textContent = rule; cpBtn.style.display = 'inline-block';
+}
+function crmCopyNum() {
+  const t = document.getElementById('crmPvNum').textContent;
+  if (!t || t.includes('選択') || t.includes('入力')) return;
+  navigator.clipboard.writeText(t).then(() => {
+    document.getElementById('crmBtnCopy').textContent = '✅ コピーしました';
+    setTimeout(() => { document.getElementById('crmBtnCopy').textContent = '📋 コピー'; }, 2000);
+  });
+}
+
+// ----- Notion登録 -----
+async function crmDoRegister() {
+  const num = crmBuildNumber();
+  if (!crmSel) { crmShowMsg('error','⚠️ お客様を選択してください。'); return; }
+  if (!num)    { crmShowMsg('error','⚠️ 締切日を入力してください。'); return; }
+  if ((crmSel.channels||[]).length > 0 && !crmSelCase) {
+    crmShowMsg('error','⚠️ 案件種別（A/B/C…）を選択してください。'); return;
+  }
+  const btn = document.getElementById('crmBtnReg');
+  btn.disabled = true; btn.textContent = '⏳ 登録中...';
+  const payload = {
+    number:       num,
+    customerNo:   crmSel.no,
+    deadline:     document.getElementById('crmDeadline').value,
+    materialName: document.getElementById('crmMatName').value.trim(),
+    price:        document.getElementById('crmPrice').value,
+    outsourceCost: crmState.outsource ? (document.getElementById('crmOutsourceCost').value || '') : '',
+    fileName:     document.getElementById('crmFileName').value.trim(),
+    progress:     crmState.progress,
+    memo:         document.getElementById('crmMemo').value.trim(),
+  };
+  try {
+    const res = await fetch(SERVER + '/api/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || '登録失敗');
+    if (crmNewCaseConfirmed && crmSelCase) {
+      await fetch(SERVER + '/api/update-customer', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ customerNo: crmSel.no, entry: `${crmSelCase.lbl}案件：${crmSelCase.name}` }),
+      });
+    }
+    btn.disabled = false; btn.textContent = '✅ Notionに案件を登録する';
+    crmShowMsg('success', `✅ 登録しました！　<code>${num}</code>
+      ${result.url ? `<br><a href="${result.url}" target="_blank" style="color:#0ea5e9">Notionで確認する →</a>` : ''}`);
+    crmResetForm();
+    // リストを自動リフレッシュ
+    setTimeout(() => { doSearch(); }, 800);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '✅ Notionに案件を登録する';
+    crmShowMsg('error', `⚠️ エラー: ${e.message}`);
+  }
+}
+function crmResetForm() {
+  crmSel = null; crmSelCase = null; crmNewCaseConfirmed = false;
+  crmState = { unknown:false, branch:false, outsource:false, progress:'未着手', branchVal:'' };
+  document.querySelectorAll('.crm-cust-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('crmSelBanner').classList.remove('show');
+  document.getElementById('crmCaseCard').style.display = 'none';
+  ['crmMatName','crmPrice','crmOutsourceCost','crmFileName','crmMemo'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  document.getElementById('crmGrossProfitPreview').style.display = 'none';
+  document.getElementById('crmDeadline').value = new Date().toISOString().split('T')[0];
+  ['crmTogUnknown','crmTogBranch','crmTogOut'].forEach(id => document.getElementById(id)?.classList.remove('on'));
+  ['crmPanBranch','crmPanOut'].forEach(id => document.getElementById(id)?.classList.remove('show'));
+  document.querySelectorAll('.crm-prog-chip').forEach((c,i) => c.classList.toggle('on', i===0));
+  crmUpdatePreview();
+}
+function crmShowMsg(type, html) {
+  const el = document.getElementById('crmMsgBox');
+  el.className = 'crm-msg-box show crm-msg-' + type;
+  el.innerHTML = html;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 </script>
 </body>
 </html>
