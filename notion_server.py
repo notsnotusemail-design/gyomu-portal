@@ -64,12 +64,16 @@ INVOICE_DB_ID = os.environ.get("INVOICE_DB_ID", "25f803a762fc4a4b8c876c8756b52b6
 WORKER_DB_ID  = os.environ.get("WORKER_DB_ID",  "17706159d9854ad4832a6e80a14e285f")
 
 # ── 管理者パスワード認証 ────────────────────────────────
-# Railway Variables で ADMIN_PASSWORD=好きなパスワード と設定
+# パスワード変更方法：.env ファイルに ADMIN_PASSWORD=新しいパスワード と記載
+# Railway Variables に ADMIN_PASSWORD=新しいパスワード でも可
+# デフォルトパスワード: nts2026
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 # 認証トークン = sha256(パスワード + salt)
 def _make_admin_token(pw):
     return hashlib.sha256((pw + "nts_admin_2026").encode()).hexdigest()
-ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else ""
+# デフォルトトークン = sha256("nts2026" + salt)。ADMIN_PASSWORDが設定されていれば上書き
+_DEFAULT_ADMIN_TOKEN = "927bccc77ba90b8ef0243b0e68ad4376abc75c2802a8ecb9a766ca765e34cc8a"
+ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else _DEFAULT_ADMIN_TOKEN
 
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
 INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
