@@ -551,7 +551,13 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(404, {"error": "PDF not found"})
         elif path == "/api/health":
-            self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
+            self.send_json(200, {
+                "status": "ok",
+                "message": "サーバー起動中",
+                "invoice_db_set": bool(INVOICE_DB_ID),
+                "worker_db_set":  bool(WORKER_DB_ID),
+                "notion_token_set": bool(NOTION_TOKEN),
+            })
         elif path == "/api/next-customer-no":
             nos = get_all_customer_nos()
             self.send_json(200, {
