@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求書送信</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a;
+  min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 660px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+
+.card {
+  background: white; border-radius: 12px; padding: 18px 20px;
+  margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.card-title {
+  font-size: 11px; font-weight: 600; color: #999;
+  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label { font-size: 13px; font-weight: 500; color: #444; }
+label .req { color: #e53; }
+label .sub { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 4px; }
+input[type=text], input[type=password], input[type=number], input[type=month], select {
+  padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa;
+  transition: border-color 0.15s; width: 100%;
+}
+input:focus, select:focus { outline: none; border-color: #4f6ef7; background: white; }
+input[disabled] { color: #888; background: #f5f5f5; }
+
+/* サーバーバー */
+#serverBar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px; border: 1.5px solid #fde047;
+  background: #fef9c3; margin-bottom: 14px; font-size: 13px;
+}
+
+/* タブ */
+.tab-bar { display: flex; border-bottom: 1.5px solid #ebebeb; margin-bottom: 16px; gap: 4px; }
+.tab {
+  padding: 8px 16px; font-size: 13px; font-weight: 600; color: #aaa;
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1.5px;
+  transition: all 0.15s;
+}
+.tab.active { color: #4f6ef7; border-bottom-color: #4f6ef7; }
+
+/* ログイン済みバナー */
+.logged-in-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #f0fdf4; border: 1.5px solid #86efac;
+  border-radius: 10px; padding: 12px 16px;
+}
+.logged-in-banner .name { font-weight: 600; font-size: 14px; color: #14532d; }
+.btn-logout {
+  padding: 5px 12px; border: 1.5px solid #86efac; border-radius: 7px;
+  background: white; color: #16a34a; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.btn-logout:hover { background: #dcfce7; }
+
+/* チップ */
+.chip-group { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+.chip {
+  padding: 6px 13px; border: 1.5px solid #e2e2e2; border-radius: 20px;
+  font-size: 13px; cursor: pointer; background: white; color: #555;
+  transition: all 0.15s;
+}
+.chip:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.chip.on { border-color: #4f6ef7; background: #4f6ef7; color: white; font-weight: 600; }
+
+/* PDFドロップゾーン */
+.drop-zone {
+  border: 2px dashed #c7d2fd; border-radius: 10px; padding: 28px 20px;
+  text-align: center; cursor: pointer; transition: all 0.15s; background: #f8f8ff;
+}
+.drop-zone:hover, .drop-zone.drag { border-color: #4f6ef7; background: #eef1ff; }
+.drop-zone .ico { font-size: 28px; margin-bottom: 8px; }
+.drop-zone .hint { font-size: 13px; color: #666; }
+.drop-zone .hint strong { color: #4f6ef7; }
+.drop-zone .selected { font-size: 13px; color: #1a1a1a; font-weight: 600; margin-top: 4px; }
+#pdfInput { display: none; }
+
+/* ボタン */
+.btn-register {
+  width: 100%; padding: 14px; background: #1a1a1a; color: white;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn-register:hover:not(:disabled) { background: #333; }
+.btn-register:active:not(:disabled) { transform: scale(0.98); }
+.btn-register:disabled { background: #aaa; cursor: default; }
+
+.btn-sub {
+  padding: 10px 20px; background: #4f6ef7; color: white;
+  border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s; width: 100%; margin-top: 4px;
+}
+.btn-sub:hover { background: #3a5ce5; }
+
+.msg-box { display: none; padding: 14px 16px; border-radius: 10px; font-size: 14px; margin-top: 12px; line-height: 1.6; }
+.msg-box.show { display: block; }
+.msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+
+.divider { height: 1px; background: #eee; margin: 12px 0; }
+.hint-text { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+/* 確認オーバーレイ */
+#confirmOverlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45); z-index: 100;
+  align-items: flex-end; justify-content: center;
+  padding: 0;
+}
+#confirmOverlay.open { display: flex; }
+.confirm-sheet {
+  background: white; border-radius: 20px 20px 0 0;
+  padding: 28px 24px 40px; width: 100%; max-width: 660px;
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.15);
+  max-height: 90vh; overflow-y: auto;
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.confirm-title {
+  font-size: 17px; font-weight: 700; margin-bottom: 4px; text-align: center;
+}
+.confirm-sub {
+  font-size: 13px; color: #888; text-align: center; margin-bottom: 20px;
+}
+.confirm-block {
+  background: #f8f8f8; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+}
+.confirm-block-title {
+  font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase;
+  letter-spacing: 0.07em; margin-bottom: 10px;
+}
+.confirm-row { display: flex; gap: 12px; margin-bottom: 7px; align-items: baseline; }
+.confirm-row:last-child { margin-bottom: 0; }
+.confirm-label { font-size: 12px; color: #999; min-width: 80px; flex-shrink: 0; }
+.confirm-val { font-size: 14px; color: #1a1a1a; font-weight: 500; }
+.confirm-amount { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+.confirm-pdf {
+  display: flex; align-items: center; gap: 8px;
+  background: #eef1ff; border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; color: #4f6ef7; font-weight: 600; margin-bottom: 12px;
+}
+.confirm-buttons { display: flex; gap: 10px; margin-top: 20px; }
+.btn-back {
+  flex: 1; padding: 14px; background: #f5f5f5; color: #555;
+  border: 1.5px solid #e2e2e2; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: background 0.15s;
+}
+.btn-back:hover { background: #ebebeb; }
+.btn-confirm {
+  flex: 2; padding: 14px; background: #1a1a1a; color: white;
+  border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+  transition: background 0.15s, transform 0.1s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-confirm:hover:not(:disabled) { background: #333; }
+.btn-confirm:active:not(:disabled) { transform: scale(0.98); }
+.btn-confirm:disabled { background: #aaa; cursor: default; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🧾 請求書送信</h1>
+<p class="subtitle">請求情報とPDFを送信してください。登録ユーザーは次回から自動入力されます。</p>
+
+<!-- サーバーバー -->
+<div id="serverBar">
+  <span id="serverDot" style="width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0;transition:background 0.3s"></span>
+  <span id="serverTxt">サーバー確認中...</span>
+</div>
+
+<!-- アカウント -->
+<div class="card">
+  <div class="card-title">👤 アカウント</div>
+  <div id="authLoggedIn" style="display:none">
+    <div class="logged-in-banner">
+      <div>
+        <div style="font-size:11px;color:#666;margin-bottom:2px">ログイン中</div>
+        <div class="name" id="loggedName">—</div>
+      </div>
+      <button class="btn-logout" onclick="logout()">ログアウト</button>
+    </div>
+  </div>
+  <div id="authPanel">
+    <div class="tab-bar">
+      <div class="tab active" id="tabLogin" onclick="switchAuth('login')">ログイン</div>
+      <div class="tab" id="tabReg" onclick="switchAuth('reg')">新規登録</div>
+    </div>
+    <!-- ログイン -->
+    <div id="panelLogin">
+      <div class="form-group">
+        <label>ユーザーID</label>
+        <input type="text" id="loginId" placeholder="例: yamada_t" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" id="loginPw" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn-sub" onclick="doLogin()">ログイン</button>
+      <div class="msg-box" id="loginMsg"></div>
+    </div>
+    <!-- 新規登録 -->
+    <div id="panelReg" style="display:none">
+      <div class="form-group">
+        <label>ユーザーID <span class="req">*</span><span class="sub">半角英数・アンダースコア</span></label>
+        <input type="text" id="regId" placeholder="例: yamada_t" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>パスワード <span class="req">*</span></label>
+        <input type="password" id="regPw" placeholder="8文字以上" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>氏名 <span class="req">*</span></label>
+        <input type="text" id="regName" placeholder="例: 山田 太郎">
+      </div>
+      <button class="btn-sub" onclick="doRegister()">アカウントを作成</button>
+      <div class="msg-box" id="regMsg"></div>
+    </div>
+    <div style="height:4px"></div>
+    <p class="hint-text">登録せずにそのまま送信もできます。</p>
+  </div>
+</div>
+
+<!-- 請求情報 -->
+<div class="card">
+  <div class="card-title">📋 請求情報</div>
+  <div class="form-group">
+    <label>お名前 <span class="req">*</span></label>
+    <input type="text" id="workerName" placeholder="例: 山田 太郎">
+  </div>
+  <div class="form-row">
+    <div class="form-group" style="margin-bottom:0">
+      <label>請求年月 <span class="req">*</span></label>
+      <input type="month" id="billingMonth">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label>請求金額（税込）<span class="req">*</span></label>
+      <input type="number" id="amount" placeholder="例: 50000" min="0" step="1">
+    </div>
+  </div>
+</div>
+
+<!-- 銀行口座 -->
+<div class="card">
+  <div class="card-title">🏦 振込先口座</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>金融機関名 <span class="req">*</span></label>
+      <input type="text" id="bankName" placeholder="例: 三菱UFJ銀行">
+    </div>
+    <div class="form-group">
+      <label>支店番号 / 支店名 <span class="req">*</span></label>
+      <input type="text" id="bankBranch" placeholder="例: 新宿支店 / 001">
+    </div>
+  </div>
+  <div class="form-group">
+    <label>口座種別</label>
+    <div class="chip-group" id="acctTypeChips">
+      <div class="chip on" onclick="pickAcct(this,'普通')">普通</div>
+      <div class="chip" onclick="pickAcct(this,'当座')">当座</div>
+    </div>
+  </div>
+  <div class="form-row">
+    <div class="form-group" style="margin-bottom:0">
+      <label>口座番号 <span class="req">*</span></label>
+      <input type="text" id="bankNo" placeholder="例: 1234567" inputmode="numeric">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label>口座名義（カナ）</label>
+      <input type="text" id="bankHolder" placeholder="例: ヤマダ タロウ">
+    </div>
+  </div>
+</div>
+
+<!-- PDF添付 -->
+<div class="card">
+  <div class="card-title">📎 請求書PDF <span style="color:#e53;font-size:12px">*</span></div>
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('pdfInput').click()"
+    ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+    <div class="ico">📄</div>
+    <div class="hint" id="dropHint">クリックまたはドラッグ＆ドロップ<br><strong>PDFファイルを選択</strong></div>
+    <div class="selected" id="selectedFile" style="display:none"></div>
+  </div>
+  <input type="file" id="pdfInput" accept=".pdf" onchange="onFileSelect(this)">
+</div>
+
+<!-- 備考 -->
+<div class="card">
+  <div class="card-title">💬 備考</div>
+  <div class="form-group" style="margin-bottom:0">
+    <textarea id="remarks" placeholder="特記事項があればご記入ください" style="resize:vertical;min-height:60px;padding:9px 12px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:14px;font-family:inherit;background:#fafafa;width:100%"></textarea>
+  </div>
+</div>
+
+<button class="btn-register" id="btnSubmit" onclick="doSubmit()" disabled>
+  📤 内容を確認する
+</button>
+<div class="msg-box" id="submitMsg"></div>
+<div style="height:40px"></div>
+</div>
+
+<!-- 確認シート -->
+<div id="confirmOverlay">
+  <div class="confirm-sheet">
+    <div class="confirm-title">📋 送信内容の確認</div>
+    <div class="confirm-sub">以下の内容で送信します。問題なければ「送信する」を押してください。</div>
+
+    <div class="confirm-block">
+      <div class="confirm-block-title">請求情報</div>
+      <div class="confirm-row">
+        <span class="confirm-label">お名前</span>
+        <span class="confirm-val" id="cfmName">—</span>
+      </div>
+      <div class="confirm-row">
+        <span class="confirm-label">請求年月</span>
+        <span class="confirm-val" id="cfmMonth">—</span>
+      </div>
+      <div class="confirm-row">
+        <span class="confirm-label">請求金額</span>
+        <span class="confirm-amount" id="cfmAmount">—</span>
+      </div>
+    </div>
+
+    <div class="confirm-block">
+      <div class="confirm-block-title">振込先口座</div>
+      <div class="confirm-row">
+        <span class="confirm-label">金融機関</span>
+        <span class="confirm-val" id="cfmBank">—</span>
+      </div>
+      <div class="confirm-row">
+        <span class="confirm-label">支店</span>
+        <span class="confirm-val" id="cfmBranch">—</span>
+      </div>
+      <div class="confirm-row">
+        <span class="confirm-label">種別・番号</span>
+        <span class="confirm-val" id="cfmAcct">—</span>
+      </div>
+      <div class="confirm-row" id="cfmHolderRow">
+        <span class="confirm-label">口座名義</span>
+        <span class="confirm-val" id="cfmHolder">—</span>
+      </div>
+    </div>
+
+    <div class="confirm-pdf" id="cfmPdf">📄 —</div>
+
+    <div class="confirm-block" id="cfmRemarkBlock" style="display:none">
+      <div class="confirm-block-title">備考</div>
+      <div style="font-size:14px;color:#1a1a1a;line-height:1.6" id="cfmRemark">—</div>
+    </div>
+
+    <div class="msg-box" id="confirmMsg"></div>
+
+    <div class="confirm-buttons">
+      <button class="btn-back" onclick="closeConfirm()">← 戻って修正</button>
+      <button class="btn-confirm" id="btnConfirm" onclick="confirmSubmit()">📤 送信する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let acctType = '普通';
+let selectedPdf = null;
+let workerToken = localStorage.getItem('workerToken');
+let workerProfile = JSON.parse(localStorage.getItem('workerProfile') || 'null');
+
+// ========== 初期化 ==========
+window.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('billingMonth').value = ym;
+
+  if (workerToken && workerProfile) {
+    showLoggedIn();
+  }
+  checkServer();
+  setInterval(checkServer, 3000);
+});
+
+// ========== サーバー ==========
+async function checkServer() {
+  const bar = document.getElementById('serverBar');
+  const dot = document.getElementById('serverDot');
+  const txt = document.getElementById('serverTxt');
+  const btn = document.getElementById('btnSubmit');
+  try {
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) {
+      bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
+      dot.style.background = '#22c55e';
+      txt.textContent = 'サーバー接続中 ─ 送信できます';
+      btn.disabled = false;
+      return true;
+    }
+  } catch(e) {}
+  bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
+  dot.style.background = '#f59e0b';
+  txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリックしてください';
+  btn.disabled = true;
+  return false;
+}
+
+// ========== Auth タブ ==========
+function switchAuth(mode) {
+  document.getElementById('panelLogin').style.display = mode === 'login' ? '' : 'none';
+  document.getElementById('panelReg').style.display = mode === 'reg' ? '' : 'none';
+  document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+  document.getElementById('tabReg').classList.toggle('active', mode === 'reg');
+}
+
+// ========== ログイン ==========
+async function doLogin() {
+  const id = document.getElementById('loginId').value.trim();
+  const pw = document.getElementById('loginPw').value;
+  if (!id || !pw) { showMsg('loginMsg','error','⚠️ IDとパスワードを入力してください'); return; }
+  try {
+    const res = await fetch(SERVER + '/api/worker/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ workerId: id, password: pw })
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'ログイン失敗');
+    workerToken = d.token;
+    workerProfile = d.profile;
+    localStorage.setItem('workerToken', workerToken);
+    localStorage.setItem('workerProfile', JSON.stringify(workerProfile));
+    showLoggedIn();
+  } catch(e) {
+    showMsg('loginMsg','error', `⚠️ ${e.message}`);
+  }
+}
+
+// ========== 新規登録 ==========
+async function doRegister() {
+  const id = document.getElementById('regId').value.trim();
+  const pw = document.getElementById('regPw').value;
+  const name = document.getElementById('regName').value.trim();
+  if (!id || !pw || !name) { showMsg('regMsg','error','⚠️ すべての項目を入力してください'); return; }
+  if (pw.length < 8) { showMsg('regMsg','error','⚠️ パスワードは8文字以上で設定してください'); return; }
+  try {
+    const res = await fetch(SERVER + '/api/worker/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ workerId: id, password: pw, name })
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || '登録失敗');
+    workerToken = d.token;
+    workerProfile = d.profile;
+    localStorage.setItem('workerToken', workerToken);
+    localStorage.setItem('workerProfile', JSON.stringify(workerProfile));
+    showLoggedIn();
+  } catch(e) {
+    showMsg('regMsg','error', `⚠️ ${e.message}`);
+  }
+}
+
+function showLoggedIn() {
+  document.getElementById('authPanel').style.display = 'none';
+  document.getElementById('authLoggedIn').style.display = '';
+  document.getElementById('loggedName').textContent = workerProfile?.name || '';
+  // フォームに自動入力
+  if (workerProfile?.name) document.getElementById('workerName').value = workerProfile.name;
+  if (workerProfile?.bankName) document.getElementById('bankName').value = workerProfile.bankName;
+  if (workerProfile?.bankBranch) document.getElementById('bankBranch').value = workerProfile.bankBranch;
+  if (workerProfile?.bankNo) document.getElementById('bankNo').value = workerProfile.bankNo;
+  if (workerProfile?.bankHolder) document.getElementById('bankHolder').value = workerProfile.bankHolder;
+  if (workerProfile?.acctType) pickAcctByVal(workerProfile.acctType);
+}
+
+function logout() {
+  workerToken = null; workerProfile = null;
+  localStorage.removeItem('workerToken');
+  localStorage.removeItem('workerProfile');
+  document.getElementById('authPanel').style.display = '';
+  document.getElementById('authLoggedIn').style.display = 'none';
+  document.getElementById('workerName').value = '';
+  document.getElementById('bankName').value = '';
+  document.getElementById('bankBranch').value = '';
+  document.getElementById('bankNo').value = '';
+  document.getElementById('bankHolder').value = '';
+}
+
+// ========== 口座種別 ==========
+function pickAcct(el, val) {
+  document.querySelectorAll('#acctTypeChips .chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  acctType = val;
+}
+function pickAcctByVal(val) {
+  document.querySelectorAll('#acctTypeChips .chip').forEach(c => {
+    if (c.textContent === val) c.classList.add('on');
+    else c.classList.remove('on');
+  });
+  acctType = val;
+}
+
+// ========== PDF ==========
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag'); }
+function onDragLeave(e) { document.getElementById('dropZone').classList.remove('drag'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') setFile(f);
+}
+function onFileSelect(input) { if (input.files[0]) setFile(input.files[0]); }
+function setFile(f) {
+  selectedPdf = f;
+  document.getElementById('dropHint').style.display = 'none';
+  const sf = document.getElementById('selectedFile');
+  sf.style.display = '';
+  sf.textContent = `✅ ${f.name}  (${(f.size/1024).toFixed(0)} KB)`;
+}
+
+// ========== バリデーション → 確認画面表示 ==========
+function doSubmit() {
+  const name   = document.getElementById('workerName').value.trim();
+  const month  = document.getElementById('billingMonth').value;
+  const amount = document.getElementById('amount').value.trim();
+  const bank   = document.getElementById('bankName').value.trim();
+  const branch = document.getElementById('bankBranch').value.trim();
+  const bankNo = document.getElementById('bankNo').value.trim();
+  const holder = document.getElementById('bankHolder').value.trim();
+  const remarks= document.getElementById('remarks').value.trim();
+
+  // バリデーション
+  if (!name)        { showMsg('submitMsg','error','⚠️ お名前を入力してください'); return; }
+  if (!month)       { showMsg('submitMsg','error','⚠️ 請求年月を選択してください'); return; }
+  if (!amount)      { showMsg('submitMsg','error','⚠️ 請求金額を入力してください'); return; }
+  if (!bank)        { showMsg('submitMsg','error','⚠️ 金融機関名を入力してください'); return; }
+  if (!branch)      { showMsg('submitMsg','error','⚠️ 支店情報を入力してください'); return; }
+  if (!bankNo)      { showMsg('submitMsg','error','⚠️ 口座番号を入力してください'); return; }
+  if (!selectedPdf) { showMsg('submitMsg','error','⚠️ 請求書PDFを添付してください'); return; }
+
+  // エラーを消してから確認画面へ
+  document.getElementById('submitMsg').className = 'msg-box';
+
+  // 確認画面に値をセット
+  document.getElementById('cfmName').textContent   = name;
+  document.getElementById('cfmMonth').textContent  = month;
+  document.getElementById('cfmAmount').textContent = '¥' + Number(amount).toLocaleString() + '（税込）';
+  document.getElementById('cfmBank').textContent   = bank;
+  document.getElementById('cfmBranch').textContent = branch;
+  document.getElementById('cfmAcct').textContent   = `${acctType}　${bankNo}`;
+  document.getElementById('cfmHolder').textContent = holder || '—';
+  document.getElementById('cfmHolderRow').style.display = holder ? '' : 'none';
+  document.getElementById('cfmPdf').textContent    = `📄 ${selectedPdf.name}  (${(selectedPdf.size/1024).toFixed(0)} KB)`;
+
+  const rb = document.getElementById('cfmRemarkBlock');
+  if (remarks) {
+    rb.style.display = '';
+    document.getElementById('cfmRemark').textContent = remarks;
+  } else {
+    rb.style.display = 'none';
+  }
+
+  document.getElementById('confirmMsg').className = 'msg-box';
+  document.getElementById('btnConfirm').disabled = false;
+  document.getElementById('btnConfirm').textContent = '📤 送信する';
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+
+function closeConfirm() {
+  document.getElementById('confirmOverlay').classList.remove('open');
+}
+
+// ========== 実際の送信 ==========
+async function confirmSubmit() {
+  const name   = document.getElementById('workerName').value.trim();
+  const month  = document.getElementById('billingMonth').value;
+  const amount = document.getElementById('amount').value.trim();
+  const bank   = document.getElementById('bankName').value.trim();
+  const branch = document.getElementById('bankBranch').value.trim();
+  const bankNo = document.getElementById('bankNo').value.trim();
+  const holder = document.getElementById('bankHolder').value.trim();
+  const remarks= document.getElementById('remarks').value.trim();
+
+  const confirmBtn = document.getElementById('btnConfirm');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = '⏳ 送信中...';
+
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('billingMonth', month);
+  fd.append('amount', amount);
+  fd.append('bankName', bank);
+  fd.append('bankBranch', branch);
+  fd.append('acctType', acctType);
+  fd.append('bankNo', bankNo);
+  fd.append('bankHolder', holder);
+  fd.append('remarks', remarks);
+  if (workerToken) fd.append('workerToken', workerToken);
+  fd.append('pdf', selectedPdf, selectedPdf.name);
+
+  try {
+    const res = await fetch(SERVER + '/api/submit-invoice', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || '送信失敗');
+
+    // 確認画面を閉じて完了メッセージ
+    closeConfirm();
+    showMsg('submitMsg','success',`
+      <strong>✅ 請求書を送信しました</strong><br>
+      受付ID: <strong>${d.invoiceId || '—'}</strong><br>
+      確認後、担当者よりご連絡します。
+    `);
+    // フォームリセット
+    document.getElementById('amount').value = '';
+    document.getElementById('remarks').value = '';
+    document.getElementById('selectedFile').style.display = 'none';
+    document.getElementById('dropHint').style.display = '';
+    selectedPdf = null;
+    document.getElementById('pdfInput').value = '';
+  } catch(e) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = '📤 送信する';
+    showMsg('confirmMsg','error', `⚠️ ${e.message}`);
+  }
+}
+
+// 確認オーバーレイ背景クリックで閉じる
+document.getElementById('confirmOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeConfirm();
+});
+
+function showMsg(id, type, html) {
+  const el = document.getElementById(id);
+  el.className = 'msg-box show msg-' + type;
+  el.innerHTML = html;
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+</script>
+</body>
+</html>
