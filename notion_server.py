@@ -72,7 +72,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 def _make_admin_token(pw):
     return hashlib.sha256((pw + "nts_admin_2026").encode()).hexdigest()
 # デフォルトトークン = sha256("nts2026" + salt)。ADMIN_PASSWORDが設定されていれば上書き
-_DEFAULT_ADMIN_TOKEN = "927bccc77ba90b8ef0243b0e68ad4376abc75c2802a8ecb9a766ca765e34cc8a"
+_DEFAULT_ADMIN_TOKEN = "ec31d1b13ecbc5c119f79ae5ea02ce8a3f3265a354acd6063894c2b8bf863c8f"
 ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else _DEFAULT_ADMIN_TOKEN
 
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
