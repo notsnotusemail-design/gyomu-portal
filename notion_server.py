@@ -60,9 +60,8 @@ HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 
 # ── 請求書システム（Notion DB）──────────────────────────
-# Railway Variables タブで INVOICE_DB_ID, WORKER_DB_ID を設定してください
-INVOICE_DB_ID = os.environ.get("INVOICE_DB_ID", "")
-WORKER_DB_ID  = os.environ.get("WORKER_DB_ID",  "")
+INVOICE_DB_ID = os.environ.get("INVOICE_DB_ID", "25f803a762fc4a4b8c876c8756b52b66")
+WORKER_DB_ID  = os.environ.get("WORKER_DB_ID",  "17706159d9854ad4832a6e80a14e285f")
 
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
 INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
