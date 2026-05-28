@@ -235,6 +235,16 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
   <span id="serverTxt">サーバー確認中...</span>
 </div>
 
+<!-- 下請け共有リンク -->
+<div id="shareBar" style="background:white;border-radius:12px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.07);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+  <div style="font-size:13px;font-weight:600;white-space:nowrap;">📤 下請け向け送信ページ</div>
+  <input id="shareUrl" type="text" readonly
+    style="flex:1;min-width:200px;padding:7px 11px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:12px;color:#555;background:#fafafa;cursor:pointer;"
+    onclick="this.select()" value="読み込み中...">
+  <button onclick="copyShareUrl()" style="padding:7px 14px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;">コピー</button>
+  <a id="shareLink" href="#" target="_blank" style="padding:7px 14px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-weight:600;color:#555;text-decoration:none;white-space:nowrap;">開く →</a>
+</div>
+
 <!-- タブ -->
 <div class="page-tabs">
   <button class="page-tab active" id="tab-list" onclick="switchTab('list')">📋 請求書一覧</button>
@@ -413,7 +423,7 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
 </div>
 
 <script>
-const BASE = 'http://localhost:8765';
+const BASE = window.location.origin;
 let allInvoices = [];
 let currentInvoiceId = null;
 let statusMenuTarget = null;
@@ -455,7 +465,20 @@ window.addEventListener('load', () => {
   checkServer();
   loadInvoices();
   updateTrashBadge();
+  // 下請け共有URLをセット
+  const workerUrl = window.location.origin + '/ワーカー請求書.html';
+  document.getElementById('shareUrl').value = workerUrl;
+  document.getElementById('shareLink').href = workerUrl;
 });
+
+function copyShareUrl() {
+  const url = document.getElementById('shareUrl').value;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    btn.textContent = '✅ コピー済み';
+    setTimeout(() => { btn.textContent = 'コピー'; }, 2000);
+  });
+}
 
 // ─── サーバー確認 ────────────────────────────────
 async function checkServer() {

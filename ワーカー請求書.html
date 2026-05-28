@@ -377,7 +377,7 @@ input[disabled] { color: #888; background: #f5f5f5; }
 </div>
 
 <script>
-const SERVER = 'http://localhost:8765';
+const SERVER = window.location.origin;
 let acctType = '普通';
 let selectedPdf = null;
 let workerToken = localStorage.getItem('workerToken');
@@ -403,7 +403,7 @@ async function checkServer() {
   const txt = document.getElementById('serverTxt');
   const btn = document.getElementById('btnSubmit');
   try {
-    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
       bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
       dot.style.background = '#22c55e';
@@ -412,9 +412,9 @@ async function checkServer() {
       return true;
     }
   } catch(e) {}
-  bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
-  dot.style.background = '#f59e0b';
-  txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリックしてください';
+  bar.style.background = '#fef2f2'; bar.style.borderColor = '#fca5a5';
+  dot.style.background = '#ef4444';
+  txt.textContent = 'サーバーに接続できません。時間をおいて再読み込みしてください。';
   btn.disabled = true;
   return false;
 }
