@@ -293,6 +293,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("日次スケジュール.html")
         elif path == "/案件履歴ツール.html":
             self.send_html("案件履歴ツール.html")
+        elif path == "/請求書管理ツール.html":
+            self.send_html("請求書管理ツール.html")
+        elif path == "/ワーカー請求書.html":
+            self.send_html("ワーカー請求書.html")
         elif path == "/api/health":
             self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
         elif path == "/api/next-customer-no":
