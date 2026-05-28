@@ -59,35 +59,14 @@ HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 
-# ── 請求書システム（ローカルJSON） ──────────────────────────
-INVOICES_FILE     = os.path.join(SCRIPT_DIR, "invoices.json")
-WORKERS_FILE      = os.path.join(SCRIPT_DIR, "workers.json")
-INVOICE_PDF_DIR   = os.path.join(SCRIPT_DIR, "invoice_pdfs")
+# ── 請求書システム（Notion DB）──────────────────────────
+# Railway Variables タブで INVOICE_DB_ID, WORKER_DB_ID を設定してください
+INVOICE_DB_ID = os.environ.get("INVOICE_DB_ID", "")
+WORKER_DB_ID  = os.environ.get("WORKER_DB_ID",  "")
+
+# PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
+INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
 os.makedirs(INVOICE_PDF_DIR, exist_ok=True)
-
-def load_invoices():
-    if os.path.exists(INVOICES_FILE):
-        try:
-            with open(INVOICES_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except: pass
-    return []
-
-def save_invoices(data):
-    with open(INVOICES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def load_workers():
-    if os.path.exists(WORKERS_FILE):
-        try:
-            with open(WORKERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except: pass
-    return []
-
-def save_workers(data):
-    with open(WORKERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def parse_multipart(raw_body, content_type):
     """multipart/form-data をパースして fields, files を返す"""
@@ -289,6 +268,172 @@ def notion_request(method, path, body=None):
         print(f"  ❌ Notion例外: {e}")
         return None, f"例外: {e}"
 
+# ========== 請求書 Notion ヘルパー ==========
+
+def parse_notion_invoice_page(page):
+    """Notion請求書ページをdictに変換"""
+    try:
+        props = page["properties"]
+        def rt(key, default=""):
+            lst = (props.get(key, {}).get("rich_text") or [])
+            return lst[0].get("plain_text", default) if lst else default
+        def title_prop():
+            t = (props.get("タイトル", {}).get("title") or [])
+            return t[0].get("plain_text", "") if t else ""
+        def sel(key, default=""):
+            return (props.get(key, {}).get("select") or {}).get("name", default)
+        def num(key, default=0):
+            v = props.get(key, {}).get("number")
+            return v if v is not None else default
+        def chk(key):
+            return props.get(key, {}).get("checkbox", False)
+        def date_prop(key):
+            return (props.get(key, {}).get("date") or {}).get("start", "")
+        return {
+            "id":             title_prop(),
+            "_notion_id":     page["id"],
+            "received_at":    date_prop("受信日時"),
+            "worker_name":    rt("ワーカー名"),
+            "billing_month":  rt("請求月"),
+            "amount":         num("金額"),
+            "status":         sel("ステータス", "new"),
+            "bank_name":      rt("金融機関名"),
+            "branch":         rt("支店"),
+            "account_type":   sel("口座種別", "普通"),
+            "account_number": rt("口座番号"),
+            "account_holder": rt("口座名義"),
+            "remark":         rt("備考"),
+            "has_pdf":        chk("PDFあり"),
+            "worker_id":      rt("ワーカーID"),
+        }
+    except Exception as e:
+        print(f"  ⚠️ parse_notion_invoice_page: {e}")
+        return None
+
+def invoice_to_notion_props(inv):
+    """請求書dictをNotion propertiesに変換"""
+    received_at = inv.get("received_at", "")
+    date_str = received_at[:10] if received_at else datetime.date.today().isoformat()
+    return {
+        "タイトル":   {"title":     [{"text": {"content": inv["id"]}}]},
+        "ワーカー名": {"rich_text": [{"text": {"content": inv.get("worker_name", "")}}]},
+        "請求月":     {"rich_text": [{"text": {"content": inv.get("billing_month", "")}}]},
+        "金額":       {"number":    inv.get("amount", 0)},
+        "ステータス": {"select":    {"name": inv.get("status", "new")}},
+        "金融機関名": {"rich_text": [{"text": {"content": inv.get("bank_name", "")}}]},
+        "支店":       {"rich_text": [{"text": {"content": inv.get("branch", "")}}]},
+        "口座種別":   {"select":    {"name": inv.get("account_type", "普通")}},
+        "口座番号":   {"rich_text": [{"text": {"content": inv.get("account_number", "")}}]},
+        "口座名義":   {"rich_text": [{"text": {"content": inv.get("account_holder", "")}}]},
+        "備考":       {"rich_text": [{"text": {"content": inv.get("remark", "")}}]},
+        "受信日時":   {"date":      {"start": date_str}},
+        "PDFあり":    {"checkbox":  inv.get("has_pdf", False)},
+        "ワーカーID": {"rich_text": [{"text": {"content": inv.get("worker_id", "") or ""}}]},
+    }
+
+def get_invoices_from_notion():
+    """Notionから請求書一覧を取得（新しい順）"""
+    if not INVOICE_DB_ID:
+        return []
+    results = []
+    body = {
+        "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        "page_size": 100,
+    }
+    cursor = None
+    while True:
+        if cursor: body["start_cursor"] = cursor
+        result, _ = notion_request("POST", f"/databases/{INVOICE_DB_ID}/query", body)
+        if not result: break
+        for page in result.get("results", []):
+            inv = parse_notion_invoice_page(page)
+            if inv: results.append(inv)
+        if not result.get("has_more"): break
+        cursor = result.get("next_cursor")
+    return results
+
+def find_invoice_notion_id(inv_id):
+    """請求書IDからNotionページIDを検索"""
+    if not INVOICE_DB_ID: return None
+    body = {
+        "filter": {"property": "タイトル", "title": {"equals": inv_id}},
+        "page_size": 1,
+    }
+    result, _ = notion_request("POST", f"/databases/{INVOICE_DB_ID}/query", body)
+    if result and result.get("results"):
+        return result["results"][0]["id"]
+    return None
+
+# ========== ワーカー Notion ヘルパー ==========
+
+def parse_notion_worker_page(page):
+    """Notionワーカーページをdictに変換"""
+    try:
+        props = page["properties"]
+        def rt(key, default=""):
+            lst = (props.get(key, {}).get("rich_text") or [])
+            return lst[0].get("plain_text", default) if lst else default
+        def title_prop():
+            t = (props.get("タイトル", {}).get("title") or [])
+            return t[0].get("plain_text", "") if t else ""
+        def sel(key, default=""):
+            return (props.get(key, {}).get("select") or {}).get("name", default)
+        return {
+            "worker_id":  title_prop(),
+            "_notion_id": page["id"],
+            "name":       rt("名前"),
+            "pw_hash":    rt("パスワードハッシュ"),
+            "token":      rt("トークン"),
+            "bankName":   rt("金融機関名"),
+            "bankBranch": rt("支店"),
+            "bankNo":     rt("口座番号"),
+            "bankHolder": rt("口座名義"),
+            "acctType":   sel("口座種別", "普通"),
+            "note":       rt("備考メモ"),
+        }
+    except Exception as e:
+        print(f"  ⚠️ parse_notion_worker_page: {e}")
+        return None
+
+def worker_to_notion_props(w):
+    """ワーカーdictをNotion propertiesに変換"""
+    return {
+        "タイトル":           {"title":     [{"text": {"content": w.get("worker_id", "")}}]},
+        "名前":               {"rich_text": [{"text": {"content": w.get("name", "")}}]},
+        "パスワードハッシュ": {"rich_text": [{"text": {"content": w.get("pw_hash", "")}}]},
+        "トークン":           {"rich_text": [{"text": {"content": w.get("token", "")}}]},
+        "金融機関名":         {"rich_text": [{"text": {"content": w.get("bankName", "")}}]},
+        "支店":               {"rich_text": [{"text": {"content": w.get("bankBranch", "")}}]},
+        "口座番号":           {"rich_text": [{"text": {"content": w.get("bankNo", "")}}]},
+        "口座名義":           {"rich_text": [{"text": {"content": w.get("bankHolder", "")}}]},
+        "口座種別":           {"select":    {"name": w.get("acctType", "普通")}},
+        "備考メモ":           {"rich_text": [{"text": {"content": w.get("note", "")}}]},
+    }
+
+def get_worker_by_id_notion(worker_id):
+    """ワーカーIDでNotionからワーカーを検索"""
+    if not WORKER_DB_ID: return None
+    body = {
+        "filter": {"property": "タイトル", "title": {"equals": worker_id}},
+        "page_size": 1,
+    }
+    result, _ = notion_request("POST", f"/databases/{WORKER_DB_ID}/query", body)
+    if result and result.get("results"):
+        return parse_notion_worker_page(result["results"][0])
+    return None
+
+def get_worker_by_token_notion(token):
+    """トークンでNotionからワーカーを検索"""
+    if not WORKER_DB_ID or not token: return None
+    body = {
+        "filter": {"property": "トークン", "rich_text": {"equals": token}},
+        "page_size": 1,
+    }
+    result, _ = notion_request("POST", f"/databases/{WORKER_DB_ID}/query", body)
+    if result and result.get("results"):
+        return parse_notion_worker_page(result["results"][0])
+    return None
+
 # ========== 顧客番号ユーティリティ ==========
 def get_all_customer_nos():
     """お客様DBから全番号を取得"""
@@ -389,7 +534,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/ワーカー請求書.html":
             self.send_html("ワーカー請求書.html")
         elif path == "/api/invoices":
-            invoices = load_invoices()
+            invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
         elif path.startswith("/api/invoice-pdf/"):
             inv_id = path.split("/")[-1]
@@ -442,12 +587,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = unquote(self.path.split('?')[0])
-        self.send_header("Access-Control-Allow-Origin", "*")
         if path.startswith("/api/invoice/") and path.count("/") == 3:
             inv_id = path.split("/")[-1]
-            invoices = load_invoices()
-            invoices = [i for i in invoices if i.get("id") != inv_id]
-            save_invoices(invoices)
+            notion_page_id = find_invoice_notion_id(inv_id)
+            if notion_page_id:
+                notion_request("PATCH", f"/pages/{notion_page_id}", {"archived": True})
+                print(f"  🗑️  請求書削除（アーカイブ）: {inv_id}")
             self.send_json(200, {"ok": True})
         else:
             self.send_json(404, {"error": "Not found"})
@@ -464,12 +609,13 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "invoice" and parts[3] == "status":
             inv_id = parts[2]
-            invoices = load_invoices()
-            for inv in invoices:
-                if inv.get("id") == inv_id:
-                    inv["status"] = data.get("status", inv["status"])
-                    break
-            save_invoices(invoices)
+            new_status = data.get("status", "new")
+            notion_page_id = find_invoice_notion_id(inv_id)
+            if notion_page_id:
+                notion_request("PATCH", f"/pages/{notion_page_id}", {
+                    "properties": {"ステータス": {"select": {"name": new_status}}}
+                })
+                print(f"  ✅ 請求書ステータス更新: {inv_id} → {new_status}")
             self.send_json(200, {"ok": True})
         else:
             self.send_json(404, {"error": "Not found"})
@@ -505,10 +651,6 @@ class Handler(BaseHTTPRequestHandler):
             inv_id = path.split("/")[-1]
             self.handle_register_worker_from_invoice(inv_id, data)
             return
-        elif path == "/api/invoice/status":
-            self.handle_patch_invoice_status(data)
-            return
-
         if self.path == "/api/register":
             self.handle_register(data)
         elif self.path == "/api/update-customer":
@@ -560,12 +702,16 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(404, {"error": "Not found"})
 
-    # ── 請求書送信（multipart）──────────────────────────────
+    # ── 請求書送信（multipart → Notion）──────────────────────────────
     def handle_submit_invoice(self, raw_body, content_type):
         try:
             fields, files = parse_multipart(raw_body, content_type)
         except Exception as e:
             self.send_json(400, {"ok": False, "error": f"パースエラー: {e}"}); return
+
+        if not INVOICE_DB_ID:
+            self.send_json(500, {"ok": False,
+                "error": "INVOICE_DB_ID が設定されていません。Railway の Variables タブで設定してください"}); return
 
         inv_id = "inv-" + str(uuid.uuid4())[:8]
         now = datetime.datetime.now().isoformat()
@@ -574,8 +720,7 @@ class Handler(BaseHTTPRequestHandler):
         token = fields.get("workerToken", "")
         worker_name = fields.get("name", "").strip()
         if not worker_name and token:
-            workers = load_workers()
-            w = next((w for w in workers if w.get("token") == token), None)
+            w = get_worker_by_token_notion(token)
             if w: worker_name = w.get("name", "")
 
         invoice = {
@@ -592,35 +737,50 @@ class Handler(BaseHTTPRequestHandler):
             "account_holder": fields.get("bankHolder", ""),
             "remark":         fields.get("remarks", ""),
             "has_pdf":        "pdf" in files,
-            "worker_id":      None,
+            "worker_id":      "",
         }
 
-        # PDF保存
+        # PDF一時保存（Railwayでは再デプロイ時に消えるが、請求書データはNotionに永続保存）
         if "pdf" in files:
             _, pdf_bytes = files["pdf"]
             pdf_path = os.path.join(INVOICE_PDF_DIR, inv_id + ".pdf")
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_bytes)
+            try:
+                with open(pdf_path, "wb") as f:
+                    f.write(pdf_bytes)
+            except Exception as e:
+                print(f"  ⚠️ PDF一時保存失敗: {e}")
 
-        invoices = load_invoices()
-        invoices.insert(0, invoice)
-        save_invoices(invoices)
+        # Notionに保存
+        result, err = notion_request("POST", "/pages", {
+            "parent": {"database_id": INVOICE_DB_ID},
+            "properties": invoice_to_notion_props(invoice),
+        })
+        if not result:
+            self.send_json(500, {"ok": False, "error": f"Notion保存失敗: {err}"}); return
+
+        print(f"  ✅ 請求書Notion保存: {inv_id} ({worker_name} {invoice['billing_month']} ¥{invoice['amount']:,})")
         self.send_json(200, {"ok": True, "invoiceId": inv_id})
 
-    # ── ワーカー認証 ────────────────────────────────────────
+    # ── ワーカー認証（Notion）────────────────────────────────────────
     def handle_worker_login(self, data):
         worker_id = data.get("workerId", "").strip()
         password  = data.get("password", "")
-        workers   = load_workers()
-        w = next((w for w in workers if w.get("worker_id") == worker_id), None)
+        if not WORKER_DB_ID:
+            self.send_json(500, {"ok": False, "error": "WORKER_DB_ID が設定されていません"}); return
+        w = get_worker_by_id_notion(worker_id)
         if not w:
             self.send_json(401, {"ok": False, "error": "IDが見つかりません"}); return
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
         if w.get("pw_hash") != pw_hash:
             self.send_json(401, {"ok": False, "error": "パスワードが違います"}); return
+        # トークンがなければ新規発行してNotionに保存
         token = w.get("token") or str(uuid.uuid4())
-        w["token"] = token
-        save_workers(workers)
+        if not w.get("token"):
+            notion_id = w.get("_notion_id")
+            if notion_id:
+                notion_request("PATCH", f"/pages/{notion_id}", {
+                    "properties": {"トークン": {"rich_text": [{"text": {"content": token}}]}}
+                })
         profile = {k: w.get(k) for k in ["name","bankName","bankBranch","bankNo","bankHolder","acctType"]}
         self.send_json(200, {"ok": True, "token": token, "profile": profile})
 
@@ -632,15 +792,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"ok": False, "error": "必須項目が不足しています"}); return
         if len(password) < 8:
             self.send_json(400, {"ok": False, "error": "パスワードは8文字以上"}); return
-        workers = load_workers()
-        if any(w.get("worker_id") == worker_id for w in workers):
+        if not WORKER_DB_ID:
+            self.send_json(500, {"ok": False, "error": "WORKER_DB_ID が設定されていません"}); return
+        existing = get_worker_by_id_notion(worker_id)
+        if existing:
             self.send_json(409, {"ok": False, "error": "このIDは既に使われています"}); return
         token   = str(uuid.uuid4())
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        new_w = {"worker_id": worker_id, "name": name, "pw_hash": pw_hash, "token": token,
-                 "bankName":"","bankBranch":"","bankNo":"","bankHolder":"","acctType":"普通"}
-        workers.append(new_w)
-        save_workers(workers)
+        new_w = {
+            "worker_id": worker_id, "name": name, "pw_hash": pw_hash, "token": token,
+            "bankName":"","bankBranch":"","bankNo":"","bankHolder":"","acctType":"普通","note":"",
+        }
+        result, err = notion_request("POST", "/pages", {
+            "parent": {"database_id": WORKER_DB_ID},
+            "properties": worker_to_notion_props(new_w),
+        })
+        if not result:
+            self.send_json(500, {"ok": False, "error": f"Notion保存失敗: {err}"}); return
         profile = {k: new_w.get(k) for k in ["name","bankName","bankBranch","bankNo","bankHolder","acctType"]}
         self.send_json(200, {"ok": True, "token": token, "profile": profile})
 
@@ -650,23 +818,41 @@ class Handler(BaseHTTPRequestHandler):
         note      = data.get("note", "")
         if not worker_id:
             self.send_json(400, {"ok": False, "error": "ワーカーIDが必要"}); return
-        invoices = load_invoices()
-        inv = next((i for i in invoices if i.get("id") == inv_id), None)
-        if not inv:
+
+        # 請求書のNotionページIDを検索
+        notion_page_id = find_invoice_notion_id(inv_id)
+        if not notion_page_id:
             self.send_json(404, {"ok": False, "error": "請求書が見つかりません"}); return
-        inv["worker_id"] = worker_id
-        save_invoices(invoices)
-        # ワーカー情報も保存
-        workers = load_workers()
-        if not any(w.get("worker_id") == worker_id for w in workers):
-            workers.append({
-                "worker_id": worker_id, "name": inv.get("worker_name",""),
-                "pw_hash": "", "token": "",
-                "bankName": inv.get("bank_name",""), "bankBranch": inv.get("branch",""),
-                "bankNo": inv.get("account_number",""), "bankHolder": inv.get("account_holder",""),
-                "acctType": inv.get("account_type","普通"), "note": note
-            })
-            save_workers(workers)
+
+        # 請求書のワーカーIDをNotionで更新
+        notion_request("PATCH", f"/pages/{notion_page_id}", {
+            "properties": {"ワーカーID": {"rich_text": [{"text": {"content": worker_id}}]}}
+        })
+
+        # 請求書データを取得してワーカー情報を補完
+        inv_result, _ = notion_request("GET", f"/pages/{notion_page_id}")
+        inv = parse_notion_invoice_page(inv_result) if inv_result else {}
+
+        # ワーカーが未登録なら作成
+        if WORKER_DB_ID:
+            existing = get_worker_by_id_notion(worker_id)
+            if not existing:
+                new_w = {
+                    "worker_id": worker_id,
+                    "name":        inv.get("worker_name", ""),
+                    "pw_hash":     "", "token": "",
+                    "bankName":    inv.get("bank_name", ""),
+                    "bankBranch":  inv.get("branch", ""),
+                    "bankNo":      inv.get("account_number", ""),
+                    "bankHolder":  inv.get("account_holder", ""),
+                    "acctType":    inv.get("account_type", "普通"),
+                    "note":        note,
+                }
+                notion_request("POST", "/pages", {
+                    "parent": {"database_id": WORKER_DB_ID},
+                    "properties": worker_to_notion_props(new_w),
+                })
+                print(f"  👤 ワーカー登録: {worker_id}")
         self.send_json(200, {"ok": True})
 
     def send_file(self, filepath, filename, content_type):
