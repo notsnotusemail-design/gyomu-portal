@@ -1,0 +1,18 @@
+[
+  {
+    "id": "inv-f36d943a",
+    "received_at": "2026-05-28T12:51:51.152787",
+    "worker_name": "テスト1",
+    "billing_month": "2026-05",
+    "amount": 1000,
+    "status": "new",
+    "bank_name": "テスト",
+    "branch": "テスト",
+    "account_type": "普通",
+    "account_number": "1234567",
+    "account_holder": "テスト",
+    "remark": "",
+    "has_pdf": true,
+    "worker_id": null
+  }
+]

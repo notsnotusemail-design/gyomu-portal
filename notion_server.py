@@ -6,11 +6,13 @@ NotionのAPIへ直接登録します。
 起動: python3 notion_server.py
 """
 
-import sys, json, os, tempfile, datetime
+import sys, json, os, tempfile, datetime, uuid, hashlib, io
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
+from urllib.parse import unquote
 import json as jsonlib
+import email, email.parser
 try:
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, Border, Side
@@ -56,6 +58,95 @@ HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
+
+# ── 請求書システム（ローカルJSON） ──────────────────────────
+INVOICES_FILE     = os.path.join(SCRIPT_DIR, "invoices.json")
+WORKERS_FILE      = os.path.join(SCRIPT_DIR, "workers.json")
+INVOICE_PDF_DIR   = os.path.join(SCRIPT_DIR, "invoice_pdfs")
+os.makedirs(INVOICE_PDF_DIR, exist_ok=True)
+
+def load_invoices():
+    if os.path.exists(INVOICES_FILE):
+        try:
+            with open(INVOICES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    return []
+
+def save_invoices(data):
+    with open(INVOICES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_workers():
+    if os.path.exists(WORKERS_FILE):
+        try:
+            with open(WORKERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    return []
+
+def save_workers(data):
+    with open(WORKERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def parse_multipart(raw_body, content_type):
+    """multipart/form-data をパースして fields, files を返す"""
+    # Content-Typeからboundaryを抽出
+    ct_str = str(content_type)
+    boundary = None
+    for part in ct_str.split(";"):
+        part = part.strip()
+        if part.startswith("boundary="):
+            boundary = part[len("boundary="):].strip('"')
+            break
+    if not boundary:
+        return {}, {}
+
+    fields = {}
+    files  = {}
+    delimiter = ("--" + boundary).encode()
+    end_delim  = ("--" + boundary + "--").encode()
+
+    # bodyをパーツに分割
+    for chunk in raw_body.split(delimiter):
+        if not chunk or chunk.strip() in (b"", end_delim.lstrip(b"--" + boundary.encode())):
+            continue
+        if chunk.startswith(b"--"):   # 終端
+            continue
+        # ヘッダーとボディを分離（\r\n\r\n で区切る）
+        if b"\r\n\r\n" not in chunk:
+            continue
+        header_part, body_part = chunk.split(b"\r\n\r\n", 1)
+        # 末尾の \r\n を除去
+        if body_part.endswith(b"\r\n"):
+            body_part = body_part[:-2]
+
+        headers = {}
+        for line in header_part.split(b"\r\n"):
+            if b":" in line:
+                k, v = line.split(b":", 1)
+                headers[k.strip().lower().decode()] = v.strip().decode("utf-8", errors="replace")
+
+        disp = headers.get("content-disposition", "")
+        if not disp:
+            continue
+
+        name, filename = "", ""
+        for seg in disp.split(";"):
+            seg = seg.strip()
+            if seg.startswith("name="):
+                name = seg[5:].strip('"')
+            elif seg.startswith("filename="):
+                filename = seg[9:].strip('"')
+
+        if not name:
+            continue
+        if filename:
+            files[name] = (filename, body_part)
+        else:
+            fields[name] = body_part.decode("utf-8", errors="replace")
+
+    return fields, files
 
 def load_daily_schedules():
     if os.path.exists(DAILY_SCHEDULE_FILE):
@@ -297,6 +388,23 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("請求書管理ツール.html")
         elif path == "/ワーカー請求書.html":
             self.send_html("ワーカー請求書.html")
+        elif path == "/api/invoices":
+            invoices = load_invoices()
+            self.send_json(200, invoices)
+        elif path.startswith("/api/invoice-pdf/"):
+            inv_id = path.split("/")[-1]
+            pdf_path = os.path.join(INVOICE_PDF_DIR, inv_id + ".pdf")
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_json(404, {"error": "PDF not found"})
         elif path == "/api/health":
             self.send_json(200, {"status": "ok", "message": "サーバー起動中"})
         elif path == "/api/next-customer-no":
@@ -332,13 +440,73 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(404, {"error": "Not found"})
 
-    def do_POST(self):
+    def do_DELETE(self):
+        path = unquote(self.path.split('?')[0])
+        self.send_header("Access-Control-Allow-Origin", "*")
+        if path.startswith("/api/invoice/") and path.count("/") == 3:
+            inv_id = path.split("/")[-1]
+            invoices = load_invoices()
+            invoices = [i for i in invoices if i.get("id") != inv_id]
+            save_invoices(invoices)
+            self.send_json(200, {"ok": True})
+        else:
+            self.send_json(404, {"error": "Not found"})
+
+    def do_PATCH(self):
+        path = unquote(self.path.split('?')[0])
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         try:
             data = jsonlib.loads(raw)
+        except:
+            self.send_json(400, {"error": "Invalid JSON"}); return
+        # /api/invoice/{id}/status
+        parts = path.strip("/").split("/")
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "invoice" and parts[3] == "status":
+            inv_id = parts[2]
+            invoices = load_invoices()
+            for inv in invoices:
+                if inv.get("id") == inv_id:
+                    inv["status"] = data.get("status", inv["status"])
+                    break
+            save_invoices(invoices)
+            self.send_json(200, {"ok": True})
+        else:
+            self.send_json(404, {"error": "Not found"})
+
+    def do_POST(self):
+        path = unquote(self.path.split('?')[0])
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+        content_type = self.headers.get("Content-Type", "")
+
+        # ── multipart/form-data（請求書PDF送信）──────────
+        if "multipart/form-data" in content_type:
+            if path == "/api/submit-invoice":
+                self.handle_submit_invoice(raw, content_type)
+            else:
+                self.send_json(404, {"error": "Not found"})
+            return
+
+        # ── JSON系エンドポイント ──────────────────────────
+        try:
+            data = jsonlib.loads(raw) if raw else {}
         except Exception:
             self.send_json(400, {"error": "Invalid JSON"})
+            return
+
+        if path == "/api/worker/login":
+            self.handle_worker_login(data)
+            return
+        elif path == "/api/worker/register":
+            self.handle_worker_register(data)
+            return
+        elif path.startswith("/api/register-worker-from-invoice/"):
+            inv_id = path.split("/")[-1]
+            self.handle_register_worker_from_invoice(inv_id, data)
+            return
+        elif path == "/api/invoice/status":
+            self.handle_patch_invoice_status(data)
             return
 
         if self.path == "/api/register":
@@ -391,6 +559,115 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_invoice_numbers(data)
         else:
             self.send_json(404, {"error": "Not found"})
+
+    # ── 請求書送信（multipart）──────────────────────────────
+    def handle_submit_invoice(self, raw_body, content_type):
+        try:
+            fields, files = parse_multipart(raw_body, content_type)
+        except Exception as e:
+            self.send_json(400, {"ok": False, "error": f"パースエラー: {e}"}); return
+
+        inv_id = "inv-" + str(uuid.uuid4())[:8]
+        now = datetime.datetime.now().isoformat()
+
+        # ワーカートークンで名前を補完
+        token = fields.get("workerToken", "")
+        worker_name = fields.get("name", "").strip()
+        if not worker_name and token:
+            workers = load_workers()
+            w = next((w for w in workers if w.get("token") == token), None)
+            if w: worker_name = w.get("name", "")
+
+        invoice = {
+            "id":             inv_id,
+            "received_at":    now,
+            "worker_name":    worker_name,
+            "billing_month":  fields.get("billingMonth", ""),
+            "amount":         int(fields.get("amount", 0) or 0),
+            "status":         "new",
+            "bank_name":      fields.get("bankName", ""),
+            "branch":         fields.get("bankBranch", ""),
+            "account_type":   fields.get("acctType", "普通"),
+            "account_number": fields.get("bankNo", ""),
+            "account_holder": fields.get("bankHolder", ""),
+            "remark":         fields.get("remarks", ""),
+            "has_pdf":        "pdf" in files,
+            "worker_id":      None,
+        }
+
+        # PDF保存
+        if "pdf" in files:
+            _, pdf_bytes = files["pdf"]
+            pdf_path = os.path.join(INVOICE_PDF_DIR, inv_id + ".pdf")
+            with open(pdf_path, "wb") as f:
+                f.write(pdf_bytes)
+
+        invoices = load_invoices()
+        invoices.insert(0, invoice)
+        save_invoices(invoices)
+        self.send_json(200, {"ok": True, "invoiceId": inv_id})
+
+    # ── ワーカー認証 ────────────────────────────────────────
+    def handle_worker_login(self, data):
+        worker_id = data.get("workerId", "").strip()
+        password  = data.get("password", "")
+        workers   = load_workers()
+        w = next((w for w in workers if w.get("worker_id") == worker_id), None)
+        if not w:
+            self.send_json(401, {"ok": False, "error": "IDが見つかりません"}); return
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        if w.get("pw_hash") != pw_hash:
+            self.send_json(401, {"ok": False, "error": "パスワードが違います"}); return
+        token = w.get("token") or str(uuid.uuid4())
+        w["token"] = token
+        save_workers(workers)
+        profile = {k: w.get(k) for k in ["name","bankName","bankBranch","bankNo","bankHolder","acctType"]}
+        self.send_json(200, {"ok": True, "token": token, "profile": profile})
+
+    def handle_worker_register(self, data):
+        worker_id = data.get("workerId", "").strip()
+        password  = data.get("password", "")
+        name      = data.get("name", "").strip()
+        if not worker_id or not password or not name:
+            self.send_json(400, {"ok": False, "error": "必須項目が不足しています"}); return
+        if len(password) < 8:
+            self.send_json(400, {"ok": False, "error": "パスワードは8文字以上"}); return
+        workers = load_workers()
+        if any(w.get("worker_id") == worker_id for w in workers):
+            self.send_json(409, {"ok": False, "error": "このIDは既に使われています"}); return
+        token   = str(uuid.uuid4())
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        new_w = {"worker_id": worker_id, "name": name, "pw_hash": pw_hash, "token": token,
+                 "bankName":"","bankBranch":"","bankNo":"","bankHolder":"","acctType":"普通"}
+        workers.append(new_w)
+        save_workers(workers)
+        profile = {k: new_w.get(k) for k in ["name","bankName","bankBranch","bankNo","bankHolder","acctType"]}
+        self.send_json(200, {"ok": True, "token": token, "profile": profile})
+
+    # ── ワーカー登録（請求書から）──────────────────────────
+    def handle_register_worker_from_invoice(self, inv_id, data):
+        worker_id = data.get("worker_id", "").strip()
+        note      = data.get("note", "")
+        if not worker_id:
+            self.send_json(400, {"ok": False, "error": "ワーカーIDが必要"}); return
+        invoices = load_invoices()
+        inv = next((i for i in invoices if i.get("id") == inv_id), None)
+        if not inv:
+            self.send_json(404, {"ok": False, "error": "請求書が見つかりません"}); return
+        inv["worker_id"] = worker_id
+        save_invoices(invoices)
+        # ワーカー情報も保存
+        workers = load_workers()
+        if not any(w.get("worker_id") == worker_id for w in workers):
+            workers.append({
+                "worker_id": worker_id, "name": inv.get("worker_name",""),
+                "pw_hash": "", "token": "",
+                "bankName": inv.get("bank_name",""), "bankBranch": inv.get("branch",""),
+                "bankNo": inv.get("account_number",""), "bankHolder": inv.get("account_holder",""),
+                "acctType": inv.get("account_type","普通"), "note": note
+            })
+            save_workers(workers)
+        self.send_json(200, {"ok": True})
 
     def send_file(self, filepath, filename, content_type):
         from urllib.parse import quote

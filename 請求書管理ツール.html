@@ -13,16 +13,11 @@ body {
 }
 .container { max-width: 900px; margin: 0 auto; }
 h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 16px; }
 
 .card {
   background: white; border-radius: 12px; padding: 18px 20px;
   margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
-}
-.card-title {
-  font-size: 11px; font-weight: 600; color: #999;
-  text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
-  display: flex; align-items: center; gap: 6px;
 }
 
 /* サーバーバー */
@@ -31,6 +26,26 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   padding: 10px 14px; border-radius: 10px; border: 1.5px solid #fde047;
   background: #fef9c3; margin-bottom: 14px; font-size: 13px;
 }
+
+/* タブ */
+.page-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  background: white; border-radius: 12px; padding: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.page-tab {
+  flex: 1; padding: 9px 16px; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  color: #aaa; background: transparent; transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.page-tab:hover { background: #f5f5f5; color: #555; }
+.page-tab.active { background: #1a1a1a; color: white; }
+.page-tab .tab-badge {
+  background: #ef4444; color: white; border-radius: 20px;
+  font-size: 10px; font-weight: 700; padding: 1px 6px; min-width: 18px; text-align: center;
+}
+.page-tab.active .tab-badge { background: rgba(255,255,255,0.3); }
 
 /* 統計カード */
 .stats-grid {
@@ -54,20 +69,13 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 }
 .filter-bar input[type=month], .filter-bar select {
   padding: 7px 11px; border: 1.5px solid #e2e2e2; border-radius: 8px;
-  font-size: 13px; font-family: inherit; background: white;
-  transition: border-color 0.15s;
+  font-size: 13px; font-family: inherit; background: white; transition: border-color 0.15s;
+}
+.filter-bar input[type=text] {
+  padding: 7px 11px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 13px; font-family: inherit; background: white; width: 160px;
 }
 .filter-bar input:focus, .filter-bar select:focus { outline: none; border-color: #4f6ef7; }
-
-/* ステータスチップ */
-.chip-filter {
-  padding: 6px 13px; border: 1.5px solid #e2e2e2; border-radius: 20px;
-  font-size: 12px; cursor: pointer; background: white; color: #555;
-  transition: all 0.15s; white-space: nowrap;
-}
-.chip-filter:hover { border-color: #4f6ef7; color: #4f6ef7; }
-.chip-filter.on { border-color: #4f6ef7; background: #4f6ef7; color: white; font-weight: 600; }
-
 .btn-refresh {
   margin-left: auto; padding: 7px 14px; background: #f5f5f5; border: 1.5px solid #e2e2e2;
   border-radius: 8px; font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 500;
@@ -90,29 +98,38 @@ tbody td.amount { font-weight: 700; font-size: 14px; }
 tbody td.date { color: #888; font-size: 12px; }
 .no-data { text-align: center; padding: 40px; color: #aaa; font-size: 14px; }
 
-/* ステータスバッジ */
+/* バッジ */
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap;
 }
-.badge-new { background: #fef2f2; color: #ef4444; border: 1px solid #fca5a5; }
+.badge-new     { background: #fef2f2; color: #ef4444; border: 1px solid #fca5a5; }
 .badge-checked { background: #fff7ed; color: #f59e0b; border: 1px solid #fcd34d; }
-.badge-paid { background: #f0fdf4; color: #22c55e; border: 1px solid #86efac; }
+.badge-paid    { background: #f0fdf4; color: #22c55e; border: 1px solid #86efac; }
+.worker-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #f0fdf4; color: #16a34a; border: 1px solid #86efac;
+  border-radius: 20px; padding: 2px 9px; font-size: 11px; font-weight: 600;
+}
 
 /* アクションボタン */
-.action-wrap { display: flex; gap: 6px; align-items: center; }
+.action-wrap { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .btn-sm {
   padding: 5px 10px; border-radius: 7px; font-size: 12px; font-weight: 600;
   cursor: pointer; border: 1.5px solid; transition: all 0.15s; white-space: nowrap;
   font-family: inherit;
 }
-.btn-pdf { border-color: #c7d2fd; background: #eef1ff; color: #4f6ef7; }
+.btn-pdf    { border-color: #c7d2fd; background: #eef1ff; color: #4f6ef7; }
 .btn-pdf:hover { background: #c7d2fd; }
 .btn-worker { border-color: #bbf7d0; background: #f0fdf4; color: #16a34a; }
 .btn-worker:hover { background: #bbf7d0; }
 .btn-worker:disabled { border-color: #e2e2e2; background: #f5f5f5; color: #aaa; cursor: default; }
 .btn-status { border-color: #e2e2e2; background: #f9f9f9; color: #555; }
 .btn-status:hover { border-color: #4f6ef7; color: #4f6ef7; background: white; }
+.btn-delete { border-color: #fca5a5; background: #fef2f2; color: #ef4444; }
+.btn-delete:hover { background: #fca5a5; color: #7f1d1d; }
+.btn-restore { border-color: #bbf7d0; background: #f0fdf4; color: #16a34a; }
+.btn-restore:hover { background: #bbf7d0; }
 
 /* モーダル */
 .modal-overlay {
@@ -131,6 +148,25 @@ tbody td.date { color: #888; font-size: 12px; }
 }
 .modal-close:hover { color: #333; }
 
+/* 確認ダイアログ専用 */
+.confirm-modal { max-width: 360px; text-align: center; }
+.confirm-icon { font-size: 40px; margin-bottom: 12px; }
+.confirm-modal h2 { margin-bottom: 8px; }
+.confirm-modal p { font-size: 13px; color: #666; margin-bottom: 22px; line-height: 1.6; }
+.confirm-btns { display: flex; gap: 10px; }
+.btn-cancel-modal {
+  flex: 1; padding: 12px; background: #f5f5f5; border: 1.5px solid #e2e2e2;
+  border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background 0.15s;
+}
+.btn-cancel-modal:hover { background: #ebebeb; }
+.btn-danger-modal {
+  flex: 1; padding: 12px; background: #ef4444; border: none;
+  border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+  font-family: inherit; color: white; transition: background 0.15s;
+}
+.btn-danger-modal:hover { background: #dc2626; }
+
 /* フォーム */
 .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 label { font-size: 13px; font-weight: 500; color: #444; }
@@ -141,8 +177,6 @@ input[type=text], input[type=password], select {
   transition: border-color 0.15s; width: 100%;
 }
 input:focus, select:focus { outline: none; border-color: #4f6ef7; background: white; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
 .btn-register {
   width: 100%; padding: 13px; background: #1a1a1a; color: white;
   border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
@@ -150,16 +184,12 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
   transition: background 0.15s, transform 0.1s; font-family: inherit; margin-top: 4px;
 }
 .btn-register:hover:not(:disabled) { background: #333; }
-.btn-register:active:not(:disabled) { transform: scale(0.98); }
 .btn-register:disabled { background: #aaa; cursor: default; }
-
 .msg-box { display: none; padding: 12px 15px; border-radius: 10px; font-size: 13px; margin-top: 10px; line-height: 1.6; }
 .msg-box.show { display: block; }
 .msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
 .msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
 .divider { height: 1px; background: #eee; margin: 14px 0; }
-
-/* 詳細パネル */
 .detail-row { display: flex; gap: 12px; margin-bottom: 10px; }
 .detail-label { font-size: 12px; color: #aaa; font-weight: 600; min-width: 90px; }
 .detail-val { font-size: 13px; color: #1a1a1a; }
@@ -167,7 +197,7 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
 /* ステータスメニュー */
 .status-menu {
   position: absolute; background: white; border: 1.5px solid #ebebeb; border-radius: 10px;
-  padding: 6px; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 120px;
+  padding: 6px; z-index: 200; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 120px;
 }
 .status-menu-item {
   padding: 7px 12px; border-radius: 7px; font-size: 12px; font-weight: 600;
@@ -175,11 +205,18 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
 }
 .status-menu-item:hover { background: #f5f5f5; }
 
-.worker-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: #f0fdf4; color: #16a34a; border: 1px solid #86efac;
-  border-radius: 20px; padding: 2px 9px; font-size: 11px; font-weight: 600;
+/* ゴミ箱バナー */
+.trash-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
 }
+.btn-empty-trash {
+  padding: 8px 16px; background: #fef2f2; border: 1.5px solid #fca5a5;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; color: #ef4444; transition: all 0.15s;
+}
+.btn-empty-trash:hover { background: #fca5a5; color: #7f1d1d; }
+.btn-empty-trash:disabled { opacity: 0.4; cursor: default; }
 
 @media(max-width:700px){
   .stats-grid { grid-template-columns: 1fr 1fr; }
@@ -198,60 +235,112 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
   <span id="serverTxt">サーバー確認中...</span>
 </div>
 
-<!-- 統計 -->
-<div class="stats-grid">
-  <div class="stat-card stat-new">
-    <div class="stat-label">未確認</div>
-    <div class="stat-value" id="statNew">—</div>
-    <div class="stat-sub">件</div>
+<!-- タブ -->
+<div class="page-tabs">
+  <button class="page-tab active" id="tab-list" onclick="switchTab('list')">📋 請求書一覧</button>
+  <button class="page-tab" id="tab-trash" onclick="switchTab('trash')">🗑️ ゴミ箱 <span class="tab-badge" id="trashBadge" style="display:none">0</span></button>
+</div>
+
+<!-- ===== 一覧ビュー ===== -->
+<div id="viewList">
+  <!-- 統計 -->
+  <div class="stats-grid">
+    <div class="stat-card stat-new">
+      <div class="stat-label">未確認</div>
+      <div class="stat-value" id="statNew">—</div>
+      <div class="stat-sub">件</div>
+    </div>
+    <div class="stat-card stat-pending">
+      <div class="stat-label">確認済み</div>
+      <div class="stat-value" id="statChecked">—</div>
+      <div class="stat-sub">件</div>
+    </div>
+    <div class="stat-card stat-done">
+      <div class="stat-label">支払済み</div>
+      <div class="stat-value" id="statPaid">—</div>
+      <div class="stat-sub">件</div>
+    </div>
+    <div class="stat-card stat-total">
+      <div class="stat-label">今月合計</div>
+      <div class="stat-value" id="statAmount">—</div>
+      <div class="stat-sub">円</div>
+    </div>
   </div>
-  <div class="stat-card stat-pending">
-    <div class="stat-label">確認済み</div>
-    <div class="stat-value" id="statChecked">—</div>
-    <div class="stat-sub">件</div>
-  </div>
-  <div class="stat-card stat-done">
-    <div class="stat-label">支払済み</div>
-    <div class="stat-value" id="statPaid">—</div>
-    <div class="stat-sub">件</div>
-  </div>
-  <div class="stat-card stat-total">
-    <div class="stat-label">今月合計</div>
-    <div class="stat-value" id="statAmount">—</div>
-    <div class="stat-sub">円</div>
+
+  <div class="card">
+    <div class="filter-bar">
+      <input type="month" id="filterMonth" onchange="applyFilter()">
+      <select id="filterStatus" onchange="applyFilter()">
+        <option value="">すべてのステータス</option>
+        <option value="new">未確認</option>
+        <option value="checked">確認済み</option>
+        <option value="paid">支払済み</option>
+      </select>
+      <input type="text" id="filterName" placeholder="ワーカー名で検索" oninput="applyFilter()">
+      <button class="btn-refresh" onclick="loadInvoices()">↺ 更新</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>受信日</th><th>ワーカー</th><th>請求月</th><th>金額</th><th>ステータス</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="invoiceTableBody">
+          <tr><td colspan="6" class="no-data">読み込み中...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
-<!-- フィルター + テーブル -->
-<div class="card">
-  <div class="filter-bar">
-    <input type="month" id="filterMonth" onchange="applyFilter()">
-    <select id="filterStatus" onchange="applyFilter()">
-      <option value="">すべてのステータス</option>
-      <option value="new">未確認</option>
-      <option value="checked">確認済み</option>
-      <option value="paid">支払済み</option>
-    </select>
-    <input type="text" id="filterName" placeholder="ワーカー名で検索" oninput="applyFilter()" style="width:160px">
-    <button class="btn-refresh" onclick="loadInvoices()">↺ 更新</button>
+<!-- ===== ゴミ箱ビュー ===== -->
+<div id="viewTrash" style="display:none">
+  <div class="card">
+    <div class="trash-header">
+      <div style="font-size:13px;color:#888">削除した請求書はここから復元できます。</div>
+      <button class="btn-empty-trash" id="btnEmptyTrash" onclick="confirmEmptyTrash()">🗑️ ゴミ箱を空にする</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>受信日</th><th>ワーカー</th><th>請求月</th><th>金額</th><th>削除日時</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="trashTableBody">
+          <tr><td colspan="6" class="no-data">ゴミ箱は空です</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
+</div>
 
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>受信日</th>
-          <th>ワーカー</th>
-          <th>請求月</th>
-          <th>金額</th>
-          <th>ステータス</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody id="invoiceTableBody">
-        <tr><td colspan="6" class="no-data">読み込み中...</td></tr>
-      </tbody>
-    </table>
+<!-- ===== モーダル群 ===== -->
+
+<!-- 削除確認 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal confirm-modal">
+    <div class="confirm-icon">🗑️</div>
+    <h2>請求書を削除しますか？</h2>
+    <p id="deleteModalDesc">削除した請求書はゴミ箱から復元できます。</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel-modal" onclick="closeDeleteModal()">キャンセル</button>
+      <button class="btn-danger-modal" onclick="execDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ゴミ箱を空にする確認 -->
+<div class="modal-overlay" id="emptyTrashModal">
+  <div class="modal confirm-modal">
+    <div class="confirm-icon">⚠️</div>
+    <h2>ゴミ箱を空にしますか？</h2>
+    <p>ゴミ箱内のすべての請求書が<strong>完全に削除</strong>されます。<br>この操作は元に戻せません。</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel-modal" onclick="closeEmptyTrashModal()">キャンセル</button>
+      <button class="btn-danger-modal" onclick="execEmptyTrash()">完全に削除する</button>
+    </div>
   </div>
 </div>
 
@@ -261,8 +350,7 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
     <button class="modal-close" onclick="closeWorkerModal()">✕</button>
     <h2>👷 ワーカー登録</h2>
     <p style="font-size:13px;color:#666;margin-bottom:18px">以下の情報でワーカーとして登録します。</p>
-
-    <div id="workerPreview" style="background:#f8f8f8;border-radius:10px;padding:14px 16px;margin-bottom:18px">
+    <div style="background:#f8f8f8;border-radius:10px;padding:14px 16px;margin-bottom:18px">
       <div class="detail-row"><span class="detail-label">名前</span><span class="detail-val" id="wName">—</span></div>
       <div class="detail-row"><span class="detail-label">金融機関</span><span class="detail-val" id="wBank">—</span></div>
       <div class="detail-row"><span class="detail-label">支店</span><span class="detail-val" id="wBranch">—</span></div>
@@ -270,9 +358,7 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
       <div class="detail-row"><span class="detail-label">口座番号</span><span class="detail-val" id="wAcct">—</span></div>
       <div class="detail-row"><span class="detail-label">口座名義</span><span class="detail-val" id="wHolder">—</span></div>
     </div>
-
     <div class="divider"></div>
-
     <div class="form-group">
       <label>ワーカーID <span class="req">*</span></label>
       <input type="text" id="wId" placeholder="例: W4, worker-taro" maxlength="20">
@@ -281,7 +367,6 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
       <label>メモ（任意）</label>
       <input type="text" id="wNote" placeholder="依頼内容や担当業務など">
     </div>
-
     <input type="hidden" id="wInvoiceId">
     <button class="btn-register" onclick="submitWorker()">登録する</button>
     <div class="msg-box" id="workerMsg"></div>
@@ -293,7 +378,6 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
   <div class="modal">
     <button class="modal-close" onclick="closeDetailModal()">✕</button>
     <h2>📄 請求書詳細</h2>
-
     <div style="margin-bottom:16px">
       <div class="detail-row"><span class="detail-label">受信日</span><span class="detail-val" id="dDate">—</span></div>
       <div class="detail-row"><span class="detail-label">ワーカー</span><span class="detail-val" id="dName">—</span></div>
@@ -316,12 +400,12 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
     <div class="divider"></div>
     <div style="display:flex;gap:10px">
       <button class="btn-sm btn-pdf" style="flex:1;padding:10px" id="dPdfBtn" onclick="openPdf()">📎 PDFを開く</button>
-      <button class="btn-sm btn-status" style="flex:1;padding:10px" id="dStatusBtn" onclick="cycleStatus()">ステータス更新</button>
+      <button class="btn-sm btn-status" style="flex:1;padding:10px" onclick="cycleStatus()">ステータス更新</button>
     </div>
   </div>
 </div>
 
-<!-- ステータスメニュー（フローティング） -->
+<!-- ステータスメニュー -->
 <div class="status-menu" id="statusMenu" style="display:none">
   <div class="status-menu-item" onclick="setStatus('new')">🔴 未確認</div>
   <div class="status-menu-item" onclick="setStatus('checked')">🟡 確認済み</div>
@@ -333,14 +417,44 @@ const BASE = 'http://localhost:8765';
 let allInvoices = [];
 let currentInvoiceId = null;
 let statusMenuTarget = null;
+let deleteTargetId = null;
+let currentTab = 'list';
+
+// ─── ゴミ箱（localStorage） ──────────────────────
+function loadTrash() {
+  try { return JSON.parse(localStorage.getItem('invoiceTrash') || '[]'); } catch { return []; }
+}
+function saveTrash(arr) {
+  localStorage.setItem('invoiceTrash', JSON.stringify(arr));
+}
+function updateTrashBadge() {
+  const trash = loadTrash();
+  const badge = document.getElementById('trashBadge');
+  if (trash.length > 0) {
+    badge.style.display = '';
+    badge.textContent = trash.length;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ─── タブ切替 ────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('viewList').style.display  = tab === 'list'  ? '' : 'none';
+  document.getElementById('viewTrash').style.display = tab === 'trash' ? '' : 'none';
+  document.getElementById('tab-list').classList.toggle('active',  tab === 'list');
+  document.getElementById('tab-trash').classList.toggle('active', tab === 'trash');
+  if (tab === 'trash') renderTrash();
+}
 
 // ─── 初期化 ───────────────────────────────────────
 window.addEventListener('load', () => {
-  // 今月をデフォルト設定
   const now = new Date();
   document.getElementById('filterMonth').value = now.toISOString().slice(0,7);
   checkServer();
   loadInvoices();
+  updateTrashBadge();
 });
 
 // ─── サーバー確認 ────────────────────────────────
@@ -351,10 +465,9 @@ async function checkServer() {
   try {
     const r = await fetch(BASE + '/api/health', {signal: AbortSignal.timeout(3000)});
     if (r.ok) {
-      dot.style.background = '#22c55e';
-      txt.textContent = 'サーバー接続OK';
+      dot.style.background = '#22c55e'; txt.textContent = 'サーバー接続OK';
       bar.style.borderColor = '#86efac'; bar.style.background = '#f0fdf4';
-    } else { throw new Error(); }
+    } else throw new Error();
   } catch {
     dot.style.background = '#ef4444';
     txt.textContent = 'サーバーに接続できません（localhost:8765）';
@@ -366,48 +479,42 @@ async function checkServer() {
 async function loadInvoices() {
   try {
     const r = await fetch(BASE + '/api/invoices');
-    if (!r.ok) throw new Error('fetch failed');
+    if (!r.ok) throw new Error();
     allInvoices = await r.json();
   } catch {
-    // フォールバック：デモデータ
     allInvoices = getDemoData();
   }
+  // ゴミ箱に入っているIDは一覧から除外
+  const trashIds = loadTrash().map(i => i.id);
+  allInvoices = allInvoices.filter(i => !trashIds.includes(i.id));
   updateStats();
   applyFilter();
 }
 
 function getDemoData() {
-  return [
-    { id:'inv-001', received_at:'2026-05-28T10:23:00', worker_name:'田中 一郎', billing_month:'2026-05', amount:85000, status:'new', bank_name:'三菱UFJ銀行', branch:'渋谷支店', account_type:'普通', account_number:'1234567', account_holder:'タナカ イチロウ', remark:'', has_pdf:true, worker_id:null },
-    { id:'inv-002', received_at:'2026-05-27T14:05:00', worker_name:'鈴木 花子', billing_month:'2026-05', amount:120000, status:'checked', bank_name:'ゆうちょ銀行', branch:'東京支店', account_type:'普通', account_number:'9876543', account_holder:'スズキ ハナコ', remark:'4月の追加作業分を含む', has_pdf:true, worker_id:'W2' },
-    { id:'inv-003', received_at:'2026-05-26T09:15:00', worker_name:'佐藤 太郎', billing_month:'2026-05', amount:65000, status:'paid', bank_name:'みずほ銀行', branch:'新宿支店', account_type:'普通', account_number:'1111222', account_holder:'サトウ タロウ', remark:'', has_pdf:true, worker_id:'W1' },
-    { id:'inv-004', received_at:'2026-04-30T16:40:00', worker_name:'田中 一郎', billing_month:'2026-04', amount:85000, status:'paid', bank_name:'三菱UFJ銀行', branch:'渋谷支店', account_type:'普通', account_number:'1234567', account_holder:'タナカ イチロウ', remark:'', has_pdf:true, worker_id:null },
-    { id:'inv-005', received_at:'2026-04-29T11:00:00', worker_name:'鈴木 花子', billing_month:'2026-04', amount:110000, status:'paid', bank_name:'ゆうちょ銀行', branch:'東京支店', account_type:'普通', account_number:'9876543', account_holder:'スズキ ハナコ', remark:'', has_pdf:false, worker_id:'W2' },
-  ];
+  return [];  // デモデータなし（実データのみ表示）
 }
 
 // ─── 統計更新 ────────────────────────────────────
 function updateStats() {
   const now = new Date().toISOString().slice(0,7);
   const thisMonth = allInvoices.filter(i => i.billing_month === now);
-  document.getElementById('statNew').textContent = allInvoices.filter(i=>i.status==='new').length;
+  document.getElementById('statNew').textContent     = allInvoices.filter(i=>i.status==='new').length;
   document.getElementById('statChecked').textContent = allInvoices.filter(i=>i.status==='checked').length;
-  document.getElementById('statPaid').textContent = allInvoices.filter(i=>i.status==='paid').length;
+  document.getElementById('statPaid').textContent    = allInvoices.filter(i=>i.status==='paid').length;
   const total = thisMonth.reduce((s,i)=>s+i.amount,0);
-  document.getElementById('statAmount').textContent = total.toLocaleString();
+  document.getElementById('statAmount').textContent  = total.toLocaleString();
 }
 
-// ─── フィルター適用 ──────────────────────────────
+// ─── フィルター ──────────────────────────────────
 function applyFilter() {
-  const month = document.getElementById('filterMonth').value;
+  const month  = document.getElementById('filterMonth').value;
   const status = document.getElementById('filterStatus').value;
-  const name = document.getElementById('filterName').value.trim().toLowerCase();
-
+  const name   = document.getElementById('filterName').value.trim().toLowerCase();
   let list = allInvoices;
-  if (month) list = list.filter(i => i.billing_month === month);
+  if (month)  list = list.filter(i => i.billing_month === month);
   if (status) list = list.filter(i => i.status === status);
-  if (name) list = list.filter(i => i.worker_name.toLowerCase().includes(name));
-
+  if (name)   list = list.filter(i => i.worker_name.toLowerCase().includes(name));
   renderTable(list);
 }
 
@@ -430,14 +537,113 @@ function renderTable(list) {
       <td><span class="${badgeClass(inv.status)}">${statusLabel(inv.status)}</span></td>
       <td>
         <div class="action-wrap">
-          <button class="btn-sm btn-pdf" onclick="openDetail('${inv.id}')" title="詳細確認">詳細</button>
-          ${inv.has_pdf ? `<button class="btn-sm btn-pdf" onclick="openPdfById('${inv.id}')" title="PDF確認">📎 PDF</button>` : ''}
-          <button class="btn-sm btn-status" onclick="showStatusMenu(event,'${inv.id}')" title="ステータス変更">▾</button>
-          <button class="btn-sm btn-worker" onclick="openWorkerModal('${inv.id}')" ${inv.worker_id ? 'disabled title="登録済み"' : 'title="ワーカー登録"'}>${inv.worker_id ? '✓ 登録済' : '登録'}</button>
+          <button class="btn-sm btn-pdf" onclick="openDetail('${inv.id}')">詳細</button>
+          ${inv.has_pdf ? `<button class="btn-sm btn-pdf" onclick="openPdfById('${inv.id}')">📎 PDF</button>` : ''}
+          <button class="btn-sm btn-status" onclick="showStatusMenu(event,'${inv.id}')">▾</button>
+          <button class="btn-sm btn-worker" onclick="openWorkerModal('${inv.id}')" ${inv.worker_id ? 'disabled' : ''}>${inv.worker_id ? '✓ 登録済' : '登録'}</button>
+          <button class="btn-sm btn-delete" onclick="confirmDelete('${inv.id}')">🗑️</button>
         </div>
       </td>
     </tr>
   `).join('');
+}
+
+// ─── ゴミ箱テーブル描画 ──────────────────────────
+function renderTrash() {
+  const trash = loadTrash();
+  const tbody = document.getElementById('trashTableBody');
+  const btn   = document.getElementById('btnEmptyTrash');
+  btn.disabled = trash.length === 0;
+  if (!trash.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-data">🗑️ ゴミ箱は空です</td></tr>';
+    return;
+  }
+  tbody.innerHTML = trash.map(inv => `
+    <tr>
+      <td class="date">${fmtDate(inv.received_at)}</td>
+      <td><div style="font-weight:600">${esc(inv.worker_name)}</div></td>
+      <td>${inv.billing_month}</td>
+      <td class="amount">¥${inv.amount.toLocaleString()}</td>
+      <td class="date">${inv.deleted_at ? fmtDate(inv.deleted_at) : '—'}</td>
+      <td>
+        <div class="action-wrap">
+          <button class="btn-sm btn-restore" onclick="restoreInvoice('${inv.id}')">↩ 復元</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ─── 削除 ────────────────────────────────────────
+function confirmDelete(id) {
+  const inv = allInvoices.find(i=>i.id===id);
+  if (!inv) return;
+  deleteTargetId = id;
+  document.getElementById('deleteModalDesc').textContent =
+    `「${inv.worker_name}」の ${inv.billing_month} 分（¥${inv.amount.toLocaleString()}）を削除します。ゴミ箱から復元できます。`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('open');
+  deleteTargetId = null;
+}
+async function execDelete() {
+  if (!deleteTargetId) return;
+  const id  = deleteTargetId;
+  const inv = allInvoices.find(i=>i.id===id);
+  closeDeleteModal();
+  if (!inv) return;
+
+  // APIに削除を通知（失敗してもローカルで処理）
+  try {
+    await fetch(`${BASE}/api/invoice/${id}`, { method: 'DELETE', signal: AbortSignal.timeout(3000) });
+  } catch {}
+
+  // ゴミ箱に移動
+  const trash = loadTrash();
+  trash.unshift({ ...inv, deleted_at: new Date().toISOString() });
+  saveTrash(trash);
+
+  // 一覧から除外
+  allInvoices = allInvoices.filter(i => i.id !== id);
+  updateStats();
+  applyFilter();
+  updateTrashBadge();
+}
+
+// ─── 復元 ────────────────────────────────────────
+function restoreInvoice(id) {
+  let trash = loadTrash();
+  const inv = trash.find(i=>i.id===id);
+  if (!inv) return;
+
+  // ゴミ箱から除去
+  trash = trash.filter(i=>i.id!==id);
+  saveTrash(trash);
+
+  // 一覧に戻す（deleted_atを除去）
+  const { deleted_at, ...restored } = inv;
+  allInvoices.unshift(restored);
+  updateStats();
+  applyFilter();
+  updateTrashBadge();
+  renderTrash();
+}
+
+// ─── ゴミ箱を空にする ────────────────────────────
+function confirmEmptyTrash() {
+  const trash = loadTrash();
+  if (!trash.length) return;
+  document.getElementById('emptyTrashModal').classList.add('open');
+}
+function closeEmptyTrashModal() {
+  document.getElementById('emptyTrashModal').classList.remove('open');
+}
+function execEmptyTrash() {
+  saveTrash([]);
+  closeEmptyTrashModal();
+  updateTrashBadge();
+  renderTrash();
 }
 
 // ─── 詳細モーダル ────────────────────────────────
@@ -445,33 +651,33 @@ function openDetail(id) {
   const inv = allInvoices.find(i=>i.id===id);
   if (!inv) return;
   currentInvoiceId = id;
-  document.getElementById('dDate').textContent = fmtDate(inv.received_at);
-  document.getElementById('dName').textContent = inv.worker_name;
-  document.getElementById('dMonth').textContent = inv.billing_month;
+  document.getElementById('dDate').textContent   = fmtDate(inv.received_at);
+  document.getElementById('dName').textContent   = inv.worker_name;
+  document.getElementById('dMonth').textContent  = inv.billing_month;
   document.getElementById('dAmount').textContent = '¥' + inv.amount.toLocaleString();
-  document.getElementById('dStatus').innerHTML = `<span class="${badgeClass(inv.status)}">${statusLabel(inv.status)}</span>`;
-  document.getElementById('dBank').textContent = inv.bank_name;
+  document.getElementById('dStatus').innerHTML   = `<span class="${badgeClass(inv.status)}">${statusLabel(inv.status)}</span>`;
+  document.getElementById('dBank').textContent   = inv.bank_name;
   document.getElementById('dBranch').textContent = inv.branch;
   document.getElementById('dAcctType').textContent = inv.account_type;
-  document.getElementById('dAcctNo').textContent = inv.account_number;
-  document.getElementById('dHolder').textContent = inv.account_holder;
+  document.getElementById('dAcctNo').textContent   = inv.account_number;
+  document.getElementById('dHolder').textContent   = inv.account_holder;
   const rw = document.getElementById('dRemarkWrap');
   if (inv.remark) { rw.style.display='block'; document.getElementById('dRemark').textContent = inv.remark; }
   else { rw.style.display='none'; }
-  document.getElementById('dPdfBtn').style.display = inv.has_pdf ? 'block' : 'none';
+  document.getElementById('dPdfBtn').style.display = inv.has_pdf ? 'flex' : 'none';
   document.getElementById('detailModal').classList.add('open');
 }
 function closeDetailModal() { document.getElementById('detailModal').classList.remove('open'); }
 function openPdf() { if (currentInvoiceId) openPdfById(currentInvoiceId); }
 function openPdfById(id) { window.open(BASE + '/api/invoice-pdf/' + id, '_blank'); }
 
-// ─── ステータスメニュー ──────────────────────────
+// ─── ステータス ──────────────────────────────────
 function showStatusMenu(e, id) {
   e.stopPropagation();
   statusMenuTarget = id;
   const menu = document.getElementById('statusMenu');
   menu.style.display = 'block';
-  menu.style.top = (e.clientY + 4 + window.scrollY) + 'px';
+  menu.style.top  = (e.clientY + 4 + window.scrollY) + 'px';
   menu.style.left = (e.clientX - 60 + window.scrollX) + 'px';
 }
 async function setStatus(newStatus) {
@@ -487,68 +693,63 @@ async function updateStatus(id, newStatus) {
   if (!inv) return;
   try {
     await fetch(`${BASE}/api/invoice/${id}/status`, {
-      method: 'PATCH',
-      headers: {'Content-Type':'application/json'},
+      method:'PATCH', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({status: newStatus})
     });
   } catch {}
   inv.status = newStatus;
-  updateStats();
-  applyFilter();
-  // 詳細モーダルが開いていれば更新
-  if (currentInvoiceId === id) {
+  updateStats(); applyFilter();
+  if (currentInvoiceId === id)
     document.getElementById('dStatus').innerHTML = `<span class="${badgeClass(newStatus)}">${statusLabel(newStatus)}</span>`;
-  }
 }
 function cycleStatus() {
   if (!currentInvoiceId) return;
   const inv = allInvoices.find(i=>i.id===currentInvoiceId);
   if (!inv) return;
-  const cycle = {new:'checked', checked:'paid', paid:'new'};
-  updateStatus(currentInvoiceId, cycle[inv.status]);
+  updateStatus(currentInvoiceId, {new:'checked', checked:'paid', paid:'new'}[inv.status]);
 }
 
-// ─── ワーカー登録モーダル ────────────────────────
+// ─── ワーカー登録 ────────────────────────────────
 function openWorkerModal(id) {
   const inv = allInvoices.find(i=>i.id===id);
   if (!inv || inv.worker_id) return;
-  document.getElementById('wInvoiceId').value = id;
-  document.getElementById('wName').textContent = inv.worker_name;
-  document.getElementById('wBank').textContent = inv.bank_name;
-  document.getElementById('wBranch').textContent = inv.branch;
-  document.getElementById('wType').textContent = inv.account_type;
-  document.getElementById('wAcct').textContent = inv.account_number;
-  document.getElementById('wHolder').textContent = inv.account_holder;
-  document.getElementById('wId').value = '';
+  document.getElementById('wInvoiceId').value   = id;
+  document.getElementById('wName').textContent  = inv.worker_name;
+  document.getElementById('wBank').textContent  = inv.bank_name;
+  document.getElementById('wBranch').textContent= inv.branch;
+  document.getElementById('wType').textContent  = inv.account_type;
+  document.getElementById('wAcct').textContent  = inv.account_number;
+  document.getElementById('wHolder').textContent= inv.account_holder;
+  document.getElementById('wId').value   = '';
   document.getElementById('wNote').value = '';
   document.getElementById('workerMsg').className = 'msg-box';
-  document.getElementById('workerMsg').textContent = '';
   document.getElementById('workerModal').classList.add('open');
 }
 function closeWorkerModal() { document.getElementById('workerModal').classList.remove('open'); }
-
 async function submitWorker() {
   const id = document.getElementById('wInvoiceId').value;
   const workerId = document.getElementById('wId').value.trim();
   const note = document.getElementById('wNote').value.trim();
   const msg = document.getElementById('workerMsg');
-  if (!workerId) { showMsg(msg, 'error', 'ワーカーIDを入力してください'); return; }
-
+  if (!workerId) { showMsg(msg,'error','ワーカーIDを入力してください'); return; }
   try {
     const r = await fetch(`${BASE}/api/register-worker-from-invoice/${id}`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({worker_id: workerId, note: note})
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({worker_id: workerId, note})
     });
-    if (!r.ok) { const d = await r.json(); throw new Error(d.detail || '登録失敗'); }
-    showMsg(msg, 'success', `✅ ワーカー登録が完了しました（ID: ${workerId}）`);
+    if (!r.ok) { const d=await r.json(); throw new Error(d.detail||'登録失敗'); }
+    showMsg(msg,'success',`✅ ワーカー登録が完了しました（ID: ${workerId}）`);
     const inv = allInvoices.find(i=>i.id===id);
     if (inv) inv.worker_id = workerId;
     setTimeout(()=>{ closeWorkerModal(); applyFilter(); }, 1400);
-  } catch(e) {
-    showMsg(msg, 'error', '⚠️ ' + (e.message || '登録に失敗しました'));
-  }
+  } catch(e) { showMsg(msg,'error','⚠️ ' + (e.message||'登録に失敗しました')); }
 }
+
+// ─── モーダル外クリック ──────────────────────────
+document.getElementById('workerModal').addEventListener('click', function(e){if(e.target===this)closeWorkerModal();});
+document.getElementById('detailModal').addEventListener('click', function(e){if(e.target===this)closeDetailModal();});
+document.getElementById('deleteModal').addEventListener('click', function(e){if(e.target===this)closeDeleteModal();});
+document.getElementById('emptyTrashModal').addEventListener('click', function(e){if(e.target===this)closeEmptyTrashModal();});
 
 // ─── ユーティリティ ──────────────────────────────
 function fmtDate(iso) {
@@ -556,16 +757,12 @@ function fmtDate(iso) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function badgeClass(s) { return {new:'badge badge-new', checked:'badge badge-checked', paid:'badge badge-paid'}[s] || 'badge'; }
-function statusLabel(s) { return {new:'🔴 未確認', checked:'🟡 確認済み', paid:'🟢 支払済み'}[s] || s; }
+function badgeClass(s) { return {new:'badge badge-new', checked:'badge badge-checked', paid:'badge badge-paid'}[s]||'badge'; }
+function statusLabel(s) { return {new:'🔴 未確認', checked:'🟡 確認済み', paid:'🟢 支払済み'}[s]||s; }
 function showMsg(el, type, text) {
   el.className = 'msg-box show msg-' + (type==='success'?'success':'error');
   el.textContent = text;
 }
-
-// モーダル外クリックで閉じる
-document.getElementById('workerModal').addEventListener('click', function(e){if(e.target===this)closeWorkerModal();});
-document.getElementById('detailModal').addEventListener('click', function(e){if(e.target===this)closeDetailModal();});
 </script>
 </body>
 </html>
