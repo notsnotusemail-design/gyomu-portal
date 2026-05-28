@@ -663,7 +663,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/login":
             pw = data.get("password", "")
-            if ADMIN_PASSWORD and pw == ADMIN_PASSWORD:
+            pw_token = _make_admin_token(pw)
+            if ADMIN_TOKEN and pw_token == ADMIN_TOKEN:
                 self.send_json(200, {"ok": True, "token": ADMIN_TOKEN})
             else:
                 self.send_json(401, {"ok": False, "error": "パスワードが違います"})
