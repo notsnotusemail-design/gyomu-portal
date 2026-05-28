@@ -222,9 +222,73 @@ input:focus, select:focus { outline: none; border-color: #4f6ef7; background: wh
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .filter-bar { gap: 7px; }
 }
+/* ── 管理者認証オーバーレイ ── */
+#authOverlay {
+  position: fixed; inset: 0; background: #f2f2ef;
+  display: flex; align-items: center; justify-content: center; z-index: 9999;
+}
+#authBox {
+  background: white; border-radius: 16px; padding: 40px 36px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10); width: 100%; max-width: 360px; text-align: center;
+}
+#authBox h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+#authBox p { font-size: 13px; color: #888; margin-bottom: 24px; }
+#authPw {
+  width: 100%; padding: 12px 14px; border: 1.5px solid #e2e2e2; border-radius: 10px;
+  font-size: 15px; font-family: inherit; margin-bottom: 12px; outline: none;
+}
+#authPw:focus { border-color: #4f6ef7; }
+#authBtn {
+  width: 100%; padding: 12px; background: #1a1a1a; color: white;
+  border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+#authErr { color: #ef4444; font-size: 13px; margin-top: 10px; min-height: 18px; }
 </style>
 </head>
 <body>
+
+<div id="authOverlay">
+  <div id="authBox">
+    <h2>🔐 管理者ログイン</h2>
+    <p>このページにアクセスするには<br>パスワードを入力してください</p>
+    <input id="authPw" type="password" placeholder="パスワード" autocomplete="current-password">
+    <button id="authBtn" onclick="adminLogin()">ログイン</button>
+    <div id="authErr"></div>
+  </div>
+</div>
+<script>
+(function() {
+  const BASE = window.location.origin;
+  const TOKEN_KEY = 'adminToken';
+  async function checkToken(token) {
+    try {
+      const r = await fetch(BASE + '/api/admin/check', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+      return (await r.json()).ok;
+    } catch { return false; }
+  }
+  async function init() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token && await checkToken(token)) {
+      document.getElementById('authOverlay').style.display = 'none';
+    }
+  }
+  window.adminLogin = async function() {
+    const pw = document.getElementById('authPw').value;
+    const errEl = document.getElementById('authErr');
+    errEl.textContent = '';
+    try {
+      const r = await fetch(BASE + '/api/admin/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+      const d = await r.json();
+      if (d.ok) { localStorage.setItem(TOKEN_KEY, d.token); document.getElementById('authOverlay').style.display = 'none'; }
+      else { errEl.textContent = d.error || 'パスワードが違います'; }
+    } catch { errEl.textContent = 'サーバーに接続できません'; }
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
+  init();
+})();
+</script>
+
 <div class="container">
 <h1>📋 請求書管理</h1>
 <p class="subtitle">受信した請求書の確認・管理・ワーカー登録を行います。</p>

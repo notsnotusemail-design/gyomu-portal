@@ -63,6 +63,14 @@ DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 INVOICE_DB_ID = os.environ.get("INVOICE_DB_ID", "25f803a762fc4a4b8c876c8756b52b66")
 WORKER_DB_ID  = os.environ.get("WORKER_DB_ID",  "17706159d9854ad4832a6e80a14e285f")
 
+# ── 管理者パスワード認証 ────────────────────────────────
+# Railway Variables で ADMIN_PASSWORD=好きなパスワード と設定
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+# 認証トークン = sha256(パスワード + salt)
+def _make_admin_token(pw):
+    return hashlib.sha256((pw + "nts_admin_2026").encode()).hexdigest()
+ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else ""
+
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
 INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
 os.makedirs(INVOICE_PDF_DIR, exist_ok=True)
@@ -557,6 +565,9 @@ class Handler(BaseHTTPRequestHandler):
                 "worker_db_set":  bool(WORKER_DB_ID),
                 "notion_token_set": bool(NOTION_TOKEN),
             })
+        elif path == "/api/myip":
+            ip = self.headers.get("X-Forwarded-For", self.client_address[0]).split(",")[0].strip()
+            self.send_json(200, {"ip": ip})
         elif path == "/api/next-customer-no":
             nos = get_all_customer_nos()
             self.send_json(200, {
@@ -646,6 +657,18 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "Invalid JSON"})
             return
 
+        if path == "/api/admin/login":
+            pw = data.get("password", "")
+            if ADMIN_PASSWORD and pw == ADMIN_PASSWORD:
+                self.send_json(200, {"ok": True, "token": ADMIN_TOKEN})
+            else:
+                self.send_json(401, {"ok": False, "error": "パスワードが違います"})
+            return
+        elif path == "/api/admin/check":
+            token = data.get("token", "")
+            ok = bool(ADMIN_TOKEN) and token == ADMIN_TOKEN
+            self.send_json(200, {"ok": ok})
+            return
         if path == "/api/worker/login":
             self.handle_worker_login(data)
             return
