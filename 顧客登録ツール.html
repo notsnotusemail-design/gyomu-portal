@@ -147,10 +147,12 @@ code { background: rgba(0,0,0,0.07); padding: 1px 6px; border-radius: 3px; font-
   <div class="no-area">
     <div class="no-label">番号の種類を選択</div>
     <div class="no-tabs">
-      <div class="no-tab active" onclick="setRange('300s',this)">300番台<br><span style="font-size:10px;font-weight:400">直営業・重要</span></div>
-      <div class="no-tab" onclick="setRange('3000s',this)">3000番台<br><span style="font-size:10px;font-weight:400">新規チャンネル</span></div>
+      <div class="no-tab" onclick="setRange('200s',this)">200番台<br><span style="font-size:10px;font-weight:400">企業直接・裁量低め</span></div>
+      <div class="no-tab active" onclick="setRange('300s',this)">300番台<br><span style="font-size:10px;font-weight:400">直営業・重要/決裁権窓口</span></div>
+      <div class="no-tab" onclick="setRange('referral',this)">紹介<br><span style="font-size:10px;font-weight:400">350〜・つながり案件</span></div>
+      <div class="no-tab" onclick="setRange('3000s',this)">3000番台<br><span style="font-size:10px;font-weight:400">新規ch・裁量高</span></div>
       <div class="no-tab" onclick="setRange('regular',this)">通常<br><span style="font-size:10px;font-weight:400">01, 02…</span></div>
-      <div class="no-tab" onclick="setRange('temp',this)">仮番<br><span style="font-size:10px;font-weight:400">T01… (再利用可)</span></div>
+      <div class="no-tab" onclick="setRange('temp',this)">仮番<br><span style="font-size:10px;font-weight:400">T01/0A… (再利用可)</span></div>
       <div class="no-tab" onclick="setRange('custom',this)">カスタム</div>
     </div>
     <div class="no-display">
@@ -237,7 +239,7 @@ const SERVER = window.location.origin;
 
 // ========== 状態 ==========
 let currentRange = '300s';
-let suggestedNos = { '300s': null, '3000s': null, regular: null };
+let suggestedNos = { '200s': null, '300s': null, referral: null, '3000s': null, regular: null };
 let customNoVal = null;
 let channelCount = 0;
 const picked = { type: null, status: '取引中', contact: null };
@@ -273,8 +275,10 @@ async function loadNextNos() {
     const r = await fetch(SERVER + '/api/next-customer-no', { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
       const d = await r.json();
-      suggestedNos['300s']   = d.next_300s;
-      suggestedNos['3000s']  = d.next_3000s;
+      suggestedNos['200s']    = d.next_200s;
+      suggestedNos['300s']    = d.next_300s;
+      suggestedNos['referral']= d.next_referral;
+      suggestedNos['3000s']   = d.next_3000s;
       suggestedNos['regular'] = d.next_regular ? d.next_regular.padStart(2,'0') : null;
       renderNo();
     }
@@ -290,7 +294,15 @@ function setRange(range, el) {
   customNoVal = null;
   document.querySelectorAll('.no-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('customRow').style.display = range === 'custom' ? 'flex' : 'none';
+  const showInput = (range === 'custom' || range === 'temp');
+  document.getElementById('customRow').style.display = showInput ? 'flex' : 'none';
+  const ci = document.getElementById('customNo');
+  if (range === 'temp') {
+    ci.placeholder = '例: T01, T02, 0A, 0B（再利用可・重要顧客は不可）';
+    ci.value = '';
+  } else if (range === 'custom') {
+    ci.placeholder = '例: 217, 355, T02, 0A, 3001';
+  }
   renderNo();
 }
 
@@ -304,8 +316,9 @@ function renderNo() {
     return;
   }
   if (currentRange === 'temp') {
-    bigEl.textContent = 'T01';
-    hintEl.textContent = '仮番号（T01, T02…）\n固有値ではなく再利用可能です';
+    const v = document.getElementById('customNo').value.trim();
+    bigEl.textContent = v || 'T01';
+    hintEl.textContent = '仮番号（T01… または 0A など非Tの英字）\n固有値ではなく再利用可能。重要クライアントには不可';
     updatePreview();
     return;
   }
@@ -313,9 +326,11 @@ function renderNo() {
   if (no) {
     bigEl.textContent = no;
     const hints = {
-      '300s':   '直営業・重要クライアント向け\n（現在の最大番号から自動採番）',
-      '3000s':  '新規チャンネル案件向け\n（現在の最大番号から自動採番）',
-      'regular':'通常番号（01, 02…）\n（空き番号を自動提案）',
+      '200s':    '企業直接だが裁量低め／担当者経由\n（200〜299の空き番号を自動提案）',
+      '300s':    '直営業で重要／決裁権者が窓口\n（300〜349の空き番号を自動提案）',
+      'referral':'紹介・つながり案件\n（350〜399の空き番号を自動提案）',
+      '3000s':   '新規チャンネル・裁量高\n（代行会社が絡む場合は対象外）',
+      'regular': '通常番号（01, 02…）固有値・再利用不可\n（空き番号を自動提案）',
     };
     hintEl.textContent = hints[currentRange] || '';
   } else {

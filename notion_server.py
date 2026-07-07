@@ -576,9 +576,11 @@ class Handler(BaseHTTPRequestHandler):
             nos = get_all_customer_nos()
             self.send_json(200, {
                 "ok": True,
-                "next_300s":    next_in_range(nos, 300, 399),
-                "next_3000s":   next_in_range(nos, 3000, 3999),
-                "next_regular": next_in_range(nos, 1, 99),
+                "next_200s":     next_in_range(nos, 200, 299),   # 企業直接・裁量低め/担当者経由
+                "next_300s":     next_in_range(nos, 300, 349),   # 直営業・重要/決裁権窓口
+                "next_referral": next_in_range(nos, 350, 399),   # 紹介・つながり案件
+                "next_3000s":    next_in_range(nos, 3000, 3999), # 新規チャンネル・裁量高
+                "next_regular":  next_in_range(nos, 1, 99),      # 通常（固有値・再利用不可）
             })
         elif path == "/api/customers":
             self.handle_get_customers()
