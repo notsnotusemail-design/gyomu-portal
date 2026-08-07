@@ -165,12 +165,17 @@ CUSTOMER_PAGES = {
     "3302-302":  "31a3288b-84b0-80c9-a868-d2198a02784c",
 }
 
+import time as _time
 CUSTOMER_NAME_CACHE = {}   # {customer_no: customer_name}  キャッシュ
+_CUSTOMER_CACHE_AT  = 0.0  # 最終構築時刻（epoch秒）
+CUSTOMER_CACHE_TTL  = 300  # 秒。期限切れで再構築し、後から追加した顧客も取り込む
 
-def get_customer_name_map():
-    """全顧客のNo→名前マップを返す（初回だけNotionから取得してキャッシュ）"""
-    if CUSTOMER_NAME_CACHE:
+def get_customer_name_map(force=False):
+    """全顧客のNo→名前マップを返す（TTL付きキャッシュ。期限切れor強制時に再構築）"""
+    global _CUSTOMER_CACHE_AT
+    if (not force) and CUSTOMER_NAME_CACHE and (_time.time() - _CUSTOMER_CACHE_AT) < CUSTOMER_CACHE_TTL:
         return CUSTOMER_NAME_CACHE
+    new_map = {}
     body = {"page_size": 100}
     cursor = None
     while True:
@@ -183,11 +188,16 @@ def get_customer_name_map():
                 no   = (props["お客様No."]["rich_text"]   or [{}])[0].get("plain_text","").strip()
                 name = (props["クライアント名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
                 if no and name:
-                    CUSTOMER_NAME_CACHE[no] = name
+                    new_map[no] = name
             except Exception:
                 pass
         if not result.get("has_more"): break
         cursor = result.get("next_cursor")
+    # まるごと差し替え（改名・削除も反映）。取得0件のときは既存キャッシュを維持
+    if new_map:
+        CUSTOMER_NAME_CACHE.clear()
+        CUSTOMER_NAME_CACHE.update(new_map)
+    _CUSTOMER_CACHE_AT = _time.time()
     print(f"  👥 顧客名キャッシュ構築: {len(CUSTOMER_NAME_CACHE)}件")
     return CUSTOMER_NAME_CACHE
 
@@ -2223,6 +2233,10 @@ end timeout
         cust_page_id = cust_result["id"]
         cust_url     = cust_result.get("url", "")
         print(f"  ✅ 顧客ページ作成: {cust_url}")
+
+        # 新規顧客を名前キャッシュへ即時反映（案件一覧の名前空欄を防ぐ）
+        if no and name:
+            CUSTOMER_NAME_CACHE[no] = name
 
         # ② 補足資料ページを作成（子ページ）
         sub_title = f"{no}_{name}様_補足資料"
