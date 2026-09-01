@@ -6,7 +6,7 @@ NotionのAPIへ直接登録します。
 起動: python3 notion_server.py
 """
 
-import sys, json, os, tempfile, datetime, uuid, hashlib, io
+import sys, json, os, re, tempfile, datetime, uuid, hashlib, io
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
@@ -924,12 +924,35 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self.send_json(500, {'ok': False, 'error': f'請求書生成エラー: {e}'})
 
-    def _generate_invoice_inner(self, data):
-        customer_no   = data.get('customerNo', '')
-        invoice_date  = data.get('invoiceDate', '')
-        cases         = data.get('cases', [])
+    # 請求書雛形.xlsx の構造（この定数を変えるだけで雛形差し替えに追従できる）
+    INV_TEMPLATE      = "請求書雛形.xlsx"
+    INV_ROW_NO        = 1    # B1: 請求書 No.
+    INV_ROW_CUSTOMER  = 2    # B2: 宛名
+    INV_ROW_DATE      = 8    # B8: 請求日 / C8: 見出し「内容」
+    INV_ROW_DUE       = 9    # B9: 支払い期日 / C9: 内容
+    INV_DATA_START    = 13   # 明細の先頭行（12行目は見出し）
+    INV_DATA_ROWS     = 5    # 雛形が最初から持つ明細行数（13〜17）
+    INV_ROW_SUMHEAD   = 18   # 「説明 / 金額」
+    INV_ROW_SUBTOTAL  = 19   # 小計
+    INV_ROW_TAX       = 20   # 税率
+    INV_ROW_OTHER     = 21   # その他
+    INV_ROW_TOTAL     = 22   # 集計
 
-        # お客様名をNotionから取得（案件表のお客様no/名フィールド値で検索）
+    def _generate_invoice_inner(self, data):
+        """請求書雛形.xlsx をテンプレートとして読み込み、値だけ差し込んで出力する。
+
+        ゼロから組み立てるとフォント・テーマ色・テーブルスタイル・印刷設定が
+        再現できないため、雛形そのものを土台にする方式に変更（2026-09-01）。
+        """
+        import copy as _copy
+        import calendar as _calendar
+        from openpyxl import load_workbook
+
+        customer_no  = data.get('customerNo', '')
+        invoice_date = data.get('invoiceDate', '')
+        cases        = data.get('cases', [])
+
+        # ---- お客様名（未指定ならNotionの案件表から引く）----
         customer_name = data.get('customerName', '')
         if not customer_name:
             body = {"filter": {"property": "お客様No.", "rich_text": {"equals": customer_no}}, "page_size": 1}
@@ -943,104 +966,116 @@ class Handler(BaseHTTPRequestHandler):
         if not customer_name.endswith("様"):
             customer_name += "様"
 
-        ORANGE = "B07C1A"
-        BLUE   = "4472C4"
+        # ---- 日付を雛形と同じ yyyy/m/d に正規化し、支払い期日（翌月末）を計算 ----
+        def parse_date(text):
+            text = (text or '').strip()
+            for pat in (r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})',):
+                m = re.search(pat, text)
+                if m:
+                    return int(m.group(1)), int(m.group(2)), int(m.group(3))
+            return None
 
-        def S(): return Side(border_style='thin', color='000000')
-        def B(t=False, b=False, l=False, r=False):
-            return Border(top=S() if t else Side(), bottom=S() if b else Side(),
-                          left=S() if l else Side(), right=S() if r else Side())
+        ymd = parse_date(invoice_date)
+        if ymd:
+            y, mo, d = ymd
+            invoice_str = f'{y}/{mo}/{d}'
+            ny, nm = (y, mo + 1) if mo < 12 else (y + 1, 1)
+            due_str = f'{ny}/{nm}/{_calendar.monthrange(ny, nm)[1]}'
+        else:
+            invoice_str = invoice_date
+            due_str = ''
 
-        wb = Workbook()
+        # ---- 雛形を読み込む ----
+        tpl = os.path.join(SCRIPT_DIR, self.INV_TEMPLATE)
+        if not os.path.exists(tpl):
+            self.send_json(500, {'ok': False,
+                                 'error': f'{self.INV_TEMPLATE} が見つかりません（サーバー直下に配置してください）'})
+            return
+        wb = load_workbook(tpl)
         ws = wb.active
-        ws.title = "請求書"
-        ws.column_dimensions['A'].width = 1.5
-        ws.column_dimensions['B'].width = 36
-        ws.column_dimensions['C'].width = 14
-        ws.column_dimensions['D'].width = 18
 
-        def c(row, col, val=None, font=None, align=None, border=None, fmt=None):
-            cell = ws.cell(row, col)
-            if val is not None:  cell.value = val
-            if font:   cell.font = font
-            if align:  cell.alignment = align
-            if border: cell.border = border
-            if fmt:    cell.number_format = fmt
-            return cell
+        # ---- 明細の行数を実件数に合わせる ----
+        n = max(1, len(cases))
+        extra = max(0, n - self.INV_DATA_ROWS)
+        if extra:
+            ins_at = self.INV_DATA_START + self.INV_DATA_ROWS
 
-        r = 1
-        c(r,2,'請求書 No.', font=Font(name='メイリオ',size=8,color=BLUE)); r+=1
-        ws.row_dimensions[r].height = 34
-        c(r,2, customer_name, font=Font(name='メイリオ',size=22,color=ORANGE),
-          align=Alignment(vertical='center'))
-        ws.merge_cells(f'B{r}:C{r}'); r+=1
-        ws.row_dimensions[r].height = 6; r+=1
-        ws.row_dimensions[r].height = 6; r+=1
-        c(r,2,'野津　欧', font=Font(name='メイリオ',size=11,color=ORANGE)); r+=1
-        c(r,2,'三菱UFJ銀行新宿通り支店　（050）-0571808',
-          font=Font(name='メイリオ',size=9,color=ORANGE)); r+=1
-        ws.row_dimensions[r].height = 10; r+=1
+            # openpyxl の insert_rows は結合セル範囲を追従させない。
+            # そのままだと「その他」「集計」の金額セルが B列との結合に飲み込まれ、
+            # 値が入っていても Excel 上に出なくなる（実際に発生したバグ）。
+            # ★順序が重要：挿入前に解除 → 挿入 → 位置をずらして再結合。
+            #   挿入後に unmerge すると openpyxl が該当セルを空セルで作り直し、
+            #   ずれ込んできた金額が消えてしまう。
+            to_shift = [(r.min_row, r.min_col, r.max_row, r.max_col)
+                        for r in list(ws.merged_cells.ranges) if r.min_row >= ins_at]
+            for r0, c0, r1, c1 in to_shift:
+                ws.unmerge_cells(start_row=r0, start_column=c0, end_row=r1, end_column=c1)
 
-        ws.row_dimensions[r].height = 20
-        c(r,2, f'請求日：{invoice_date}',
-          font=Font(name='メイリオ',size=10,color=ORANGE), border=B(t=True,l=True))
-        c(r,3,'内容', font=Font(name='メイリオ',size=10,color=ORANGE,bold=True),
-          align=Alignment(horizontal='center',vertical='center'), border=B(t=True,l=True,r=True)); r+=1
+            ws.insert_rows(ins_at, extra)
 
-        ws.row_dimensions[r].height = 20
-        c(r,2,'支払い期日：', font=Font(name='メイリオ',size=10), border=B(b=True,l=True))
-        c(r,3,'動画編集案件の件', font=Font(name='メイリオ',size=10), border=B(b=True,l=True,r=True)); r+=1
-        ws.row_dimensions[r].height = 8; r+=1
+            for r0, c0, r1, c1 in to_shift:
+                ws.merge_cells(start_row=r0 + extra, start_column=c0,
+                               end_row=r1 + extra, end_column=c1)
 
-        ws.row_dimensions[r].height = 20
-        c(r,2,'詳細', font=Font(name='メイリオ',size=10,color=ORANGE,bold=True), border=B(t=True,b=True,l=True))
-        c(r,3,'金額', font=Font(name='メイリオ',size=10,color=ORANGE,bold=True),
-          align=Alignment(horizontal='right',vertical='center'), border=B(t=True,b=True,l=True,r=True))
-        c(r,4,'当方案件番号', font=Font(name='メイリオ',size=9,color=ORANGE)); r+=1
+            # 追加行の書式・行高を雛形の明細行から複製
+            src = self.INV_DATA_START
+            for i in range(extra):
+                dst = ins_at + i
+                ws.row_dimensions[dst].height = ws.row_dimensions[src].height
+                for col in ('B', 'C'):
+                    sc, dc = ws[f'{col}{src}'], ws[f'{col}{dst}']
+                    dc._style = _copy.copy(sc._style)
 
+        shift          = extra
+        row_sum_head   = self.INV_ROW_SUMHEAD  + shift
+        row_subtotal   = self.INV_ROW_SUBTOTAL + shift
+        row_tax        = self.INV_ROW_TAX      + shift
+        row_other      = self.INV_ROW_OTHER    + shift
+        row_total      = self.INV_ROW_TOTAL    + shift
+
+        # ---- ヘッダー ----
+        ws.cell(self.INV_ROW_NO,       2).value = f'請求書 No.{customer_no}'
+        ws.cell(self.INV_ROW_CUSTOMER, 2).value = customer_name
+        ws.cell(self.INV_ROW_DATE,     2).value = f'請求日：{invoice_str}'
+        ws.cell(self.INV_ROW_DUE,      2).value = f'支払い期日：{due_str}'
+        content = data.get('content') or '動画編集案件の件'
+        ws.cell(self.INV_ROW_DUE, 3).value = content
+
+        # ---- 明細 ----
         total = 0
-        for case in cases:
-            desc    = case.get('note') or case.get('number','')
-            amount  = int(case.get('amount') or case.get('price') or 0)
-            case_no = case.get('number','')
-            total  += amount
-            ws.row_dimensions[r].height = 18
-            c(r,2,desc, font=Font(name='メイリオ',size=10),
-              align=Alignment(wrap_text=True,vertical='center'), border=B(b=True,l=True))
-            c(r,3,amount, font=Font(name='メイリオ',size=10),
-              align=Alignment(horizontal='right',vertical='center'),
-              border=B(b=True,l=True,r=True), fmt='#,##0')
-            c(r,4,case_no, font=Font(name='メイリオ',size=9,color='AAAAAA')); r+=1
+        for i in range(max(n, self.INV_DATA_ROWS)):
+            r = self.INV_DATA_START + i
+            if i < len(cases):
+                case = cases[i]
+                desc = case.get('note') or case.get('number', '')
+                amount = int(float(case.get('amount') or case.get('price') or 0))
+                total += amount
+                ws.cell(r, 2).value = desc
+                ws.cell(r, 3).value = amount
+            else:
+                # 雛形の余り行は書式だけ残して中身を空にする
+                ws.cell(r, 2).value = None
+                ws.cell(r, 3).value = None
 
-        ws.row_dimensions[r].height = 8; r+=1
+        # ---- 集計（雛形と同じ数式のまま行番号だけ追従）----
+        ws.cell(row_subtotal, 3).value = '=IFERROR(SUM(InvoiceDetails[金額]), "")'
+        ws.cell(row_total,    3).value = f'=IFERROR(C{row_subtotal}*(1+C{row_tax})+C{row_other}, "")'
 
-        for text, bold, bordered in [
-            (f'小計　¥{total:,}',  False, False),
-            ('税率　0%',           False, False),
-            ('その他　¥0',         False, False),
-            (f'集計　¥{total:,}',  True,  True),
-        ]:
-            ws.merge_cells(f'B{r}:C{r}')
-            c(r,2,text, font=Font(name='メイリオ',size=10,color=ORANGE,bold=bold),
-              align=Alignment(horizontal='center'),
-              border=B(t=True,b=True,l=True,r=True) if bordered else None); r+=1
+        # ---- テーブル範囲を実データに合わせて更新 ----
+        tbl = ws.tables.get('InvoiceDetails')
+        if tbl is not None:
+            new_ref = f'B12:C{row_sum_head}'
+            tbl.ref = new_ref
+            if tbl.autoFilter is not None:
+                tbl.autoFilter.ref = new_ref
 
-        ws.row_dimensions[r].height = 12; r+=1
-        c(r,2,'この請求書に関してご不明な点がございましたら、お問い合わせください。',
-          font=Font(name='メイリオ',size=9,color=ORANGE)); r+=2
-        c(r,2,'今月もありがとうございます',
-          font=Font(name='メイリオ',size=11,color=ORANGE,bold=True))
-
-        ws.print_area = f'B1:C{r+1}'
-        ws.page_margins.left = 0; ws.page_margins.right = 0
-        ws.page_margins.top  = 0.4; ws.page_margins.bottom = 0.4
-
+        # ---- 出力 ----
         tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
         tmp.close()
         wb.save(tmp.name)
-        safe = invoice_date.replace('/', '-')
+        safe = invoice_str.replace('/', '-')
         filename = f'{customer_no}_請求書_{safe}.xlsx'
-        print(f"\n📄 請求書生成: {filename}")
+        print(f"\n📄 請求書生成（雛形ベース）: {filename}  ({len(cases)}件 合計{total:,}円)")
         self.send_file(tmp.name, filename,
                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         os.unlink(tmp.name)
