@@ -607,7 +607,7 @@ function esc(s) {
 }
 function fmtYen(n) {
   if (n === null || n === undefined || n === '') return '―';
-  return '¥' + Number(n).toLocaleString();
+  return '¥' + Number(n).toLocaleString('ja-JP',{maximumFractionDigits:0});
 }
 function fmtDate(d) { return d ? d.replace(/-/g, '/') : '―'; }
 function sClass(s) {
@@ -827,7 +827,7 @@ async function saveEdit(id) {
           note: fields.note, filename: fields.filename, memo: fields.memo,
           profit: fields.price !== '' ? price - cost : null,
           gross: fields.price !== ''
-            ? `${price.toLocaleString()} - ${cost.toLocaleString()} = ${(price-cost).toLocaleString()}`
+            ? `${price.toLocaleString('ja-JP',{maximumFractionDigits:0})} - ${cost.toLocaleString('ja-JP',{maximumFractionDigits:0})} = ${(price-cost).toLocaleString('ja-JP',{maximumFractionDigits:0})}`
             : '',
         });
       }
@@ -1273,7 +1273,7 @@ function crmUpdateGrossProfit() {
   const cost  = Number(document.getElementById('crmOutsourceCost').value) || 0;
   const prev  = document.getElementById('crmGrossProfitPreview');
   if (price > 0 && cost > 0 && crmState.outsource) {
-    const fmt = n => n.toLocaleString('ja-JP');
+    const fmt = n => n.toLocaleString('ja-JP',{maximumFractionDigits:0});
     prev.style.display = 'block';
     prev.innerHTML = `粗利　¥${fmt(price)} − ¥${fmt(cost)} = <strong>¥${fmt(price - cost)}</strong>`;
   } else {

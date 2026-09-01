@@ -310,7 +310,7 @@ function renderTable(d) {
   summary.innerHTML = `
     <div><div class="lbl">お客様数</div><div class="val">${d.customers.length}社</div></div>
     <div><div class="lbl">案件数</div><div class="val">${totalCases}件</div></div>
-    <div><div class="lbl">合計（参考）</div><div class="val">¥${totalRef.toLocaleString()}</div></div>
+    <div><div class="lbl">合計（参考）</div><div class="val">¥${totalRef.toLocaleString('ja-JP',{maximumFractionDigits:0})}</div></div>
     <div style="margin-left:auto;font-size:11px;color:#aaa">※金額は編集可。Notion登録値を参考表示</div>
   `;
 
@@ -339,7 +339,7 @@ function renderTable(d) {
           <div style="font-size:12px;color:#666;line-height:1.8">
             ${cust.cases.length}件
           </div>
-          ${refTotal > 0 ? `<div class="ref-total">参考: ¥${refTotal.toLocaleString()}</div>` : ''}
+          ${refTotal > 0 ? `<div class="ref-total">参考: ¥${refTotal.toLocaleString('ja-JP',{maximumFractionDigits:0})}</div>` : ''}
         </td>
         <td style="text-align:right">
           <div class="yen-wrap">
@@ -374,7 +374,7 @@ function updateSummary() {
   inputs.forEach(el => { total += Number(el.value) || 0; });
   // サマリー更新
   const cells = document.querySelectorAll('#summaryBar .val');
-  if (cells.length >= 3) cells[2].textContent = '¥' + total.toLocaleString();
+  if (cells.length >= 3) cells[2].textContent = '¥' + total.toLocaleString('ja-JP',{maximumFractionDigits:0});
 }
 
 // ========== Googleスプレッドシート用コピー ==========

@@ -926,6 +926,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # 請求書雛形.xlsx の構造（この定数を変えるだけで雛形差し替えに追従できる）
     INV_TEMPLATE      = "請求書雛形.xlsx"
+    # 金額の表示形式：小数点なし・3桁カンマ区切り（マイナスは ¥-1,234）
+    INV_MONEY_FMT     = '"¥"#,##0;"¥"\\-#,##0'
     INV_ROW_NO        = 1    # B1: 請求書 No.
     INV_ROW_CUSTOMER  = 2    # B2: 宛名
     INV_ROW_DATE      = 8    # B8: 請求日 / C8: 見出し「内容」
@@ -1051,7 +1053,7 @@ class Handler(BaseHTTPRequestHandler):
                 # 未設定の場合のみ 備考 → 案件番号 の順にフォールバック。
                 desc = (case.get('projectName') or case.get('filename')
                         or case.get('note') or case.get('number', ''))
-                amount = int(float(case.get('amount') or case.get('price') or 0))
+                amount = int(round(float(case.get('amount') or case.get('price') or 0)))
                 total += amount
                 ws.cell(r, 2).value = desc
                 ws.cell(r, 3).value = amount
@@ -1063,6 +1065,16 @@ class Handler(BaseHTTPRequestHandler):
         # ---- 集計（雛形と同じ数式のまま行番号だけ追従）----
         ws.cell(row_subtotal, 3).value = '=IFERROR(SUM(InvoiceDetails[金額]), "")'
         ws.cell(row_total,    3).value = f'=IFERROR(C{row_subtotal}*(1+C{row_tax})+C{row_other}, "")'
+
+        # ---- 金額は小数点なし・3桁カンマ区切りに統一 ----
+        # 雛形側の書式も直したが、雛形を差し替えられても崩れないよう
+        # 出力時に必ず上書きする（税率だけは % 表示のまま）。
+        money_rows = list(range(self.INV_DATA_START,
+                                self.INV_DATA_START + max(n, self.INV_DATA_ROWS)))
+        money_rows += [row_subtotal, row_other, row_total]
+        for r in money_rows:
+            ws.cell(r, 3).number_format = self.INV_MONEY_FMT
+        ws.cell(row_tax, 3).number_format = '0%'
 
         # ---- テーブル範囲を実データに合わせて更新 ----
         tbl = ws.tables.get('InvoiceDetails')

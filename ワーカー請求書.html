@@ -557,7 +557,7 @@ function doSubmit() {
   // 確認画面に値をセット
   document.getElementById('cfmName').textContent   = name;
   document.getElementById('cfmMonth').textContent  = month;
-  document.getElementById('cfmAmount').textContent = '¥' + Number(amount).toLocaleString() + '（税込）';
+  document.getElementById('cfmAmount').textContent = '¥' + Number(amount).toLocaleString('ja-JP',{maximumFractionDigits:0}) + '（税込）';
   document.getElementById('cfmBank').textContent   = bank;
   document.getElementById('cfmBranch').textContent = branch;
   document.getElementById('cfmAcct').textContent   = `${acctType}　${bankNo}`;

@@ -590,7 +590,7 @@ function updateStats() {
   document.getElementById('statChecked').textContent = allInvoices.filter(i=>i.status==='checked').length;
   document.getElementById('statPaid').textContent    = allInvoices.filter(i=>i.status==='paid').length;
   const total = thisMonth.reduce((s,i)=>s+i.amount,0);
-  document.getElementById('statAmount').textContent  = total.toLocaleString();
+  document.getElementById('statAmount').textContent  = total.toLocaleString('ja-JP',{maximumFractionDigits:0});
 }
 
 // ─── フィルター ──────────────────────────────────
@@ -620,7 +620,7 @@ function renderTable(list) {
         ${inv.worker_id ? `<div class="worker-tag" style="margin-top:3px">✓ ${esc(inv.worker_id)}</div>` : ''}
       </td>
       <td>${inv.billing_month}</td>
-      <td class="amount">¥${inv.amount.toLocaleString()}</td>
+      <td class="amount">¥${inv.amount.toLocaleString('ja-JP',{maximumFractionDigits:0})}</td>
       <td><span class="${badgeClass(inv.status)}">${statusLabel(inv.status)}</span></td>
       <td>
         <div class="action-wrap">
@@ -650,7 +650,7 @@ function renderTrash() {
       <td class="date">${fmtDate(inv.received_at)}</td>
       <td><div style="font-weight:600">${esc(inv.worker_name)}</div></td>
       <td>${inv.billing_month}</td>
-      <td class="amount">¥${inv.amount.toLocaleString()}</td>
+      <td class="amount">¥${inv.amount.toLocaleString('ja-JP',{maximumFractionDigits:0})}</td>
       <td class="date">${inv.deleted_at ? fmtDate(inv.deleted_at) : '—'}</td>
       <td>
         <div class="action-wrap">
@@ -667,7 +667,7 @@ function confirmDelete(id) {
   if (!inv) return;
   deleteTargetId = id;
   document.getElementById('deleteModalDesc').textContent =
-    `「${inv.worker_name}」の ${inv.billing_month} 分（¥${inv.amount.toLocaleString()}）を削除します。ゴミ箱から復元できます。`;
+    `「${inv.worker_name}」の ${inv.billing_month} 分（¥${inv.amount.toLocaleString('ja-JP',{maximumFractionDigits:0})}）を削除します。ゴミ箱から復元できます。`;
   document.getElementById('deleteModal').classList.add('open');
 }
 function closeDeleteModal() {
@@ -741,7 +741,7 @@ function openDetail(id) {
   document.getElementById('dDate').textContent   = fmtDate(inv.received_at);
   document.getElementById('dName').textContent   = inv.worker_name;
   document.getElementById('dMonth').textContent  = inv.billing_month;
-  document.getElementById('dAmount').textContent = '¥' + inv.amount.toLocaleString();
+  document.getElementById('dAmount').textContent = '¥' + inv.amount.toLocaleString('ja-JP',{maximumFractionDigits:0});
   document.getElementById('dStatus').innerHTML   = `<span class="${badgeClass(inv.status)}">${statusLabel(inv.status)}</span>`;
   document.getElementById('dBank').textContent   = inv.bank_name;
   document.getElementById('dBranch').textContent = inv.branch;
