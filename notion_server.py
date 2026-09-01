@@ -271,6 +271,21 @@ def get_done_handover():
             items.append(item)
     return items
 
+def case_label(case):
+    """請求書の「詳細」に出す文字列＝案件名。
+
+    案件名（Notionの指定案件ファイル名）を最優先。
+    未設定のときだけ 備考 → 案件番号 の順で代用する。
+    案件番号が出るのは案件名も備考も空の場合だけで、
+    請求書の明細が空欄になるのを避けるための最終手段。
+    """
+    for key in ("projectName", "filename", "materialName", "note"):
+        v = (case.get(key) or "").strip() if isinstance(case.get(key), str) else case.get(key)
+        if v:
+            return v
+    return case.get("number", "")
+
+
 def notion_request(method, path, body=None):
     url = NOTION_API + path
     data = jsonlib.dumps(body).encode() if body else None
@@ -714,6 +729,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_bulk_update_customers(data)
         elif self.path == "/api/customers/bulk-archive":
             self.handle_bulk_archive_customers(data)
+        elif self.path == "/api/customers/invoice-name":
+            self.handle_set_invoice_name(data)
         elif self.path == "/api/handover/add":
             self.handle_handover_add(data)
         elif self.path == "/api/handover/done":
@@ -940,6 +957,21 @@ class Handler(BaseHTTPRequestHandler):
     INV_ROW_OTHER     = 21   # その他
     INV_ROW_TOTAL     = 22   # 集計
 
+    def lookup_invoice_name(self, customer_no):
+        """お客様Noから請求書の宛名を引く。請求書宛名 → クライアント名 の順。"""
+        body = {"filter": {"property": "お客様No.", "rich_text": {"equals": customer_no}},
+                "page_size": 1}
+        res, _ = notion_request("POST", f"/databases/{CUSTOMER_DB_ID}/query", body)
+        if not (res and res.get("results")):
+            return ""
+        props = res["results"][0].get("properties", {})
+        for key in ("請求書宛名", "クライアント名"):
+            rt = props.get(key, {}).get("rich_text") or []
+            v = "".join(t.get("plain_text", "") for t in rt).strip()
+            if v:
+                return v
+        return ""
+
     def _generate_invoice_inner(self, data):
         """請求書雛形.xlsx をテンプレートとして読み込み、値だけ差し込んで出力する。
 
@@ -954,18 +986,16 @@ class Handler(BaseHTTPRequestHandler):
         invoice_date = data.get('invoiceDate', '')
         cases        = data.get('cases', [])
 
-        # ---- お客様名（未指定ならNotionの案件表から引く）----
-        customer_name = data.get('customerName', '')
+        # ---- 宛名 ----
+        # 「請求書宛名」があればそれを使う。請求書だけ法人名や屋号で出したい、
+        # という依頼に対応するための項目。空ならこれまで通りクライアント名。
+        customer_name = (data.get('customerName') or '').strip()
         if not customer_name:
-            body = {"filter": {"property": "お客様No.", "rich_text": {"equals": customer_no}}, "page_size": 1}
-            res, _ = notion_request("POST", f"/databases/{CUSTOMER_DB_ID}/query", body)
-            if res and res.get("results"):
-                props = res["results"][0].get("properties", {})
-                name_rt = props.get("クライアント名", {}).get("rich_text") or []
-                customer_name = name_rt[0].get("plain_text", "") if name_rt else ""
-            if not customer_name:
-                customer_name = customer_no + "様"
-        if not customer_name.endswith("様"):
+            customer_name = self.lookup_invoice_name(customer_no)
+        if not customer_name:
+            customer_name = customer_no
+        # 既に敬称が付いている宛名（御中・殿など）はそのまま尊重する
+        if not customer_name.endswith(("様", "御中", "殿")):
             customer_name += "様"
 
         # ---- 日付を雛形と同じ yyyy/m/d に正規化し、支払い期日（翌月末）を計算 ----
@@ -1051,8 +1081,7 @@ class Handler(BaseHTTPRequestHandler):
                 case = cases[i]
                 # 「詳細」は案件名（＝Notionの指定案件ファイル名）を使う。
                 # 未設定の場合のみ 備考 → 案件番号 の順にフォールバック。
-                desc = (case.get('projectName') or case.get('filename')
-                        or case.get('note') or case.get('number', ''))
+                desc = case_label(case)
                 amount = int(round(float(case.get('amount') or case.get('price') or 0)))
                 total += amount
                 ws.cell(r, 2).value = desc
@@ -1440,6 +1469,10 @@ class Handler(BaseHTTPRequestHandler):
             filters.append({"property": "お客様no/名", "rich_text": {"contains": cust_f}})
         if status_f:
             filters.append({"property": "進捗", "status": {"equals": status_f}})
+        # 最終確認の済／未で絞り込む
+        conf_f = (qs.get("confirmed") or [""])[0].strip()
+        if conf_f in ("1", "0"):
+            filters.append({"property": "最終確認完了", "checkbox": {"equals": conf_f == "1"}})
         # キーワード検索は案件番号のみ（Notion APIのorフィルター制限を回避）
         if q_term:
             filters.append({"property": "当方案件番号", "title": {"contains": q_term}})
@@ -1472,6 +1505,10 @@ class Handler(BaseHTTPRequestHandler):
                     gross    = (props.get("粗利（単価-外注費）",{}).get("rich_text") or [{}])[0].get("plain_text","")
                     dl       = (props.get("案件締切日・進行",{}).get("date") or {}).get("start","")
                     status   = (props.get("進捗",{}).get("status") or {}).get("name","")
+                    # 請求後の最終確認が済んだか。進捗ステータスとは別管理。
+                    # 進捗に「請求済み」を足すとNotionの選択肢にないためエラーになるので、
+                    # チェックボックスの独立項目にしている（2026-09-01）
+                    confirmed = bool(props.get("最終確認完了",{}).get("checkbox") or False)
                     # 粗利テキストから利益額を抽出（例: "10,000 - 3,000 = 7,000" → 7000）
                     # grossが空の場合は外注費ゼロとみなし粗利=単価として扱う
                     import re as _re
@@ -1489,6 +1526,7 @@ class Handler(BaseHTTPRequestHandler):
                         "id": page["id"], "number": number, "customer": customer,
                         "price": price, "note": note, "filename": filename,
                         "memo": memo, "gross": gross, "profit": profit,
+                        "confirmed": confirmed,
                         "date": dl[:10] if dl else "", "status": status,
                         "url": page.get("url",""),
                     })
@@ -1513,9 +1551,14 @@ class Handler(BaseHTTPRequestHandler):
         props = {}
         if "number"   in data: props["当方案件番号"]        = {"title": [{"text": {"content": data["number"]}}]}
         if "customer" in data: props["お客様no/名"]         = {"rich_text": [{"text": {"content": data["customer"]}}]}
-        if "note"     in data: props["備考"]                = {"rich_text": [{"text": {"content": data["note"]}}]}
-        if "memo"     in data: props["備考"]                = {"rich_text": [{"text": {"content": data["memo"]}}]}
+        # 備考は1項目に統合済み。note / memo どちらの名前で来ても同じ「備考」へ。
+        # 同じプロパティを2行に分けて書くと後勝ちで片方が消えるため1箇所にまとめる。
+        if "note" in data or "memo" in data:
+            memo_v = data.get("memo") if "memo" in data else data.get("note")
+            props["備考"] = {"rich_text": [{"text": {"content": memo_v or ""}}]}
         if "filename" in data: props["指定案件ファイル名"]  = {"rich_text": [{"text": {"content": data["filename"]}}]}
+        # 最終確認完了。クライアントから戻しがあればチェックを外して差し戻せる。
+        if "confirmed" in data: props["最終確認完了"] = {"checkbox": bool(data["confirmed"])}
         if "status"   in data: props["進捗"]                = {"status": {"name": data["status"]}}
         if "date"     in data:
             props["案件締切日・進行"] = {"date": {"start": data["date"]}} if data["date"] else {"date": None}
@@ -1728,8 +1771,7 @@ class Handler(BaseHTTPRequestHandler):
             ny = y if mo < 12 else y + 1
             due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
 
-        content_parts = [c.get("note") or c.get("number", "") for c in cases
-                         if c.get("note") or c.get("number")]
+        content_parts = [case_label(c) for c in cases if case_label(c)]
         content_str = "、".join(content_parts) or "動画編集案件の件"
 
         total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
@@ -1755,7 +1797,7 @@ class Handler(BaseHTTPRequestHandler):
         row_lines = []
         for i, c in enumerate(cases):
             row    = 13 + i
-            detail = qs(c.get("note") or c.get("number", ""))
+            detail = qs(case_label(c))
             amount = int(float(c.get("amount") or c.get("price") or 0))
             row_lines.append(f'                    set value of cell "B{row}" to "{detail}"')
             row_lines.append(f'                    set value of cell "C{row}" to {amount}')
@@ -1846,8 +1888,7 @@ end timeout
             ny = y if mo < 12 else y + 1
             due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
 
-        content_parts = [c.get("note") or c.get("number", "") for c in cases
-                         if c.get("note") or c.get("number")]
+        content_parts = [case_label(c) for c in cases if case_label(c)]
         content_str = "、".join(content_parts) or "動画編集案件の件"
         total = sum(int(float(c.get("amount") or c.get("price") or 0)) for c in cases)
 
@@ -1940,7 +1981,7 @@ end timeout
         # ---- Rows 13+: 明細データ ----
         for i, case in enumerate(cases):
             r      = 13 + i
-            note   = case.get("note") or case.get("number", "")
+            note   = case_label(case)
             amount = int(float(case.get("amount") or case.get("price") or 0))
             ws.row_dimensions[r].height = 18
             bc = ws[f'B{r}']
@@ -2076,11 +2117,14 @@ end timeout
                     kind    = (props.get("種別",{}).get("select") or {}).get("name","")
                     notes_rt= props.get("重要備考",{}).get("rich_text") or []
                     notes   = "".join(t.get("plain_text","") for t in notes_rt)
+                    inv_rt  = props.get("請求書宛名",{}).get("rich_text") or []
+                    inv_name= "".join(t.get("plain_text","") for t in inv_rt).strip()
                     if no or name:
                         customers.append({
                             "id": page["id"], "no": no, "name": name,
                             "pageName": page_name, "status": status,
                             "contact": contact, "kind": kind, "notes": notes,
+                            "invoiceName": inv_name,
                         })
                 except Exception:
                     pass
@@ -2106,6 +2150,26 @@ end timeout
             else:
                 fail_list.append({"id": pid, "error": err})
         self.send_json(200, {"ok": True, "updated": len(ok_list), "failed": len(fail_list), "errors": fail_list})
+
+    def handle_set_invoice_name(self, data):
+        """請求書宛名を1件更新する。
+
+        請求書だけ法人名や屋号で出したい、という依頼に対応するための項目。
+        空にすればクライアント名で出力される。
+        """
+        pid  = data.get("id", "")
+        name = (data.get("invoiceName") or "").strip()
+        if not pid:
+            self.send_json(400, {"ok": False, "error": "idが必要"}); return
+        rt = [{"text": {"content": name}}] if name else []
+        result, err = notion_request("PATCH", f"/pages/{pid}", {
+            "properties": {"請求書宛名": {"rich_text": rt}}
+        })
+        if result:
+            print(f"\n🧾 請求書宛名を更新: {name or '（クリア＝クライアント名で出力）'}")
+            self.send_json(200, {"ok": True, "invoiceName": name})
+        else:
+            self.send_json(400, {"ok": False, "error": err})
 
     def handle_bulk_archive_customers(self, data):
         """複数顧客をアーカイブ（削除）"""
@@ -2264,6 +2328,9 @@ end timeout
             "お客様No.": {"rich_text": [{"text": {"content": no}}]},
             "クライアント名": {"rich_text": [{"text": {"content": name}}]},
         }
+        # 請求書宛名は任意。空ならクライアント名で出力される。
+        if (data.get("invoiceName") or "").strip():
+            props["請求書宛名"] = {"rich_text": [{"text": {"content": data["invoiceName"].strip()}}]}
         if data.get("type"):
             props["種別"] = {"select": {"name": data["type"]}}
         if data.get("status"):
@@ -2403,6 +2470,11 @@ end timeout
                 groups[key] = {"customer": key, "cases": [], "total": 0}
             groups[key]["cases"].append(c)
             groups[key]["total"] += c["price"]
+
+        # 請求書に載る宛名を添える（請求書宛名 → クライアント名）。
+        # 発行前に画面で確認できるようにするため。
+        for g in groups.values():
+            g["name"] = self.lookup_invoice_name(g["customer"])
 
         print(f"  → {len(cases)}件 / {len(groups)}お客様")
         self.send_json(200, {

@@ -54,6 +54,14 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .case-item { display: flex; gap: 6px; align-items: baseline; }
 .case-num { font-family: 'SF Mono', 'Courier New', monospace; font-size: 11px; }
 .case-note { color: #aaa; font-size: 10px; }
+    .case-name   { color:#334155; margin-left:6px; }
+    .case-noname { color:#b45309; margin-left:6px; font-size:.9em; }
+    .case-item   { display:flex; align-items:center; gap:4px; white-space:nowrap;
+                   overflow:hidden; text-overflow:ellipsis; line-height:1.9; }
+    .cust-addr   { font-size:12px; color:#6b7280; margin-top:2px; line-height:1.4; }
+    /* お客様列が細いと宛名が1文字ずつ折り返されるため下限幅を持たせる */
+    table td:first-child, table th:first-child { min-width:150px; }
+    .ref-total   { margin-left:8px; }
 .ref-total { font-size: 12px; color: #aaa; margin-top: 4px; }
 
 .amount-input {
@@ -215,6 +223,14 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 </div>
 
 <script>
+// 今日の日付を YYYY-MM-DD で返す。
+// toISOString() はUTCに変換するため、日本時間の朝9時前は前日の日付になってしまう。
+// 日付入力欄はローカル時刻で組み立てる。
+function todayStr(d) {
+  d = d || new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 const SERVER = window.location.origin;
 let invoiceData = null; // 現在取得中のデータ
 
@@ -238,9 +254,8 @@ let invoiceData = null; // 現在取得中のデータ
 
 // 請求日: 当月末日
 (function initInvDate() {
-  const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  document.getElementById('invoiceDate').value = lastDay.toISOString().split('T')[0];
+  // 請求日は発行した当日。以前は当月末日を既定にしていたため実際の発行日とずれていた。
+  document.getElementById('invoiceDate').value = todayStr();
 })();
 
 // ========== サーバー確認 ==========
@@ -324,22 +339,27 @@ function renderTable(d) {
         const badge = c.status === '完了'  ? `<span class="s-done">完了</span>` :
                       c.status === '進行中' ? `<span class="s-wip">進行中</span>` :
                                              `<span class="s-todo">未着手</span>`;
-        const note = c.note ? `<span class="case-note">${escHtml(c.note)}</span>` : '';
-        return `<div class="case-item">${badge} <span class="case-num">${escHtml(c.number)}</span>${note}</div>`;
+        // 請求書の「詳細」に出る文字列＝案件名。空なら備考、それも空なら案件番号。
+        const label = (c.projectName || c.note || '').trim();
+        const name  = label
+          ? `<span class="case-name">${escHtml(label)}</span>`
+          : `<span class="case-noname">案件名なし（案件番号で出力されます）</span>`;
+        return `<div class="case-item">${badge} <span class="case-num">${escHtml(c.number)}</span>${name}</div>`;
       }).join('');
 
       const tr = document.createElement('tr');
       tr.dataset.customer = cust.customer;
       tr.innerHTML = `
-        <td>
+        <td style="vertical-align:top">
           <div class="cust-no">${escHtml(cust.customer)}</div>
-          <div class="case-list">${caseHtml}</div>
+          <div class="cust-addr">${escHtml(cust.name || '')}</div>
         </td>
-        <td>
-          <div style="font-size:12px;color:#666;line-height:1.8">
+        <td style="vertical-align:top">
+          <div style="font-size:12px;color:#666">
             ${cust.cases.length}件
+            ${refTotal > 0 ? `<span class="ref-total">参考: ¥${refTotal.toLocaleString('ja-JP',{maximumFractionDigits:0})}</span>` : ''}
           </div>
-          ${refTotal > 0 ? `<div class="ref-total">参考: ¥${refTotal.toLocaleString('ja-JP',{maximumFractionDigits:0})}</div>` : ''}
+          <div class="case-list">${caseHtml}</div>
         </td>
         <td style="text-align:right">
           <div class="yen-wrap">
@@ -417,8 +437,10 @@ function copyForSheets() {
 // ========== Notionに記録 ==========
 async function recordToNotion() {
   if (!invoiceData) return;
-  const invDate = document.getElementById('invoiceDate').value;
-  if (!invDate) { showMsg('請求日を入力してください', 'error'); return; }
+  // 請求日は必ずボタンを押したその日にする。
+  // 画面を開いたまま日付をまたいでも、発行日とずれないようにここで押し直す。
+  const invDate = todayStr();
+  document.getElementById('invoiceDate').value = invDate;
 
   const inputs    = document.querySelectorAll('.amount-input');
   const amountMap = {};
@@ -458,8 +480,10 @@ async function recordToNotion() {
 // ========== 請求書xlsx生成 ==========
 async function generateInvoice(customerNo, customerName) {
   if (!invoiceData) return;
-  const invDate = document.getElementById('invoiceDate').value;
-  if (!invDate) { showMsg('請求日を入力してください', 'error'); return; }
+  // 請求日は必ずボタンを押したその日にする。
+  // 画面を開いたまま日付をまたいでも、発行日とずれないようにここで押し直す。
+  const invDate = todayStr();
+  document.getElementById('invoiceDate').value = invDate;
 
   // 対象顧客のデータを取得
   const cust = invoiceData.customers.find(c => c.customer === customerNo);

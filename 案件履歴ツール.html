@@ -78,6 +78,10 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 .s-進行中  { background: #dbeafe; color: #1d4ed8; }
 .s-完了    { background: #dcfce7; color: #15803d; }
 .s-請求済み { background: #fef9c3; color: #92400e; }
+.cf-wrap  { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+.cf-mark  { font-size:11px; color:#6b7280; }
+.case-row.confirmed { background:#f0fdf4; }
+.case-row.confirmed .cf-mark { color:#15803d; font-weight:700; }
 .s-default { background: #f3f4f6; color: #6b7280; }
 
 /* 金額セル */
@@ -392,7 +396,11 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
     <option value="未着手">未着手</option>
     <option value="進行中">進行中</option>
     <option value="完了">完了</option>
-    <option value="請求済み">請求済み</option>
+  </select>
+  <select class="filter-select" id="confirmFilter" onchange="doSearch()">
+    <option value="">最終確認：全て</option>
+    <option value="0">未確認のみ</option>
+    <option value="1">確認済のみ</option>
   </select>
   <button class="search-btn" onclick="doSearch()">🔍 検索</button>
   <button class="csv-btn" onclick="exportCSV(allCases,'案件履歴.csv')">📥 CSV</button>
@@ -489,8 +497,6 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
           <input type="text" class="crm-input" id="crmMatName" placeholder="例: 名古屋大学情報学部">
         </div>
         <div class="crm-form-group">
-          <label class="crm-label">指定ファイル名</label>
-          <input type="text" class="crm-input" id="crmFileName">
         </div>
         <div class="crm-form-group">
           <label class="crm-label">進捗</label>
@@ -561,6 +567,14 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 </div>
 
 <script>
+// 今日の日付を YYYY-MM-DD で返す。
+// toISOString() はUTCに変換するため、日本時間の朝9時前は前日の日付になってしまう。
+// 日付入力欄はローカル時刻で組み立てる。
+function todayStr(d) {
+  d = d || new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 // サーバーURL（同一オリジンから配信される想定）
 const SERVER = '';
 
@@ -654,6 +668,8 @@ async function doSearch() {
   if (month)  p.set('month', month);
   if (q)      p.set('q', q);
   if (status) p.set('status', status);
+  const conf = document.getElementById('confirmFilter')?.value || '';
+  if (conf)   p.set('confirmed', conf);
 
   try {
     const r = await apiFetch(`/api/cases/list?${p}`);
@@ -727,6 +743,7 @@ function renderList() {
     <th onclick="setSort('status')">進捗${sh('status')}</th>
     <th onclick="setSort('date')">締切日${sh('date')}</th>
     <th>案件名</th>
+    <th onclick="setSort('confirmed')">最終確認${sh('confirmed')}</th>
     <th>操作</th>
   </tr></thead><tbody>`;
 
@@ -736,27 +753,37 @@ function renderList() {
       ? `<div class="num-cell profit-cell">${fmtYen(profit)}</div>
          <div class="num-cell" style="font-size:11px;color:#9ca3af">単価 ${fmtYen(c.price)}</div>`
       : `<div class="num-cell ${c.price ? 'price-only' : 'zero-cell'}">${fmtYen(c.price)}</div>`;
-    html += `<tr class="case-row" id="row-${c.id}">
+    html += `<tr class="case-row${c.confirmed ? ' confirmed' : ''}" id="row-${c.id}">
       <td><a href="${esc(c.url)}" target="_blank" style="color:#4f46e5;font-weight:700;text-decoration:none;font-size:12px">${esc(c.number||'―')}</a></td>
       <td style="font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(c.customer||'―')}</td>
       <td style="font-size:13px;white-space:nowrap">${esc(c.customerName||'')}</td>
       <td>${amtHtml}</td>
       <td><span class="s-badge ${sClass(c.status)}">${esc(c.status||'―')}</span></td>
       <td style="font-size:12px;color:#6b7280">${fmtDate(c.date)}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${esc(c.note)}">${esc(c.note||'')}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${esc(c.filename||c.note)}">${esc(c.filename||'')}</td>
+      <td style="text-align:center">
+        <label class="cf-wrap" title="送付して問題なければチェック。戻しがあれば外す">
+          <input type="checkbox" ${c.confirmed ? 'checked' : ''}
+                 onchange="setConfirmed('${c.id}', this)">
+          <span class="cf-mark">${c.confirmed ? '確認済' : '未確認'}</span>
+        </label>
+      </td>
       <td><div class="row-btns">
         <button class="rb rb-edit" onclick="toggleEdit('${c.id}')">✏️ 編集</button>
         <button class="rb rb-del"  onclick="confirmDel('${c.id}')">🗑️</button>
       </div></td>
     </tr>
-    <tr id="erow-${c.id}" style="display:none"><td colspan="7" style="padding:0">${buildEP(c)}</td></tr>`;
+    <tr id="erow-${c.id}" style="display:none"><td colspan="9" style="padding:0">${buildEP(c)}</td></tr>`;
   }
   html += '</tbody></table>';
   mc.innerHTML = html;
 }
 
 function buildEP(c) {
-  const statuses = ['未着手','進行中','完了','請求済み'];
+  // Notionの進捗ステータスにある選択肢だけを出す。
+  // 以前あった「請求済み」はNotion側に選択肢がなく、保存時にAPIエラーになっていた。
+  // 請求後の状態は「最終確認完了」のチェックで管理する。
+  const statuses = ['未着手','進行中','完了'];
   const opts = statuses.map(s => `<option value="${s}"${c.status===s?' selected':''}>${s}</option>`).join('');
   // 外注費を粗利テキストから逆算（例: "10,000 - 3,000 = 7,000" → 3,000）
   // 未記録の場合はデフォルト0（外注なしは0で粗利=単価として扱う）
@@ -773,8 +800,7 @@ function buildEP(c) {
       <div class="ep-field"><label>外注費（円）</label><input id="ef-cost-${c.id}" type="number" value="${cost}" placeholder="なければ0として計算"></div>
       <div class="ep-field"><label>進捗</label><select id="ef-status-${c.id}">${opts}</select></div>
       <div class="ep-field"><label>締切日</label><input id="ef-date-${c.id}" type="date" value="${c.date||''}"></div>
-      <div class="ep-field"><label>案件名</label><input id="ef-note-${c.id}" value="${esc(c.note)}"></div>
-      <div class="ep-field"><label>ファイル名</label><input id="ef-file-${c.id}" value="${esc(c.filename)}"></div>
+      <div class="ep-field" style="grid-column:1/-1"><label>案件名<span style="font-weight:400;color:#6b7280">（請求書の詳細欄に載ります）</span></label><input id="ef-file-${c.id}" value="${esc(c.filename)}"></div>
       <div class="ep-field" style="grid-column:1/-1"><label>備考</label><textarea id="ef-memo-${c.id}">${esc(c.memo)}</textarea></div>
     </div>
     <div class="ep-actions">
@@ -794,6 +820,32 @@ function toggleEdit(id) {
   if (open) { erow.style.display = ''; row?.classList.add('editing'); }
 }
 
+async function setConfirmed(id, el) {
+  // 送付して問題なければチェック。クライアントから戻しがあれば外して差し戻す。
+  const on   = el.checked;
+  const mark = el.parentElement.querySelector('.cf-mark');
+  el.disabled = true;
+  if (mark) mark.textContent = on ? '確認済' : '未確認';
+  try {
+    const r = await apiFetch('/api/cases/update', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id, confirmed: on }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'サーバーエラー');
+    const c = allCases.find(x => x.id === id);
+    if (c) c.confirmed = on;
+    document.getElementById(`row-${id}`)?.classList.toggle('confirmed', on);
+  } catch (e) {
+    // 失敗したら見た目を元に戻す（チェック状態とNotionが食い違わないように）
+    el.checked = !on;
+    if (mark) mark.textContent = !on ? '確認済' : '未確認';
+    alert('最終確認の保存に失敗しました: ' + e.message);
+  } finally {
+    el.disabled = false;
+  }
+}
+
 async function saveEdit(id) {
   const ep = document.getElementById(`ep-${id}`);
   if (!ep) return;
@@ -805,7 +857,6 @@ async function saveEdit(id) {
     outsourceCost:document.getElementById(`ef-cost-${id}`)?.value,
     status:       document.getElementById(`ef-status-${id}`)?.value,
     date:         document.getElementById(`ef-date-${id}`)?.value,
-    note:         document.getElementById(`ef-note-${id}`)?.value.trim(),
     filename:     document.getElementById(`ef-file-${id}`)?.value.trim(),
     memo:         document.getElementById(`ef-memo-${id}`)?.value.trim(),
   };
@@ -824,7 +875,7 @@ async function saveEdit(id) {
         Object.assign(c, {
           number: fields.number, customer: fields.customer,
           price, status: fields.status, date: fields.date,
-          note: fields.note, filename: fields.filename, memo: fields.memo,
+          note: fields.memo, filename: fields.filename, memo: fields.memo,
           profit: fields.price !== '' ? price - cost : null,
           gross: fields.price !== ''
             ? `${price.toLocaleString('ja-JP',{maximumFractionDigits:0})} - ${cost.toLocaleString('ja-JP',{maximumFractionDigits:0})} = ${(price-cost).toLocaleString('ja-JP',{maximumFractionDigits:0})}`
@@ -1074,7 +1125,7 @@ function openRegModal() {
   // 初回は顧客リストを取得
   if (crmCustomers.length === 0) crmLoadCustomers();
   // 締切日を今日にリセット
-  document.getElementById('crmDeadline').value = new Date().toISOString().split('T')[0];
+  document.getElementById('crmDeadline').value = todayStr();
   crmUpdatePreview();
 }
 function closeRegModal() {
@@ -1380,7 +1431,6 @@ async function crmDoRegister() {
     materialName: document.getElementById('crmMatName').value.trim(),
     price:        document.getElementById('crmPrice').value,
     outsourceCost: crmState.outsource ? (document.getElementById('crmOutsourceCost').value || '') : '',
-    fileName:     document.getElementById('crmFileName').value.trim(),
     progress:     crmState.progress,
     memo:         document.getElementById('crmMemo').value.trim(),
   };
@@ -1413,11 +1463,11 @@ function crmResetForm() {
   document.querySelectorAll('.crm-cust-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('crmSelBanner').classList.remove('show');
   document.getElementById('crmCaseCard').style.display = 'none';
-  ['crmMatName','crmPrice','crmOutsourceCost','crmFileName','crmMemo'].forEach(id => {
+  ['crmMatName','crmPrice','crmOutsourceCost','crmMemo'].forEach(id => {
     const el = document.getElementById(id); if(el) el.value = '';
   });
   document.getElementById('crmGrossProfitPreview').style.display = 'none';
-  document.getElementById('crmDeadline').value = new Date().toISOString().split('T')[0];
+  document.getElementById('crmDeadline').value = todayStr();
   ['crmTogUnknown','crmTogBranch','crmTogOut'].forEach(id => document.getElementById(id)?.classList.remove('on'));
   ['crmPanBranch','crmPanOut'].forEach(id => document.getElementById(id)?.classList.remove('show'));
   document.querySelectorAll('.crm-prog-chip').forEach((c,i) => c.classList.toggle('on', i===0));

@@ -138,6 +138,7 @@ def main():
     print(f"現状を {bkfile} に保存しました\n")
 
     move, same, empty, conflict = [], [], [], []
+    same_ids = []
     for p in pages:
         pr = p["properties"]
         no  = title(pr, "当方案件番号")
@@ -145,11 +146,11 @@ def main():
         dst = rt(pr, DST_PROP)
         if not src:            empty.append((no, dst))
         elif not dst:          move.append((p["id"], no, src))
-        elif src == dst:       same.append((no, src))
+        elif src == dst:       same.append((no, src)); same_ids.append((p["id"], no))
         else:                  conflict.append((no, src, dst))
 
     print(f"■ 転記する            : {len(move)} 件")
-    print(f"■ 既に同じ値（何もしない）: {len(same)} 件")
+    print(f"■ 既に同じ値（--clear時は素材名だけ消去）: {len(same)} 件")
     print(f"■ 素材名が空（対象外）  : {len(empty)} 件")
     print(f"■ ★衝突（上書きしない） : {len(conflict)} 件\n")
 
@@ -169,10 +170,19 @@ def main():
         print("ドライランのため書き換えていません。実行するには --apply を付けてください。")
         return
 
-    print("書き換えを開始します…")
+    # --clear のときは「既に同じ値」の行も対象にする。
+    # 値が完全に一致しているので消しても情報は失われない。
+    # 衝突している行はどちらを残すか判断が要るため手を付けない。
+    jobs = [(pid, no, src, True) for pid, no, src in move]
+    if clear_:
+        jobs += [(pid, no, None, False) for pid, no in same_ids]
+
+    print(f"書き換えを開始します…（{len(jobs)} 件）")
     ok = ng = 0
-    for pid, no, src in move:
-        props = {DST_PROP: {"rich_text": [{"text": {"content": src}}]}}
+    for pid, no, src, write_dst in jobs:
+        props = {}
+        if write_dst:
+            props[DST_PROP] = {"rich_text": [{"text": {"content": src}}]}
         if clear_:
             props[SRC_PROP] = {"rich_text": []}
         res = req("PATCH", f"/pages/{pid}", {"properties": props})

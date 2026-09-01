@@ -318,8 +318,6 @@ code { background: rgba(0,0,0,0.08); padding: 1px 6px; border-radius: 3px; font-
     <input type="text" id="matName" placeholder="例: 名古屋大学情報学部、武田塾AD案件">
   </div>
   <div class="form-group">
-    <label>指定案件ファイル名<span class="sub">（クライアント指定がある場合）</span></label>
-    <input type="text" id="fileName">
   </div>
   <div class="form-group">
     <label>進捗</label>
@@ -406,6 +404,14 @@ code { background: rgba(0,0,0,0.08); padding: 1px 6px; border-radius: 3px; font-
 </div><!-- /container -->
 
 <script>
+// 今日の日付を YYYY-MM-DD で返す。
+// toISOString() はUTCに変換するため、日本時間の朝9時前は前日の日付になってしまう。
+// 日付入力欄はローカル時刻で組み立てる。
+function todayStr(d) {
+  d = d || new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 const SERVER = window.location.origin;
 
 // ========== マスターデータ（静的リストなし・常にNotionから取得）==========
@@ -421,7 +427,7 @@ let newCaseConfirmed = false;
 let state = { unknown:false, branch:false, outsource:false, progress:'未着手', branchVal:'' };
 
 // ========== 初期化 ==========
-document.getElementById('deadline').value = new Date().toISOString().split('T')[0];
+document.getElementById('deadline').value = todayStr();
 updatePreview();
 loadCustomers(); // 起動時にNotionから取得
 
@@ -843,7 +849,6 @@ async function doRegister() {
     materialName: document.getElementById('matName').value.trim(),
     price:        document.getElementById('price').value,
     outsourceCost: state.outsource ? (document.getElementById('outsourceCost').value || '') : '',
-    fileName:     document.getElementById('fileName').value.trim(),
     progress:     state.progress,
     memo:         document.getElementById('memo').value.trim(),
   };
@@ -893,9 +898,8 @@ function resetForm() {
   document.getElementById('price').value = '';
   document.getElementById('outsourceCost').value = '';
   document.getElementById('grossProfitPreview').style.display = 'none';
-  document.getElementById('fileName').value = '';
   document.getElementById('memo').value = '';
-  document.getElementById('deadline').value = new Date().toISOString().split('T')[0];
+  document.getElementById('deadline').value = todayStr();
   updatePreview();
 }
 
