@@ -485,7 +485,7 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
           </div>
         </div>
         <div class="crm-form-group">
-          <label class="crm-label">備考/素材名</label>
+          <label class="crm-label">案件名</label>
           <input type="text" class="crm-input" id="crmMatName" placeholder="例: 名古屋大学情報学部">
         </div>
         <div class="crm-form-group">
@@ -726,7 +726,7 @@ function renderList() {
     <th onclick="setSort('profit')">粗利/単価${sh('profit')}</th>
     <th onclick="setSort('status')">進捗${sh('status')}</th>
     <th onclick="setSort('date')">締切日${sh('date')}</th>
-    <th>備考/素材名</th>
+    <th>案件名</th>
     <th>操作</th>
   </tr></thead><tbody>`;
 
@@ -773,7 +773,7 @@ function buildEP(c) {
       <div class="ep-field"><label>外注費（円）</label><input id="ef-cost-${c.id}" type="number" value="${cost}" placeholder="なければ0として計算"></div>
       <div class="ep-field"><label>進捗</label><select id="ef-status-${c.id}">${opts}</select></div>
       <div class="ep-field"><label>締切日</label><input id="ef-date-${c.id}" type="date" value="${c.date||''}"></div>
-      <div class="ep-field"><label>備考/素材名</label><input id="ef-note-${c.id}" value="${esc(c.note)}"></div>
+      <div class="ep-field"><label>案件名</label><input id="ef-note-${c.id}" value="${esc(c.note)}"></div>
       <div class="ep-field"><label>ファイル名</label><input id="ef-file-${c.id}" value="${esc(c.filename)}"></div>
       <div class="ep-field" style="grid-column:1/-1"><label>備考</label><textarea id="ef-memo-${c.id}">${esc(c.memo)}</textarea></div>
     </div>
@@ -1042,7 +1042,7 @@ async function recordNotion(cust, cid) {
 // ===== CSV =====
 function exportCSV(cases, filename) {
   if (!cases?.length) { toast('⚠️ データなし'); return; }
-  const heads = ['案件番号','客番号','客名','単価','粗利','進捗','締切日','備考/素材名','ファイル名','備考'];
+  const heads = ['案件番号','客番号','客名','単価','粗利','進捗','締切日','案件名','備考'];
   const rows = cases.map(c => [
     c.number, c.customer, c.customerName||'', c.price, c.profit??'', c.status, c.date, c.note, c.filename, c.memo
   ].map(v => `"${String(v??'').replace(/"/g,'""')}"`));

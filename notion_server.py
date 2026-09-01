@@ -1047,7 +1047,10 @@ class Handler(BaseHTTPRequestHandler):
             r = self.INV_DATA_START + i
             if i < len(cases):
                 case = cases[i]
-                desc = case.get('note') or case.get('number', '')
+                # 「詳細」は案件名（＝Notionの指定案件ファイル名）を使う。
+                # 未設定の場合のみ 備考 → 案件番号 の順にフォールバック。
+                desc = (case.get('projectName') or case.get('filename')
+                        or case.get('note') or case.get('number', ''))
                 amount = int(float(case.get('amount') or case.get('price') or 0))
                 total += amount
                 ws.cell(r, 2).value = desc
@@ -1450,9 +1453,10 @@ class Handler(BaseHTTPRequestHandler):
                     customer = (props["お客様no/名"]["rich_text"]   or [{}])[0].get("plain_text","").strip()
                     price_v  = props["単価"]["number"]
                     price    = price_v if price_v is not None else 0
-                    note     = (props.get("備考/素材名",{}).get("rich_text") or [{}])[0].get("plain_text","")
+                    # 案件名は「指定案件ファイル名」。備考は「備考」1本に統合（2026-09-01）
                     filename = (props.get("指定案件ファイル名",{}).get("rich_text") or [{}])[0].get("plain_text","")
                     memo     = (props.get("備考",{}).get("rich_text")        or [{}])[0].get("plain_text","")
+                    note     = memo
                     gross    = (props.get("粗利（単価-外注費）",{}).get("rich_text") or [{}])[0].get("plain_text","")
                     dl       = (props.get("案件締切日・進行",{}).get("date") or {}).get("start","")
                     status   = (props.get("進捗",{}).get("status") or {}).get("name","")
@@ -1497,7 +1501,7 @@ class Handler(BaseHTTPRequestHandler):
         props = {}
         if "number"   in data: props["当方案件番号"]        = {"title": [{"text": {"content": data["number"]}}]}
         if "customer" in data: props["お客様no/名"]         = {"rich_text": [{"text": {"content": data["customer"]}}]}
-        if "note"     in data: props["備考/素材名"]          = {"rich_text": [{"text": {"content": data["note"]}}]}
+        if "note"     in data: props["備考"]                = {"rich_text": [{"text": {"content": data["note"]}}]}
         if "memo"     in data: props["備考"]                = {"rich_text": [{"text": {"content": data["memo"]}}]}
         if "filename" in data: props["指定案件ファイル名"]  = {"rich_text": [{"text": {"content": data["filename"]}}]}
         if "status"   in data: props["進捗"]                = {"status": {"name": data["status"]}}
@@ -2164,10 +2168,12 @@ end timeout
 
         if data.get("deadline"):
             props["案件締切日・進行"] = {"date": {"start": data["deadline"]}}
-        if data.get("materialName"):
-            props["備考/素材名"] = {"rich_text": [{"text": {"content": data["materialName"]}}]}
-        if data.get("fileName"):
-            props["指定案件ファイル名"] = {"rich_text": [{"text": {"content": data["fileName"]}}]}
+        # 案件名（旧「素材名」）＝ 指定案件ファイル名。
+        # 同じプロパティを2箇所から書くと後勝ちで消えるため、優先順を明示する（2026-09-01）
+        project_name = (data.get("projectName") or data.get("materialName")
+                        or data.get("fileName"))
+        if project_name:
+            props["指定案件ファイル名"] = {"rich_text": [{"text": {"content": project_name}}]}
         if data.get("memo"):
             props["備考"] = {"rich_text": [{"text": {"content": data["memo"]}}]}
         if data.get("price"):
@@ -2362,12 +2368,14 @@ end timeout
                     customer= (props["お客様no/名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
                     price_v = props["単価"]["number"]
                     price   = price_v if price_v is not None else 0
-                    note    = (props["備考/素材名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
+                    note    = (props.get("備考",{}).get("rich_text") or [{}])[0].get("plain_text","").strip()
+                    pname   = (props.get("指定案件ファイル名",{}).get("rich_text") or [{}])[0].get("plain_text","").strip()
                     dl      = (props["案件締切日・進行"]["date"] or {}).get("start","")
                     status  = (props["進捗"]["status"] or {}).get("name","")
                     if number and customer:
                         cases.append({"number": number, "customer": customer,
                                       "price": price, "note": note,
+                                      "projectName": pname,
                                       "date": dl, "status": status})
                 except Exception as e:
                     pass

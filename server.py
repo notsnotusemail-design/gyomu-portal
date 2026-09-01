@@ -81,11 +81,6 @@ def register_case(data):
     if data.get("deadline"):
         properties["案件締切日・進行"] = {"date": {"start": data["deadline"]}}
 
-    # 素材名
-    if data.get("materialName"):
-        properties["備考/素材名"] = {
-            "rich_text": [{"text": {"content": data["materialName"]}}]
-        }
 
     # 単価
     if data.get("price"):
@@ -94,10 +89,13 @@ def register_case(data):
         except:
             pass
 
-    # 指定ファイル名
-    if data.get("fileName"):
+    # 案件名（旧「素材名」）＝ 指定案件ファイル名。
+    # 同じプロパティを複数箇所から書くと後勝ちで消えるため1箇所に集約（2026-09-01）
+    project_name = (data.get("projectName") or data.get("materialName")
+                    or data.get("fileName"))
+    if project_name:
         properties["指定案件ファイル名"] = {
-            "rich_text": [{"text": {"content": data["fileName"]}}]
+            "rich_text": [{"text": {"content": project_name}}]
         }
 
     # 備考
