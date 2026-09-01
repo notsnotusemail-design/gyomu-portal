@@ -78,10 +78,6 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 .s-進行中  { background: #dbeafe; color: #1d4ed8; }
 .s-完了    { background: #dcfce7; color: #15803d; }
 .s-請求済み { background: #fef9c3; color: #92400e; }
-.cf-wrap  { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
-.cf-mark  { font-size:11px; color:#6b7280; }
-.case-row.confirmed { background:#f0fdf4; }
-.case-row.confirmed .cf-mark { color:#15803d; font-weight:700; }
 .s-default { background: #f3f4f6; color: #6b7280; }
 
 /* 金額セル */
@@ -397,11 +393,6 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
     <option value="進行中">進行中</option>
     <option value="完了">完了</option>
   </select>
-  <select class="filter-select" id="confirmFilter" onchange="doSearch()">
-    <option value="">最終確認：全て</option>
-    <option value="0">未確認のみ</option>
-    <option value="1">確認済のみ</option>
-  </select>
   <button class="search-btn" onclick="doSearch()">🔍 検索</button>
   <button class="csv-btn" onclick="exportCSV(allCases,'案件履歴.csv')">📥 CSV</button>
   <span class="count-label" id="countLbl"></span>
@@ -668,8 +659,6 @@ async function doSearch() {
   if (month)  p.set('month', month);
   if (q)      p.set('q', q);
   if (status) p.set('status', status);
-  const conf = document.getElementById('confirmFilter')?.value || '';
-  if (conf)   p.set('confirmed', conf);
 
   try {
     const r = await apiFetch(`/api/cases/list?${p}`);
@@ -743,7 +732,6 @@ function renderList() {
     <th onclick="setSort('status')">進捗${sh('status')}</th>
     <th onclick="setSort('date')">締切日${sh('date')}</th>
     <th>案件名</th>
-    <th onclick="setSort('confirmed')">最終確認${sh('confirmed')}</th>
     <th>操作</th>
   </tr></thead><tbody>`;
 
@@ -753,7 +741,7 @@ function renderList() {
       ? `<div class="num-cell profit-cell">${fmtYen(profit)}</div>
          <div class="num-cell" style="font-size:11px;color:#9ca3af">単価 ${fmtYen(c.price)}</div>`
       : `<div class="num-cell ${c.price ? 'price-only' : 'zero-cell'}">${fmtYen(c.price)}</div>`;
-    html += `<tr class="case-row${c.confirmed ? ' confirmed' : ''}" id="row-${c.id}">
+    html += `<tr class="case-row" id="row-${c.id}">
       <td><a href="${esc(c.url)}" target="_blank" style="color:#4f46e5;font-weight:700;text-decoration:none;font-size:12px">${esc(c.number||'―')}</a></td>
       <td style="font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(c.customer||'―')}</td>
       <td style="font-size:13px;white-space:nowrap">${esc(c.customerName||'')}</td>
@@ -761,19 +749,12 @@ function renderList() {
       <td><span class="s-badge ${sClass(c.status)}">${esc(c.status||'―')}</span></td>
       <td style="font-size:12px;color:#6b7280">${fmtDate(c.date)}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${esc(c.filename||c.note)}">${esc(c.filename||'')}</td>
-      <td style="text-align:center">
-        <label class="cf-wrap" title="送付して問題なければチェック。戻しがあれば外す">
-          <input type="checkbox" ${c.confirmed ? 'checked' : ''}
-                 onchange="setConfirmed('${c.id}', this)">
-          <span class="cf-mark">${c.confirmed ? '確認済' : '未確認'}</span>
-        </label>
-      </td>
       <td><div class="row-btns">
         <button class="rb rb-edit" onclick="toggleEdit('${c.id}')">✏️ 編集</button>
         <button class="rb rb-del"  onclick="confirmDel('${c.id}')">🗑️</button>
       </div></td>
     </tr>
-    <tr id="erow-${c.id}" style="display:none"><td colspan="9" style="padding:0">${buildEP(c)}</td></tr>`;
+    <tr id="erow-${c.id}" style="display:none"><td colspan="8" style="padding:0">${buildEP(c)}</td></tr>`;
   }
   html += '</tbody></table>';
   mc.innerHTML = html;
@@ -818,32 +799,6 @@ function toggleEdit(id) {
   document.querySelectorAll('[id^="erow-"]').forEach(r => r.style.display = 'none');
   document.querySelectorAll('.case-row.editing').forEach(r => r.classList.remove('editing'));
   if (open) { erow.style.display = ''; row?.classList.add('editing'); }
-}
-
-async function setConfirmed(id, el) {
-  // 送付して問題なければチェック。クライアントから戻しがあれば外して差し戻す。
-  const on   = el.checked;
-  const mark = el.parentElement.querySelector('.cf-mark');
-  el.disabled = true;
-  if (mark) mark.textContent = on ? '確認済' : '未確認';
-  try {
-    const r = await apiFetch('/api/cases/update', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ id, confirmed: on }),
-    });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || 'サーバーエラー');
-    const c = allCases.find(x => x.id === id);
-    if (c) c.confirmed = on;
-    document.getElementById(`row-${id}`)?.classList.toggle('confirmed', on);
-  } catch (e) {
-    // 失敗したら見た目を元に戻す（チェック状態とNotionが食い違わないように）
-    el.checked = !on;
-    if (mark) mark.textContent = !on ? '確認済' : '未確認';
-    alert('最終確認の保存に失敗しました: ' + e.message);
-  } finally {
-    el.disabled = false;
-  }
 }
 
 async function saveEdit(id) {

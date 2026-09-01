@@ -2451,10 +2451,13 @@ end timeout
                     pname   = (props.get("指定案件ファイル名",{}).get("rich_text") or [{}])[0].get("plain_text","").strip()
                     dl      = (props["案件締切日・進行"]["date"] or {}).get("start","")
                     status  = (props["進捗"]["status"] or {}).get("name","")
+                    # 最終確認は請求書ツールでチェックするので、案件IDと状態も返す
+                    confirmed = bool(props.get("最終確認完了",{}).get("checkbox") or False)
                     if number and customer:
-                        cases.append({"number": number, "customer": customer,
+                        cases.append({"id": page["id"],
+                                      "number": number, "customer": customer,
                                       "price": price, "note": note,
-                                      "projectName": pname,
+                                      "projectName": pname, "confirmed": confirmed,
                                       "date": dl, "status": status})
                 except Exception as e:
                     pass

@@ -39,6 +39,25 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 }
 .btn-fetch:hover:not(:disabled) { background: #333; }
 .btn-fetch:disabled { background: #aaa; cursor: default; }
+.month-picker {
+  display: flex; align-items: center; gap: 4px;
+  background: #fff; border: 1.5px solid #d1d5db; border-radius: 10px;
+  padding: 4px 10px; user-select: none;
+}
+.month-picker-num {
+  font-size: 15px; font-weight: 700; color: #111827;
+  border: none; outline: none; background: transparent;
+  font-family: inherit; text-align: center; -moz-appearance: textfield;
+}
+.month-picker-num::-webkit-inner-spin-button,
+.month-picker-num::-webkit-outer-spin-button { opacity: 1; height: 22px; cursor: pointer; }
+.month-picker-num:focus { color: #4f46e5; }
+.month-picker-sep { font-size: 13px; color: #6b7280; }
+.fetch-state { font-size: 12px; color: #6b7280; }
+.cf-wrap { display:inline-flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap; }
+.cf-mark { font-size:11px; color:#6b7280; white-space:nowrap; }
+tr.confirmed { background:#f0fdf4; }
+tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
 
 /* テーブル */
 .inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -158,12 +177,19 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   <span id="serverTxt">サーバー確認中...</span>
 </div>
 
-<!-- 月選択 -->
+<!-- 月選択（ダイヤルを回すと自動で取得する。取得ボタンは不要）-->
 <div class="card">
-  <div class="card-title">対象月を選択</div>
+  <div class="card-title">対象月</div>
   <div class="ctrl-bar">
-    <select class="month-sel" id="monthSel"></select>
-    <button class="btn-fetch" id="btnFetch" onclick="fetchInvoice()">📥 案件データを取得</button>
+    <div class="month-picker">
+      <input class="month-picker-num" id="pickY" type="number" min="2020" max="2035" step="1"
+             style="width:58px" onchange="onPickerChange()" oninput="onPickerChange()">
+      <span class="month-picker-sep">年</span>
+      <input class="month-picker-num" id="pickM" type="number" min="1" max="12" step="1"
+             style="width:42px" onchange="onPickerChange()" oninput="onPickerChange()">
+      <span class="month-picker-sep">月</span>
+    </div>
+    <span id="fetchState" class="fetch-state"></span>
   </div>
 </div>
 
@@ -179,10 +205,11 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
     <table class="inv-table" id="invTable">
       <thead>
         <tr>
-          <th style="width:140px">お客様</th>
+          <th style="width:150px">お客様</th>
           <th>案件一覧</th>
           <th style="width:130px;text-align:right">請求金額</th>
-          <th style="width:100px;text-align:center">請求書</th>
+          <th style="width:88px;text-align:center;white-space:nowrap">請求書</th>
+          <th style="width:96px;text-align:center;white-space:nowrap">最終確認</th>
         </tr>
       </thead>
       <tbody id="invBody"></tbody>
@@ -234,22 +261,36 @@ function todayStr(d) {
 const SERVER = window.location.origin;
 let invoiceData = null; // 現在取得中のデータ
 
-// ========== 月セレクター初期化 ==========
-(function initMonthSel() {
-  const sel = document.getElementById('monthSel');
+// ========== 月ダイヤル ==========
+// 月を変えたら取得ボタンを押さずに自動で読み込む。
+// 連打しても最後の1回だけ走るよう、少し待ってからリクエストする。
+let _pickerTimer = null;
+
+function getDialMonth() {
   const now = new Date();
-  // 当月〜6ヶ月前
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const opt = document.createElement('option');
-    opt.value = `${y}-${m}`;
-    opt.textContent = `${y}年${m}月${i === 0 ? '（今月）' : i === 1 ? '（先月）' : ''}`;
-    sel.appendChild(opt);
-  }
-  // デフォルト: 先月
-  sel.selectedIndex = 1;
+  const y  = parseInt(document.getElementById('pickY')?.value) || now.getFullYear();
+  const mo = parseInt(document.getElementById('pickM')?.value) || (now.getMonth() + 1);
+  return `${y}-${String(mo).padStart(2, '0')}`;
+}
+
+function onPickerChange() {
+  // 12月の次は翌年1月、1月の前は前年12月に繰り上がる
+  const yEl = document.getElementById('pickY');
+  const mEl = document.getElementById('pickM');
+  let y  = parseInt(yEl?.value) || new Date().getFullYear();
+  let mo = parseInt(mEl?.value) || (new Date().getMonth() + 1);
+  if (mo > 12) { mo = 1;  y = Math.min(2035, y + 1); yEl.value = y; mEl.value = mo; }
+  if (mo < 1)  { mo = 12; y = Math.max(2020, y - 1); yEl.value = y; mEl.value = mo; }
+  clearTimeout(_pickerTimer);
+  _pickerTimer = setTimeout(() => fetchInvoice(), 300);
+}
+
+(function initMonthPicker() {
+  // 既定は先月（月初に前月分を請求することが多いため）
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  document.getElementById('pickY').value = d.getFullYear();
+  document.getElementById('pickM').value = d.getMonth() + 1;
 })();
 
 // 請求日: 当月末日
@@ -269,25 +310,36 @@ async function checkServer() {
       bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac';
       dot.style.background = '#22c55e';
       txt.textContent = 'サーバー接続中';
-      document.getElementById('btnFetch').disabled = false;
+      setDialEnabled(true);
+      // 起動を確認できた最初の1回だけ自動で読み込む。
+      // 画面を開いた時点で当月分が出ているようにするため。
+      if (!_firstLoadDone) { _firstLoadDone = true; fetchInvoice(); }
       return true;
     }
   } catch(e) {}
   bar.style.background = '#fef9c3'; bar.style.borderColor = '#fde047';
   dot.style.background = '#f59e0b';
   txt.innerHTML = 'サーバー未起動 ─ <strong>起動.command</strong> をダブルクリック';
-  document.getElementById('btnFetch').disabled = true;
+  setDialEnabled(false);
   return false;
 }
+
+let _firstLoadDone = false;
+function setDialEnabled(on) {
+  ['pickY', 'pickM'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !on;
+  });
+}
+
 checkServer();
 setInterval(checkServer, 4000);
 
 // ========== 案件データ取得 ==========
 async function fetchInvoice() {
-  const month = document.getElementById('monthSel').value;
-  const btn   = document.getElementById('btnFetch');
-  btn.disabled = true;
-  btn.textContent = '⏳ 取得中...';
+  const month = getDialMonth();
+  const state = document.getElementById('fetchState');
+  state.textContent = '⏳ 取得中…';
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('resultArea').style.display = 'none';
 
@@ -306,8 +358,42 @@ async function fetchInvoice() {
     document.getElementById('emptyState').innerHTML =
       `<div class="icon">⚠️</div><div style="color:#e53">取得失敗: ${e.message}</div>`;
   } finally {
-    btn.disabled = false;
-    btn.textContent = '📥 案件データを取得';
+    state.textContent = '';
+  }
+}
+
+// ========== 最終確認 ==========
+// 請求書を送って問題なければチェック。クライアントから戻しがあれば外す。
+// チェックはNotionの案件ごとに保存されるので、その請求分の案件をまとめて更新する。
+async function setConfirmed(customerNo, el) {
+  const cust = invoiceData?.customers.find(c => c.customer === customerNo);
+  if (!cust) return;
+  const on   = el.checked;
+  const mark = el.parentElement.querySelector('.cf-mark');
+  el.disabled = true;
+  mark.textContent = '保存中…';
+  try {
+    for (const c of cust.cases) {
+      const r = await fetch(SERVER + '/api/cases/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, confirmed: on }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'サーバーエラー');
+      c.confirmed = on;
+    }
+    mark.textContent = on ? '確認済' : '未確認';
+    el.closest('tr').classList.toggle('confirmed', on);
+  } catch (e) {
+    // 途中で失敗したら実際の保存状況に合わせて表示を直す
+    const done = cust.cases.filter(c => c.confirmed).length;
+    const tot  = cust.cases.length;
+    el.checked = done === tot;
+    mark.textContent = done === 0 ? '未確認' : done === tot ? '確認済' : `一部 ${done}/${tot}`;
+    el.closest('tr').classList.toggle('confirmed', done === tot);
+    showMsg('最終確認の保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    el.disabled = false;
   }
 }
 
@@ -330,7 +416,7 @@ function renderTable(d) {
   `;
 
   if (d.customers.length === 0) {
-    body.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:30px;color:#aaa">
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:#aaa">
       この月の案件が見つかりませんでした</td></tr>`;
   } else {
     d.customers.forEach(cust => {
@@ -347,8 +433,17 @@ function renderTable(d) {
         return `<div class="case-item">${badge} <span class="case-num">${escHtml(c.number)}</span>${name}</div>`;
       }).join('');
 
+      // 最終確認は案件ごとにNotionへ保存される。
+      // 請求書はお客様単位で出すので、行のチェックはその請求分をまとめて切り替える。
+      const total   = cust.cases.length;
+      const done    = cust.cases.filter(c => c.confirmed).length;
+      const cfLabel = done === 0 ? '未確認'
+                    : done === total ? '確認済'
+                    : `一部 ${done}/${total}`;
+
       const tr = document.createElement('tr');
       tr.dataset.customer = cust.customer;
+      if (done === total) tr.classList.add('confirmed');
       tr.innerHTML = `
         <td style="vertical-align:top">
           <div class="cust-no">${escHtml(cust.customer)}</div>
@@ -373,6 +468,13 @@ function renderTable(d) {
             onclick="generateInvoice('${escHtml(cust.customer)}','${escHtml(cust.name||'')}')">
             📄 作成
           </button>
+        </td>
+        <td style="text-align:center">
+          <label class="cf-wrap" title="請求書を送って問題なければチェック。戻しがあれば外す">
+            <input type="checkbox" ${done === total ? 'checked' : ''}
+                   onchange="setConfirmed('${escHtml(cust.customer)}', this)">
+            <span class="cf-mark">${cfLabel}</span>
+          </label>
         </td>
       `;
       body.appendChild(tr);
