@@ -167,6 +167,7 @@ CUSTOMER_PAGES = {
 
 import time as _time
 CUSTOMER_NAME_CACHE = {}   # {customer_no: customer_name}  キャッシュ
+CUSTOMER_LINK_CACHE = {}   # {customer_no: {name, url, id}}  Notion顧客ページへのリンク（名前キャッシュと同時に構築）
 _CUSTOMER_CACHE_AT  = 0.0  # 最終構築時刻（epoch秒）
 CUSTOMER_CACHE_TTL  = 300  # 秒。期限切れで再構築し、後から追加した顧客も取り込む
 
@@ -176,6 +177,7 @@ def get_customer_name_map(force=False):
     if (not force) and CUSTOMER_NAME_CACHE and (_time.time() - _CUSTOMER_CACHE_AT) < CUSTOMER_CACHE_TTL:
         return CUSTOMER_NAME_CACHE
     new_map = {}
+    new_links = {}
     body = {"page_size": 100}
     cursor = None
     while True:
@@ -189,6 +191,10 @@ def get_customer_name_map(force=False):
                 name = (props["クライアント名"]["rich_text"] or [{}])[0].get("plain_text","").strip()
                 if no and name:
                     new_map[no] = name
+                if no:
+                    # 顧客ページのURL。Notionが返さない場合はIDから組み立てる
+                    url = page.get("url") or f"https://www.notion.so/{page['id'].replace('-', '')}"
+                    new_links[no] = {"name": name, "url": url, "id": page["id"]}
             except Exception:
                 pass
         if not result.get("has_more"): break
@@ -197,9 +203,17 @@ def get_customer_name_map(force=False):
     if new_map:
         CUSTOMER_NAME_CACHE.clear()
         CUSTOMER_NAME_CACHE.update(new_map)
+    if new_links:
+        CUSTOMER_LINK_CACHE.clear()
+        CUSTOMER_LINK_CACHE.update(new_links)
     _CUSTOMER_CACHE_AT = _time.time()
-    print(f"  👥 顧客名キャッシュ構築: {len(CUSTOMER_NAME_CACHE)}件")
+    print(f"  👥 顧客名キャッシュ構築: {len(CUSTOMER_NAME_CACHE)}件（リンク {len(CUSTOMER_LINK_CACHE)}件）")
     return CUSTOMER_NAME_CACHE
+
+def get_customer_link_map(force=False):
+    """全顧客のNo→{name,url,id}を返す（名前キャッシュと同じTTLで構築）"""
+    get_customer_name_map(force)
+    return CUSTOMER_LINK_CACHE
 
 NOTION_API = "https://api.notion.com/v1"
 HEADERS = {
@@ -543,6 +557,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_static(self, filename, content_type):
+        """JS/CSSなどの静的ファイルを返す（HTML以外用）"""
+        filepath = os.path.join(SCRIPT_DIR, filename)
+        if not os.path.exists(filepath):
+            self.send_response(404)
+            self.end_headers()
+            return
+        with open(filepath, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", len(body))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         from urllib.parse import unquote
         path = unquote(self.path.split('?')[0])  # デコード＆クエリ除去
@@ -607,6 +637,12 @@ class Handler(BaseHTTPRequestHandler):
                 "next_3000s":    next_in_range(nos, 3000, 3999), # 新規チャンネル・裁量高
                 "next_regular":  next_in_range(nos, 1, 99),      # 通常（固有値・再利用不可）
             })
+        elif path == "/customer_link.js":
+            self.send_static("customer_link.js", "application/javascript; charset=utf-8")
+        elif path == "/api/customer-links":
+            # 全ページ共通：お客様No→Notion顧客ページURL（?refresh=1 で再構築）
+            links = get_customer_link_map(force=("refresh=" in self.path))
+            self.send_json(200, {"ok": True, "count": len(links), "links": links})
         elif path == "/api/customers":
             self.handle_get_customers()
         elif path == "/api/customers-all":
@@ -2125,6 +2161,7 @@ end timeout
                             "pageName": page_name, "status": status,
                             "contact": contact, "kind": kind, "notes": notes,
                             "invoiceName": inv_name,
+                            "notionUrl": page.get("url", ""),
                         })
                 except Exception:
                     pass
@@ -2220,6 +2257,7 @@ end timeout
                             "no": no, "name": name, "status": status,
                             "contact": contact, "channels": channels,
                             "pageId": page["id"],
+                            "notionUrl": page.get("url", ""),
                         })
                 except Exception:
                     pass

@@ -446,8 +446,8 @@ function renderTable(d) {
       if (done === total) tr.classList.add('confirmed');
       tr.innerHTML = `
         <td style="vertical-align:top">
-          <div class="cust-no">${escHtml(cust.customer)}</div>
-          <div class="cust-addr">${escHtml(cust.name || '')}</div>
+          <div class="cust-no"><span data-cust-no="${escHtml(cust.customer)}">${escHtml(cust.customer)}</span></div>
+          <div class="cust-addr"><span data-cust-no="${escHtml(cust.customer)}">${escHtml(cust.name || '')}</span></div>
         </td>
         <td style="vertical-align:top">
           <div style="font-size:12px;color:#666">
@@ -650,5 +650,6 @@ function hideMsg() {
   el.className = 'msg-box';
 }
 </script>
+<script src="/customer_link.js" defer></script>
 </body>
 </html>

@@ -743,8 +743,8 @@ function renderList() {
       : `<div class="num-cell ${c.price ? 'price-only' : 'zero-cell'}">${fmtYen(c.price)}</div>`;
     html += `<tr class="case-row" id="row-${c.id}">
       <td><a href="${esc(c.url)}" target="_blank" style="color:#4f46e5;font-weight:700;text-decoration:none;font-size:12px">${esc(c.number||'―')}</a></td>
-      <td style="font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">${esc(c.customer||'―')}</td>
-      <td style="font-size:13px;white-space:nowrap">${esc(c.customerName||'')}</td>
+      <td style="font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap"><span data-cust-no="${esc(c.customer||'')}">${esc(c.customer||'―')}</span></td>
+      <td style="font-size:13px;white-space:nowrap"><span data-cust-no="${esc(c.customer||'')}">${esc(c.customerName||'')}</span></td>
       <td>${amtHtml}</td>
       <td><span class="s-badge ${sClass(c.status)}">${esc(c.status||'―')}</span></td>
       <td style="font-size:12px;color:#6b7280">${fmtDate(c.date)}</td>
@@ -899,7 +899,7 @@ function renderGroup() {
       : `<span class="ccard-price">${fmtYen(g.totalPrice)}</span>`;
     html += `<div class="ccard" id="${cid}">
       <div class="ccard-hdr" onclick="toggleCard('${cid}')">
-        <span class="ccard-name">${esc(g.customer)}<span style="font-size:12px;color:#6b7280;font-weight:500;margin-left:6px">${esc(g.customerName)}</span></span>
+        <span class="ccard-name"><span data-cust-no="${esc(g.customer)}">${esc(g.customer)}</span><span data-cust-no="${esc(g.customer)}" style="font-size:12px;color:#6b7280;font-weight:500;margin-left:6px">${esc(g.customerName)}</span></span>
         <span class="ccard-cnt">${g.cases.length}件</span>
         ${profitLabel}
         <span class="ccard-chev">▼</span>
@@ -1435,5 +1435,6 @@ function crmShowMsg(type, html) {
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 </script>
+<script src="/customer_link.js" defer></script>
 </body>
 </html>

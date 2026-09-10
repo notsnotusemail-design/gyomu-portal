@@ -336,9 +336,9 @@ function renderTable() {
     tr.innerHTML = `
       <td><input type="checkbox" onchange="toggleSelect('${c.id}', this)"
           ${selectedIds.has(c.id) ? 'checked' : ''}></td>
-      <td class="no-cell">${esc(c.no)}</td>
+      <td class="no-cell"><span data-cust-no="${esc(c.no)}" data-cust-url="${esc(c.notionUrl||'')}">${esc(c.no)}</span></td>
       <td>
-        <div class="name-cell">${esc(c.name || c.pageName)}</div>
+        <div class="name-cell" data-cust-no="${esc(c.no)}" data-cust-url="${esc(c.notionUrl||'')}">${esc(c.name || c.pageName)}</div>
         ${c.name && c.pageName && c.name !== c.pageName
           ? `<div class="name-sub">${esc(c.pageName)}</div>` : ''}
       </td>
@@ -457,5 +457,6 @@ async function bulkArchive() {
 // 起動
 loadCustomers();
 </script>
+<script src="/customer_link.js" defer></script>
 </body>
 </html>
