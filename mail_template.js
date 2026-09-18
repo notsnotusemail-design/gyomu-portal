@@ -131,10 +131,11 @@
       const list = (d.cases || [])
         .filter(c => String(c.customer || '').trim() === no)
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-        .map(c => ({
-          label: (c.filename || '').trim() || (c.note || '').trim() || (c.number || '').trim(),
-          number: c.number || '', date: c.date || '',
-        }))
+        .map(c => {
+          const label = (c.filename || '').trim() || (c.note || '').trim() || (c.number || '').trim();
+          return { label, number: c.number || '', date: c.date || '',
+                   hint: [c.date || '', c.number || ''].filter(Boolean).join('  ') };
+        })
         .filter(c => c.label && !seen.has(c.label) && seen.add(c.label))
         .slice(0, 60);
       _caseCache[no] = list;
@@ -145,6 +146,54 @@
   }
 
   const isCaseVar = (key) => /案件名$/.test(key) || key === '案件';
+
+  /* ---------- 案件候補の期間しぼり ----------
+     過去の案件が多い顧客だと一覧から探すのが大変なので、既定では直近1ヶ月だけを
+     ダイヤルに載せる。それ以前は「3ヶ月」「すべて」で広げるか、年月を指定して
+     その月の案件だけに絞る。 */
+  const CASE_RANGES = [
+    { id: '1m',    label: '直近1ヶ月' },
+    { id: '3m',    label: '3ヶ月' },
+    { id: 'all',   label: 'すべて' },
+    { id: 'month', label: '年月で選ぶ' },
+  ];
+
+  /* 年月モードの初期値。案件が1件も無ければ今月から始める */
+  function newestCaseMonth(cases) {
+    const d = (cases || []).map(c => c.date).filter(Boolean).sort().pop();
+    if (d) return { y: Number(d.slice(0, 4)), m: Number(d.slice(5, 7)), d: 1 };
+    const n = new Date();
+    return { y: n.getFullYear(), m: n.getMonth() + 1, d: 1 };
+  }
+
+  function monthsAgo(n) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function filterCases(cases, range) {
+    const list = cases || [];
+    if (!range || range.mode === 'all') return list;
+    if (range.mode === 'month') {
+      const md = range.month || {};
+      if (!md.y) return list;
+      const key = `${md.y}-${String(md.m).padStart(2, '0')}`;
+      return list.filter(c => (c.date || '').startsWith(key));
+    }
+    const from = monthsAgo(range.mode === '3m' ? 3 : 1);
+    return list.filter(c => (c.date || '') >= from);
+  }
+
+  /* 直近に案件が無い顧客で空のダイヤルを出さないよう、
+     中身のある一番狭い期間まで自動で広げる */
+  function initialRange(cases) {
+    for (const mode of ['1m', '3m']) {
+      if (filterCases(cases, { mode }).length) return { mode };
+    }
+    return { mode: 'all' };
+  }
+
 
   async function loadTemplates() {
     const r = await fetch(SERVER + '/api/mail-templates', { signal: AbortSignal.timeout(15000) });
@@ -192,6 +241,8 @@
     injectStyle();
     state.values = state.values || {};
     state.dates  = state.dates  || {};
+    state.ranges = state.ranges || {};
+    container._mtpArgs = { text, state, onChange };   // 期間を変えた時に組み直すため
     const vars = manualVars(text);
 
     if (!vars.length) {
@@ -220,12 +271,33 @@
           </div>`;
       }
       if (isCaseVar(v.key)) {
-        const cases = state.cases || [];
+        const all = state.cases || [];
+        const range = state.ranges[v.key] || (state.ranges[v.key] = initialRange(all));
+        const shown = filterCases(all, range);
+        const note = state.casesLoading ? '読み込み中…'
+                   : (all.length ? `${shown.length}件` : '候補なし');
+        const md = range.month || (range.month = newestCaseMonth(all));
         return `
           <div class="mtp-field">
             <label class="mtp-flabel">${esc(v.key)}</label>
-            ${comboHTML(v.key, state.values[v.key], cases,
-                        cases.length ? '候補から選ぶか直接入力' : '案件名を入力')}
+            <div class="mtp-casewrap">
+              ${comboHTML(v.key, state.values[v.key], shown,
+                          all.length ? '候補から選ぶか直接入力' : '案件名を入力', note)}
+              <div class="mtp-range" data-var="${esc(v.key)}">
+                ${CASE_RANGES.map(r => {
+                    const n = r.id === 'month' ? null : filterCases(all, { mode: r.id }).length;
+                    return `<button type="button" class="mtp-range-btn${r.id === range.mode ? ' on' : ''}"
+                              data-range="${r.id}">${esc(r.label)}${n === null ? '' : ` <span class="mtp-range-n">${n}</span>`}</button>`;
+                  }).join('')}
+                ${range.mode === 'month' ? `
+                  <span class="mtp-dial mtp-monthdial">
+                    <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${md.y}" style="width:60px">
+                    <span class="mtp-dial-sep">年</span>
+                    <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${md.m}" style="width:40px">
+                    <span class="mtp-dial-sep">月</span>
+                  </span>` : ''}
+              </div>
+            </div>
           </div>`;
       }
       const isLong = /自由記載|本文|メモ|備考|内容/.test(v.key);
@@ -240,7 +312,32 @@
         </div>`;
     }).join('');
 
-    wireCombo(container, state.cases || [], onChange);
+    wireCombo(container, (varKey) => isCaseVar(varKey)
+      ? filterCases(state.cases, state.ranges[varKey])
+      : [], onChange);
+
+    // 期間ボタン
+    container.querySelectorAll('.mtp-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.closest('.mtp-range').dataset.var;
+        state.ranges[key] = Object.assign({}, state.ranges[key], { mode: btn.dataset.range });
+        rerenderVarInputs(container);
+      });
+    });
+
+    // 年月ダイヤル（その月の案件だけに絞る）
+    container.querySelectorAll('.mtp-monthdial').forEach(dial => {
+      const key = dial.closest('.mtp-range').dataset.var;
+      dial.querySelectorAll('.mtp-dial-num').forEach(inp => {
+        const handler = () => {
+          const md = state.ranges[key].month;
+          md[inp.dataset.part] = parseInt(inp.value, 10);
+          normalizeDate(md);
+          rerenderVarInputs(container);
+        };
+        inp.addEventListener('change', handler);
+      });
+    });
 
     // テキスト欄
     container.querySelectorAll('.mtp-fin').forEach(el => {
@@ -250,8 +347,8 @@
       });
     });
 
-    // 日付ダイヤル
-    container.querySelectorAll('.mtp-dial').forEach(dial => {
+    // 日付ダイヤル（案件の年月しぼりダイヤルは見た目が同じだけなので除く）
+    container.querySelectorAll('.mtp-dial:not(.mtp-monthdial)').forEach(dial => {
       const key = dial.dataset.var;
       const fmtSel = container.querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
       const apply = () => {
@@ -294,19 +391,22 @@
      候補が無いときはただのテキスト欄として振る舞う。 */
   let _comboSeq = 0;
 
-  function comboHTML(varKey, value, candidates, placeholder) {
+  function comboHTML(varKey, value, candidates, placeholder, note) {
     const id = 'mtpdl' + (++_comboSeq);
-    const has = candidates && candidates.length;
+    const list = candidates || [];
+    // 候補が0件でもダイヤルは出したままにする（消えると壊れて見えるため）
+    const dis = list.length ? '' : ' disabled';
     return `
       <div class="mtp-combo" data-var="${esc(varKey)}" data-list="${id}">
-        ${has ? '<button class="mtp-combo-arw" type="button" data-step="-1" title="前の候補">◀</button>' : ''}
+        <button class="mtp-combo-arw" type="button" data-step="-1" title="前の候補"${dis}>◀</button>
         <input class="mtp-fin mtp-combo-in" data-var="${esc(varKey)}" value="${esc(value || '')}"
-               placeholder="${esc(placeholder || '')}" ${has ? `list="${id}"` : ''}>
-        ${has ? '<button class="mtp-combo-arw" type="button" data-step="1" title="次の候補">▶</button>' : ''}
-        ${has ? `<span class="mtp-combo-count">0/${candidates.length}</span>` : ''}
+               placeholder="${esc(placeholder || '')}" list="${id}">
+        <button class="mtp-combo-arw" type="button" data-step="1" title="次の候補"${dis}>▶</button>
+        <span class="mtp-combo-count"${note !== undefined ? ` data-note="${esc(note)}"` : ''}
+              >${note !== undefined ? esc(note) : '0/' + list.length}</span>
       </div>
-      ${has ? `<datalist id="${id}">${candidates.map(c =>
-          `<option value="${esc(c.label !== undefined ? c.label : c)}">${esc(c.hint || '')}</option>`).join('')}</datalist>` : ''}`;
+      <datalist id="${id}">${list.map(c =>
+          `<option value="${esc(c.label !== undefined ? c.label : c)}">${esc(c.hint || '')}</option>`).join('')}</datalist>`;
   }
 
   /* comboHTML で作った要素にダイヤル操作を付ける */
@@ -318,6 +418,8 @@
       const labels = list.map(c => (c.label !== undefined ? c.label : c));
       const sync = () => {
         if (!count) return;
+        // 候補が無いときは呼び出し側の文言（読み込み中…／候補なし）を残す
+        if (!labels.length) { count.textContent = count.dataset.note || '候補なし'; return; }
         const i = labels.indexOf(input.value);
         count.textContent = `${i < 0 ? 0 : i + 1}/${labels.length}`;
       };
@@ -336,6 +438,14 @@
       input.addEventListener('input', sync);
       sync();
     });
+  }
+
+  /* 期間を変えたときなど、同じ引数で入力欄を組み直す */
+  function rerenderVarInputs(container) {
+    const a = container._mtpArgs;
+    if (!a) return;
+    renderVarInputs(container, a.text, a.state, a.onChange);
+    a.onChange();
   }
 
   function defaultDate() {
@@ -439,7 +549,21 @@
         width:28px; height:33px; cursor:pointer; font-size:11px; color:#6b7280;
         font-family:inherit; flex-shrink:0; }
       .mtp-combo-arw:hover { background:#eef1ff; border-color:#4f6ef7; color:#4f6ef7; }
-      .mtp-combo-count { font-size:11px; color:#bbb; flex-shrink:0; min-width:32px; }
+      .mtp-combo-count { font-size:11px; color:#bbb; flex-shrink:0; min-width:44px; }
+      .mtp-combo-arw:disabled { opacity:0.4; cursor:default; }
+      .mtp-combo-arw:disabled:hover { background:#fff; border-color:#d1d5db; color:#6b7280; }
+
+      /* 案件候補の期間しぼり */
+      .mtp-casewrap { flex:1; min-width:220px; }
+      .mtp-range { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin-top:6px; }
+      .mtp-range-btn { border:1.5px solid #e8e8e8; background:#fff; border-radius:20px;
+        font-size:11px; color:#888; padding:3px 10px; cursor:pointer; font-family:inherit; }
+      .mtp-range-btn:hover { background:#f5f5f5; color:#555; }
+      .mtp-range-btn.on { background:#eef1ff; border-color:#4f6ef7; color:#4f6ef7; font-weight:600; }
+      .mtp-range-n { color:#bbb; font-size:10px; }
+      .mtp-range-btn.on .mtp-range-n { color:#8ea0f7; }
+      .mtp-monthdial { padding:2px 8px; }
+      .mtp-monthdial .mtp-dial-num { font-size:13px; }
     `;
     document.head.appendChild(st);
   }
@@ -507,12 +631,14 @@
       </div>`);
 
     const $ = (id) => modal.querySelector('#' + id);
-    const state = { values: {}, dates: {}, cases: [] };
+    const state = { values: {}, dates: {}, cases: [], ranges: {}, casesLoading: true };
     let cur = { subject: '', body: '' };
 
     // その顧客の案件を案件名の候補にする（引けなくても手入力はできる）
     loadCases(customer.no).then(list => {
       state.cases = list;
+      state.ranges = {};
+      state.casesLoading = false;
       rebuild();
     });
 
@@ -564,6 +690,7 @@
     fill, missingVars, placeholders, manualVars, renderVarInputs,
     formatDate, todayJa, senderName, dateFormat,
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
+    filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
     copyText, selectElementText, injectStyle, openPicker,
   };
 })();

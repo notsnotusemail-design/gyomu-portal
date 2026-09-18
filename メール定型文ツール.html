@@ -351,10 +351,15 @@ function onCustomerChange() {
     .querySelector('.mtp-combo-in').value.trim();
   renderPreview();
   clearTimeout(_caseTimer);
+  const c = matchedCustomer();
+  varState.casesLoading = !!c;
+  varSig = null;            // 候補が変わったので入力欄を組み直す
+  renderPreview();
   _caseTimer = setTimeout(async () => {
-    const c = matchedCustomer();
-    varState.cases = c ? await MailTpl.loadCases(c.no) : [];
-    varSig = null;          // 候補が変わったので入力欄を組み直す
+    varState.cases  = c ? await MailTpl.loadCases(c.no) : [];
+    varState.ranges = {};   // 顧客が変わったら期間は既定（直近1ヶ月）に戻す
+    varState.casesLoading = false;
+    varSig = null;
     renderPreview();
   }, 250);
 }
