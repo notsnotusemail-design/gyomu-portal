@@ -118,12 +118,26 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
 /* プレビュー */
 .prev-ctrl { display: grid; grid-template-columns: 1fr 130px 120px; gap: 8px; margin-bottom: 12px; }
 @media (max-width: 660px) { .prev-ctrl { grid-template-columns: 1fr; } }
+/* プレビューは出力したあとに手で直せる */
 .prev-box {
+  display: block; width: 100%;
   background: #fafafa; border: 1.5px solid #eee; border-radius: 9px; padding: 10px 12px;
   font-size: 13px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
-  min-height: 40px;
+  min-height: 40px; font-family: inherit; color: #1a1a1a; resize: vertical;
 }
-.prev-box.subj { white-space: normal; font-weight: 600; min-height: 0; }
+.prev-box:focus { outline: none; border-color: #4f6ef7; background: white; }
+.prev-box.subj { white-space: normal; font-weight: 600; min-height: 0; resize: none; }
+.editable-note { font-size: 10px; color: #ccc; font-weight: 400; margin-left: 6px; }
+.edited-note {
+  font-size: 11.5px; color: #3b5ce0; background: #eef1ff; border: 1px solid #c7d2fe;
+  border-radius: 7px; padding: 7px 10px; margin-top: 8px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.relink-btn {
+  border: 1.5px solid #c7d2fe; background: white; color: #3b5ce0; border-radius: 7px;
+  font-size: 11px; padding: 3px 9px; cursor: pointer; font-family: inherit; margin-left: auto;
+}
+.relink-btn:hover { background: #4f6ef7; border-color: #4f6ef7; color: white; }
 .warn {
   font-size: 11.5px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a;
   border-radius: 7px; padding: 7px 10px; margin-top: 8px;
@@ -247,11 +261,12 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
             </div>
           </div>
           <div class="mtp-inputs" id="pInputs" style="margin-bottom:14px"></div>
-          <label class="field-label">件名</label>
-          <div class="prev-box subj" id="prevSubject"></div>
+          <label class="field-label">件名<span class="editable-note">ここで直接直せます</span></label>
+          <input class="prev-box subj" id="prevSubject">
           <div style="height:10px"></div>
           <label class="field-label">本文</label>
-          <div class="prev-box" id="prevBody"></div>
+          <textarea class="prev-box" id="prevBody" rows="8"></textarea>
+          <div id="prevEdited"></div>
           <div id="prevWarn"></div>
           <div class="btn-bar" style="margin-top:12px;">
             <button class="btn primary" onclick="copyPrev('body', this)">本文をコピー</button>
@@ -277,6 +292,7 @@ let lastField = null;  // 変数を挿し込む対象（件名 or 本文）
 let varState = { values: {}, dates: {} };  // 送信時に入力した値
 let varSig = null;     // 入力欄を組み直すかの判定用（変数の顔ぶれ）
 let currentCustomerName = '';              // 宛先（選択でも手入力でも入る）
+let prevEdited = false;                    // プレビューを手で直したか
 
 // ===== 初期化 =====
 window.addEventListener('DOMContentLoaded', () => {
@@ -287,6 +303,12 @@ window.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     el.addEventListener('focus', () => { lastField = el; });
     el.addEventListener('input', renderPreview);
+  });
+  ['prevSubject', 'prevBody'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      prevEdited = true;
+      syncPrevNotes();
+    });
   });
   loadTemplates();
   loadCustomers();
@@ -412,6 +434,7 @@ function renderList() {
 function selectTemplate(id) {
   const t = templates.find(x => x.id === id);
   if (!t) return;
+  prevEdited = false;   // 別の定型文を開いたらプレビューは作り直す
   currentId = t.id;
   document.getElementById('fName').value     = t.name;
   document.getElementById('fSubject').value  = t.subject;
@@ -432,6 +455,7 @@ function newTemplate() { clearForm(); document.getElementById('fName').focus(); 
 
 function clearForm() {
   currentId = '';
+  prevEdited = false;
   ['fName', 'fSubject', 'fBody', 'fMemo', 'fOrder'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('fCategory').value = '';
   document.getElementById('fEnabled').checked = true;
@@ -527,19 +551,37 @@ function syncVarInputs() {
 
 function renderPreview() {
   syncVarInputs();
-  const ctx = previewCtx();
-  const subj = MailTpl.fill(document.getElementById('fSubject').value, ctx);
-  const body = MailTpl.fill(document.getElementById('fBody').value, ctx);
-  document.getElementById('prevSubject').textContent = subj || '（件名なし）';
-  document.getElementById('prevBody').textContent    = body || '（本文なし）';
+  // 手で直したあとは、変数を変えてもその編集を上書きしない
+  if (!prevEdited) {
+    const ctx = previewCtx();
+    document.getElementById('prevSubject').value = MailTpl.fill(document.getElementById('fSubject').value, ctx);
+    document.getElementById('prevBody').value    = MailTpl.fill(document.getElementById('fBody').value, ctx);
+  }
+  syncPrevNotes();
+}
+
+function syncPrevNotes() {
+  const subj = document.getElementById('prevSubject').value;
+  const body = document.getElementById('prevBody').value;
   const miss = MailTpl.missingVars(subj + '\n' + body);
   document.getElementById('prevWarn').innerHTML = miss.length
     ? `<div class="warn">未入力の項目があります: ${esc(miss.join(' '))}</div>` : '';
+  document.getElementById('prevEdited').innerHTML = prevEdited
+    ? `<div class="edited-note">手で直した内容を表示しています（変数を変えても反映されません）
+         <button type="button" class="relink-btn" onclick="relinkPreview()">テンプレートから作り直す</button></div>`
+    : '';
+  MailTpl.autoGrow(document.getElementById('prevBody'));
+}
+
+// 手編集を捨てて、テンプレート＋変数から作り直す
+function relinkPreview() {
+  prevEdited = false;
+  renderPreview();
 }
 
 async function copyPrev(which, btn) {
   const el = document.getElementById(which === 'subject' ? 'prevSubject' : 'prevBody');
-  const ok = await MailTpl.copyText(el.textContent);
+  const ok = await MailTpl.copyText(el.value);
   // コピーが拒否される環境では選択状態にして ⌘C で拾えるようにする
   if (!ok) MailTpl.selectElementText(el);
   const old = btn.textContent;
@@ -548,8 +590,8 @@ async function copyPrev(which, btn) {
 }
 
 function openMail() {
-  const s = document.getElementById('prevSubject').textContent;
-  const b = document.getElementById('prevBody').textContent;
+  const s = document.getElementById('prevSubject').value;
+  const b = document.getElementById('prevBody').value;
   window.location.href = `mailto:?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`;
 }
 

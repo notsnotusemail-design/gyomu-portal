@@ -236,11 +236,19 @@
   /* コピーが拒否された環境用。該当テキストを選択状態にして手動コピーできるようにする */
   function selectElementText(el) {
     if (!el) return;
+    if (el.select) { el.focus(); el.select(); return; }   // input / textarea
     const range = document.createRange();
     range.selectNodeContents(el);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
+  }
+
+  /* 本文の入力欄は中身に合わせて伸ばす（スクロールバーの中で書かせない） */
+  function autoGrow(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight + 2, 640) + 'px';
   }
 
   function esc(s) {
@@ -510,10 +518,20 @@
         font-family:inherit; background:#fafafa; }
       .mtp-sel:focus { outline:none; border-color:#4f6ef7; background:#fff; }
       .mtp-label { font-size:11px; font-weight:600; color:#999; margin:12px 0 5px; }
-      .mtp-prev { background:#fafafa; border:1.5px solid #eee; border-radius:9px;
-        padding:10px 12px; font-size:13px; line-height:1.75; white-space:pre-wrap;
-        word-break:break-word; min-height:40px; }
-      .mtp-prev.subj { white-space:normal; font-weight:600; min-height:0; }
+      /* プレビューは出力したあとに手で直せる */
+      .mtp-prev { display:block; width:100%; background:#fafafa; border:1.5px solid #eee;
+        border-radius:9px; padding:10px 12px; font-size:13px; line-height:1.75;
+        font-family:inherit; color:#1a1a1a; white-space:pre-wrap; word-break:break-word;
+        min-height:40px; resize:vertical; }
+      .mtp-prev:focus { outline:none; border-color:#4f6ef7; background:#fff; }
+      .mtp-prev.subj { white-space:normal; font-weight:600; min-height:0; resize:none; }
+      .mtp-editable { font-size:10px; color:#ccc; font-weight:400; margin-left:6px; }
+      .mtp-edited { font-size:11.5px; color:#3b5ce0; background:#eef1ff; border:1px solid #c7d2fe;
+        border-radius:7px; padding:7px 10px; margin-top:8px;
+        display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+      .mtp-relink { border:1.5px solid #c7d2fe; background:#fff; color:#3b5ce0; border-radius:7px;
+        font-size:11px; padding:3px 9px; cursor:pointer; font-family:inherit; margin-left:auto; }
+      .mtp-relink:hover { background:#4f6ef7; border-color:#4f6ef7; color:#fff; }
       .mtp-warn { font-size:11.5px; color:#b45309; background:#fffbeb; border:1px solid #fde68a;
         border-radius:7px; padding:7px 10px; margin-top:8px; }
       .mtp-foot { display:flex; gap:8px; padding:12px 18px; border-top:1px solid #eee;
@@ -633,10 +651,11 @@
         </select>
       </div>
       <div class="mtp-inputs" id="mtpInputs"></div>
-      <div class="mtp-label">件名</div>
-      <div class="mtp-prev subj" id="mtpSubj"></div>
+      <div class="mtp-label">件名<span class="mtp-editable">ここで直接直せます</span></div>
+      <input class="mtp-prev subj" id="mtpSubj">
       <div class="mtp-label">本文</div>
-      <div class="mtp-prev" id="mtpBody"></div>
+      <textarea class="mtp-prev" id="mtpBody" rows="6"></textarea>
+      <div id="mtpEdited"></div>
       <div id="mtpWarn"></div>`;
     modal.insertAdjacentHTML('beforeend', `
       <div class="mtp-foot">
@@ -648,7 +667,7 @@
 
     const $ = (id) => modal.querySelector('#' + id);
     const state = { values: {}, dates: {}, cases: [], ranges: {}, casesLoading: true };
-    let cur = { subject: '', body: '' };
+
 
     // その顧客の案件を案件名の候補にする（引けなくても手入力はできる）
     loadCases(customer.no).then(list => {
@@ -665,21 +684,39 @@
       values:       state.values,
     });
 
-    function render() {
-      const t = templates[Number($('mtpSel').value)] || {};
-      cur = { subject: fill(t.subject, ctx()), body: fill(t.body, ctx()) };
-      $('mtpSubj').textContent = cur.subject || '（件名なし）';
-      $('mtpBody').textContent = cur.body || '（本文なし）';
-      const miss = missingVars(cur.subject + '\n' + cur.body);
+    // プレビューを手で直したら、変数を変えてもその編集を上書きしない
+    let edited = false;
+
+    function syncWarn() {
+      const miss = missingVars($('mtpSubj').value + '\n' + $('mtpBody').value);
       $('mtpWarn').innerHTML = miss.length
         ? `<div class="mtp-warn">未入力の項目があります: ${esc(miss.join(' '))}</div>` : '';
+      $('mtpEdited').innerHTML = edited
+        ? `<div class="mtp-edited">手で直した内容を表示しています（変数を変えても反映されません）
+             <button type="button" class="mtp-relink">テンプレートから作り直す</button></div>` : '';
+      const relink = $('mtpEdited').querySelector('.mtp-relink');
+      if (relink) relink.onclick = () => { edited = false; render(); };
+      autoGrow($('mtpBody'));
+    }
+
+    function render() {
+      if (!edited) {
+        const t = templates[Number($('mtpSel').value)] || {};
+        $('mtpSubj').value = fill(t.subject, ctx());
+        $('mtpBody').value = fill(t.body, ctx());
+      }
+      syncWarn();
     }
     function rebuild() {
       const t = templates[Number($('mtpSel').value)] || {};
       renderVarInputs($('mtpInputs'), (t.subject || '') + '\n' + (t.body || ''), state, render);
       render();
     }
-    $('mtpSel').onchange = rebuild;
+    ['mtpSubj', 'mtpBody'].forEach(id => {
+      $(id).addEventListener('input', () => { edited = true; syncWarn(); });
+    });
+    // 定型文を選び直したら、その定型文の内容から作り直す
+    $('mtpSel').onchange = () => { edited = false; rebuild(); };
     rebuild();
 
     function flash(btn, text) {
@@ -692,11 +729,11 @@
       selectElementText(previewEl);   // 選択しておけば ⌘C で拾える
       flash(btn, '⌘Cでコピーしてください');
     }
-    $('mtpCopyBody').onclick = (e) => copyOr(e.target, cur.body, $('mtpBody'));
-    $('mtpCopySubj').onclick = (e) => copyOr(e.target, cur.subject, $('mtpSubj'));
+    $('mtpCopyBody').onclick = (e) => copyOr(e.target, $('mtpBody').value, $('mtpBody'));
+    $('mtpCopySubj').onclick = (e) => copyOr(e.target, $('mtpSubj').value, $('mtpSubj'));
     $('mtpMail').onclick = () => {
-      window.location.href =
-        `mailto:?subject=${encodeURIComponent(cur.subject)}&body=${encodeURIComponent(cur.body)}`;
+      window.location.href = `mailto:?subject=${encodeURIComponent($('mtpSubj').value)}` +
+                             `&body=${encodeURIComponent($('mtpBody').value)}`;
     };
     $('mtpEdit').onclick = () => { window.location.href = '/メール定型文ツール.html'; };
   }
@@ -707,6 +744,6 @@
     formatDate, todayJa, senderName, dateFormat, formatsFor, MD_FORMATS,
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
-    copyText, selectElementText, injectStyle, openPicker,
+    copyText, selectElementText, injectStyle, autoGrow, openPicker,
   };
 })();
