@@ -285,6 +285,11 @@
               <input class="mtp-dial-num" type="number" data-part="d" min="0" max="32" value="${d.d}" style="width:40px">
               <span class="mtp-dial-sep">日</span>
               <button class="mtp-dial-today" type="button" title="今日に戻す">今日</button>
+              <span class="mtp-cal">
+                <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
+                <input class="mtp-cal-in" type="date" tabindex="-1"
+                       value="${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}">
+              </span>
             </div>
             <select class="mtp-fmt" data-var="${esc(v.key)}" data-kind="${esc(v.kind || 'ymd')}">
               ${formatsFor(v.kind).map(f =>
@@ -317,6 +322,11 @@
                     <span class="mtp-dial-sep">年</span>
                     <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${md.m}" style="width:40px">
                     <span class="mtp-dial-sep">月</span>
+                    <span class="mtp-cal">
+                      <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
+                      <input class="mtp-cal-in" type="month" tabindex="-1"
+                             value="${md.y}-${String(md.m).padStart(2, '0')}">
+                    </span>
                   </span>` : ''}
               </div>
             </div>
@@ -359,6 +369,10 @@
         };
         inp.addEventListener('change', handler);
       });
+      wireCalendar(dial, (cal, picked) => {
+        state.ranges[key].month = { y: picked.y, m: picked.m, d: 1 };
+        rerenderVarInputs(container);
+      });
     });
 
     // テキスト欄
@@ -392,12 +406,23 @@
         inp.addEventListener('change', handler);
         inp.addEventListener('input',  handler);
       });
-      dial.querySelector('.mtp-dial-today').addEventListener('click', () => {
-        state.dates[key] = defaultDate();
+      const showOnDial = () => {
         const d = state.dates[key];
         dial.querySelector('[data-part=y]').value = d.y;
         dial.querySelector('[data-part=m]').value = d.m;
         dial.querySelector('[data-part=d]').value = d.d;
+        const cal = dial.querySelector('.mtp-cal-in');
+        if (cal) cal.value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      };
+      dial.querySelector('.mtp-dial-today').addEventListener('click', () => {
+        state.dates[key] = defaultDate();
+        showOnDial();
+        apply();
+      });
+      // カレンダーから選んでもダイヤルと表示を合わせる
+      wireCalendar(dial, (cal, picked) => {
+        state.dates[key] = picked;
+        showOnDial();
         apply();
       });
       fmtSel.addEventListener('change', () => {
@@ -470,6 +495,27 @@
     if (!a) return;
     renderVarInputs(container, a.text, a.state, a.onChange);
     a.onChange();
+  }
+
+  /* 📅 を押したらネイティブのカレンダーを開く。
+     showPicker が無い環境では、その場で日付入力欄そのものを出して選んでもらう。 */
+  function wireCalendar(scope, onPick) {
+    scope.querySelectorAll('.mtp-cal').forEach(cal => {
+      const btn = cal.querySelector('.mtp-cal-btn');
+      const inp = cal.querySelector('.mtp-cal-in');
+      btn.addEventListener('click', () => {
+        try {
+          if (typeof inp.showPicker === 'function') { inp.showPicker(); return; }
+        } catch (e) { /* ユーザー操作以外からは開けない等。下のフォールバックへ */ }
+        cal.classList.add('open');   // 入力欄を出して直接触ってもらう
+        inp.focus();
+      });
+      inp.addEventListener('change', () => {
+        if (!inp.value) return;
+        const [y, m, d] = inp.value.split('-').map(Number);
+        onPick(cal, { y, m, d: d || 1 });
+      });
+    });
   }
 
   function defaultDate() {
@@ -596,6 +642,19 @@
       .mtp-range-btn.on { background:#eef1ff; border-color:#4f6ef7; color:#4f6ef7; font-weight:600; }
       .mtp-range-n { color:#bbb; font-size:10px; }
       .mtp-range-btn.on .mtp-range-n { color:#8ea0f7; }
+      /* カレンダー（ネイティブの日付ピッカーを開くだけ） */
+      .mtp-cal { position:relative; display:inline-flex; align-items:center; margin-left:2px; }
+      .mtp-cal-btn { border:1.5px solid #e2e2e2; background:#fafafa; border-radius:7px;
+        font-size:12px; padding:3px 7px; cursor:pointer; font-family:inherit; line-height:1.4; }
+      .mtp-cal-btn:hover { background:#eef1ff; border-color:#4f6ef7; }
+      .mtp-cal-in { position:absolute; right:0; bottom:0; width:1px; height:1px;
+        opacity:0; border:none; padding:0; }
+      /* showPicker が使えない環境では入力欄そのものを出す */
+      .mtp-cal.open .mtp-cal-in { position:static; width:auto; height:auto; opacity:1;
+        border:1.5px solid #4f6ef7; border-radius:7px; padding:4px 6px; font-size:12px;
+        font-family:inherit; margin-left:4px; }
+      .mtp-cal.open .mtp-cal-btn { display:none; }
+
       .mtp-monthdial { padding:2px 8px; }
       .mtp-monthdial .mtp-dial-num { font-size:13px; }
     `;
@@ -744,6 +803,6 @@
     formatDate, todayJa, senderName, dateFormat, formatsFor, MD_FORMATS,
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
-    copyText, selectElementText, injectStyle, autoGrow, openPicker,
+    copyText, selectElementText, injectStyle, autoGrow, wireCalendar, openPicker,
   };
 })();
