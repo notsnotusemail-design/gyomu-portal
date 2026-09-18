@@ -19,14 +19,16 @@
     { key: '顧客名',     desc: '顧客情報の「名前」' },
     { key: 'お客様No',   desc: 'お客様No.' },
     { key: '請求書宛名', desc: '未設定なら顧客名が入る' },
-    { key: '今日の日付', desc: '送る日（自動）' },
+    { key: '今日の日付', desc: '送る日（自動・年あり）' },
+    { key: '今日の月日', desc: '送る日（自動・月日だけ）' },
     { key: '担当者名',   desc: '自分の名前（設定で変更可）' },
   ];
   const AUTO_KEYS = AUTO_VARS.map(v => v.key);
 
   // 送信時に手入力する変数の見本。これ以外の名前を書いても入力欄になる
   const MANUAL_VARS = [
-    { key: '日付',     desc: '任意の日付をダイヤルで選ぶ' },
+    { key: '日付',     desc: '任意の日付をダイヤルで選ぶ（年あり）' },
+    { key: '月日',     desc: '任意の日付をダイヤルで選ぶ（月日だけ）' },
     { key: '案件名',   desc: '送信時に入力' },
     { key: '請求月',   desc: '送信時に入力' },
     { key: '自由記載', desc: '好きな文章を送信時に入力' },
@@ -34,14 +36,18 @@
 
   const VARS = AUTO_VARS.concat(MANUAL_VARS);   // 変数ボタン用
 
+  // 年ありの変数（{{日付}}）と、月日だけの変数（{{月日}}）で選べる形式を分ける
   const DATE_FORMATS = [
     { id: 'ymd',   label: '2026年9月18日' },
     { id: 'ymd_w', label: '2026年9月18日(木)' },
+    { id: 'iso',   label: '2026/09/18' },
     { id: 'md',    label: '9月18日' },
     { id: 'md_w',  label: '9月18日(木)' },
     { id: 'slash', label: '9/18' },
-    { id: 'iso',   label: '2026/09/18' },
   ];
+  const MD_FORMAT_IDS = ['md', 'md_w', 'slash'];
+  const MD_FORMATS = DATE_FORMATS.filter(f => MD_FORMAT_IDS.includes(f.id));
+  const formatsFor  = (kind) => (kind === 'md' ? MD_FORMATS : DATE_FORMATS);
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
   function formatDate(y, m, d, fmt) {
@@ -56,17 +62,19 @@
     }
   }
 
-  function todayJa() {
+  function todayJa(kind) {
     const d = new Date();
-    return formatDate(d.getFullYear(), d.getMonth() + 1, d.getDate(), 'ymd');
+    return formatDate(d.getFullYear(), d.getMonth() + 1, d.getDate(), dateFormat(kind));
   }
 
   function senderName() {
     return localStorage.getItem('mailtpl_sender') || '野津 欧';
   }
 
-  function dateFormat() {
-    return localStorage.getItem('mailtpl_datefmt') || 'ymd';
+  function dateFormat(kind) {
+    const saved = localStorage.getItem('mailtpl_datefmt_' + (kind === 'md' ? 'md' : 'ymd'));
+    if (saved && formatsFor(kind).some(f => f.id === saved)) return saved;
+    return kind === 'md' ? 'md' : 'ymd';
   }
 
   /* 本文・件名に出てくる {{変数}} の名前を、出てきた順に返す */
@@ -85,7 +93,11 @@
   function manualVars(text) {
     return placeholders(text)
       .filter(k => !AUTO_KEYS.includes(k))
-      .map(k => ({ key: k, type: /日付$/.test(k) ? 'date' : 'text' }));
+      .map(k => {
+        if (/月日$/.test(k)) return { key: k, type: 'date', kind: 'md'  };
+        if (/日付$/.test(k)) return { key: k, type: 'date', kind: 'ymd' };
+        return { key: k, type: 'text' };
+      });
   }
 
   /* 本文・件名の {{変数}} を実データに置き換える。
@@ -98,7 +110,8 @@
       '顧客名':     ctx.customerName || '',
       'お客様No':   ctx.customerNo   || '',
       '請求書宛名': ctx.invoiceName  || ctx.customerName || '',
-      '今日の日付': ctx.today || todayJa(),
+      '今日の日付': ctx.today   || todayJa(),
+      '今日の月日': ctx.todayMd || todayJa('md'),
       '担当者名':   ctx.sender || senderName(),
     };
     return String(text || '').replace(/\{\{\s*([^}]+?)\s*\}\}/g,
@@ -265,8 +278,9 @@
               <span class="mtp-dial-sep">日</span>
               <button class="mtp-dial-today" type="button" title="今日に戻す">今日</button>
             </div>
-            <select class="mtp-fmt" data-var="${esc(v.key)}">
-              ${DATE_FORMATS.map(f => `<option value="${f.id}"${f.id === dateFormat() ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}
+            <select class="mtp-fmt" data-var="${esc(v.key)}" data-kind="${esc(v.kind || 'ymd')}">
+              ${formatsFor(v.kind).map(f =>
+                  `<option value="${f.id}"${f.id === dateFormat(v.kind) ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}
             </select>
           </div>`;
       }
@@ -379,7 +393,9 @@
         apply();
       });
       fmtSel.addEventListener('change', () => {
-        localStorage.setItem('mailtpl_datefmt', fmtSel.value);
+        // 形式の好みは「年あり」「月日だけ」で別々に覚える
+        localStorage.setItem('mailtpl_datefmt_' + (fmtSel.dataset.kind === 'md' ? 'md' : 'ymd'),
+                             fmtSel.value);
         apply();
       });
       apply();   // 初期値をすぐ反映する
@@ -688,7 +704,7 @@
   window.MailTpl = {
     VARS, AUTO_VARS, MANUAL_VARS, AUTO_KEYS, DATE_FORMATS,
     fill, missingVars, placeholders, manualVars, renderVarInputs,
-    formatDate, todayJa, senderName, dateFormat,
+    formatDate, todayJa, senderName, dateFormat, formatsFor, MD_FORMATS,
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
     copyText, selectElementText, injectStyle, openPicker,
