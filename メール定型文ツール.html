@@ -96,7 +96,9 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
   transition: all 0.12s;
 }
 .var-chip:hover { background: #4f6ef7; color: white; border-color: #4f6ef7; }
-.var-hint { font-size: 11px; color: #bbb; margin-bottom: 10px; }
+.var-hint { font-size: 11px; color: #bbb; margin-bottom: 10px; line-height: 1.7; }
+.var-hint code { background: #f3f4f6; border-radius: 4px; padding: 1px 4px; font-size: 10.5px; }
+.var-sub { font-size: 10.5px; color: #c4c4c4; margin: 2px 0 5px; }
 
 /* ボタン */
 .btn {
@@ -186,19 +188,25 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
           </div>
 
           <div class="field">
-            <label class="field-label">カテゴリ</label>
-            <select class="field-sel" id="fCategory">
-              <option value="">（なし）</option>
+            <label class="field-label">カテゴリ（候補から選ぶか直接入力）</label>
+            <input class="field-in" id="fCategory" list="catList" placeholder="（なし）">
+            <datalist id="catList">
               <option>初回連絡</option><option>納品</option><option>請求</option>
               <option>リマインド</option><option>日程調整</option>
               <option>お礼・挨拶</option><option>その他</option>
-            </select>
+            </datalist>
           </div>
 
           <div class="field">
             <label class="field-label">差し込み変数（クリックでカーソル位置に挿入）</label>
-            <div class="var-bar" id="varBar"></div>
-            <div class="var-hint">送信時に顧客を選ぶと実データに置き換わります。</div>
+            <div class="var-sub">自動で埋まる</div>
+            <div class="var-bar" id="varBarAuto"></div>
+            <div class="var-sub">送信するときに入力する</div>
+            <div class="var-bar" id="varBarManual"></div>
+            <div class="var-hint">
+              ここに無い名前でも <code>{{◯◯}}</code> と書けば送信時の入力欄になります。
+              名前が「日付」で終わる変数（例: <code>{{納品日付}}</code>）は日付ダイヤルになります。
+            </div>
           </div>
 
           <div class="field">
@@ -232,12 +240,12 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
         </div>
         <div class="panel-body">
           <div class="prev-ctrl">
-            <select class="field-sel" id="pCustomer" onchange="renderPreview()">
-              <option value="">顧客を選択（差し込み用）</option>
-            </select>
-            <input class="field-in" id="pCase"  placeholder="案件名" oninput="renderPreview()">
-            <input class="field-in" id="pMonth" placeholder="請求月 例:8月" oninput="renderPreview()">
+            <div class="mtp-field">
+              <label class="mtp-flabel">宛先の顧客</label>
+              <div id="pCustomerWrap" style="flex:1;min-width:200px"></div>
+            </div>
           </div>
+          <div class="mtp-inputs" id="pInputs" style="margin-bottom:14px"></div>
           <label class="field-label">件名</label>
           <div class="prev-box subj" id="prevSubject"></div>
           <div style="height:10px"></div>
@@ -265,9 +273,13 @@ let templates = [];    // 登録済み定型文
 let customers = [];    // 差し込み用の顧客リスト
 let currentId = '';    // 編集中のNotionページID（空＝新規）
 let lastField = null;  // 変数を挿し込む対象（件名 or 本文）
+let varState = { values: {}, dates: {} };  // 送信時に入力した値
+let varSig = null;     // 入力欄を組み直すかの判定用（変数の顔ぶれ）
+let currentCustomerName = '';              // 宛先（選択でも手入力でも入る）
 
 // ===== 初期化 =====
 window.addEventListener('DOMContentLoaded', () => {
+  MailTpl.injectStyle();   // 入力欄・日付ダイヤルのスタイル
   buildVarBar();
   document.getElementById('senderLabel').textContent = MailTpl.senderName();
   ['fSubject', 'fBody'].forEach(id => {
@@ -280,9 +292,11 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function buildVarBar() {
-  document.getElementById('varBar').innerHTML = MailTpl.VARS
+  const chips = list => list
     .map(v => `<button class="var-chip" title="${esc(v.desc)}" onclick="insertVar('{{${v.key}}}')">${esc(v.key)}</button>`)
     .join('');
+  document.getElementById('varBarAuto').innerHTML   = chips(MailTpl.AUTO_VARS);
+  document.getElementById('varBarManual').innerHTML = chips(MailTpl.MANUAL_VARS);
 }
 
 // 直前に触っていた入力欄のカーソル位置へ変数を差し込む
@@ -317,10 +331,39 @@ async function loadCustomers() {
     const d = await r.json();
     if (!d.ok) return;
     customers = d.customers.filter(c => c.status !== '取引終了');
-    document.getElementById('pCustomer').innerHTML =
-      '<option value="">顧客を選択（差し込み用）</option>' +
-      customers.map((c, i) => `<option value="${i}">${esc(c.no)} ${esc(c.name || c.pageName)}</option>`).join('');
   } catch (e) { /* 差し込みは任意機能なので失敗しても編集は続けられる */ }
+  buildCustomerCombo();
+}
+
+// 登録済みの顧客から選べるが、リストに無い相手は直接書いてもいい
+function buildCustomerCombo() {
+  const cands = customers.map(c => ({ label: c.name || c.pageName, hint: c.no }));
+  const wrap = document.getElementById('pCustomerWrap');
+  wrap.innerHTML = MailTpl.comboHTML('顧客', currentCustomerName, cands, '顧客を選ぶか直接入力');
+  MailTpl.wireCombo(wrap, cands, () => {});
+  wrap.querySelector('.mtp-combo-in').addEventListener('input', onCustomerChange);
+}
+
+// 顧客が変わったら、その顧客の案件を候補として読み直す
+let _caseTimer = null;
+function onCustomerChange() {
+  currentCustomerName = document.getElementById('pCustomerWrap')
+    .querySelector('.mtp-combo-in').value.trim();
+  renderPreview();
+  clearTimeout(_caseTimer);
+  _caseTimer = setTimeout(async () => {
+    const c = matchedCustomer();
+    varState.cases = c ? await MailTpl.loadCases(c.no) : [];
+    varSig = null;          // 候補が変わったので入力欄を組み直す
+    renderPreview();
+  }, 250);
+}
+
+// 入力された名前が登録顧客と一致すればその1件を返す（一致しなければ自由入力扱い）
+function matchedCustomer() {
+  const v = currentCustomerName;
+  if (!v) return null;
+  return customers.find(c => (c.name || c.pageName) === v) || null;
 }
 
 function buildCatFilter() {
@@ -457,18 +500,27 @@ async function deleteTemplate() {
 
 // ===== プレビュー =====
 function previewCtx() {
-  const idx = document.getElementById('pCustomer').value;
-  const c = idx === '' ? {} : (customers[Number(idx)] || {});
+  const c = matchedCustomer() || {};
   return {
-    customerName: c.name || c.pageName || '',
+    customerName: currentCustomerName,      // 登録が無い相手でも差し込める
     customerNo:   c.no || '',
     invoiceName:  c.invoiceName || '',
-    caseName:     document.getElementById('pCase').value.trim(),
-    billingMonth: document.getElementById('pMonth').value.trim(),
+    values:       varState.values,
   };
 }
 
+// 入力欄は変数の顔ぶれが変わったときだけ組み直す。
+// 毎回作り直すと、入力中のカーソルが飛んでしまうため。
+function syncVarInputs() {
+  const text = document.getElementById('fSubject').value + '\n' + document.getElementById('fBody').value;
+  const sig = MailTpl.manualVars(text).map(v => v.key + ':' + v.type).join('|');
+  if (sig === varSig) return;
+  varSig = sig;
+  MailTpl.renderVarInputs(document.getElementById('pInputs'), text, varState, renderPreview);
+}
+
 function renderPreview() {
+  syncVarInputs();
   const ctx = previewCtx();
   const subj = MailTpl.fill(document.getElementById('fSubject').value, ctx);
   const body = MailTpl.fill(document.getElementById('fBody').value, ctx);
@@ -476,7 +528,7 @@ function renderPreview() {
   document.getElementById('prevBody').textContent    = body || '（本文なし）';
   const miss = MailTpl.missingVars(subj + '\n' + body);
   document.getElementById('prevWarn').innerHTML = miss.length
-    ? `<div class="warn">未入力の変数があります: ${esc(miss.join(' '))}</div>` : '';
+    ? `<div class="warn">未入力の項目があります: ${esc(miss.join(' '))}</div>` : '';
 }
 
 async function copyPrev(which, btn) {
