@@ -40,6 +40,13 @@ body {
   display: flex; align-items: center; gap: 8px; padding: 12px 14px;
   border-bottom: 1px solid #f0f0f0;
 }
+/* 編集欄は普段たたんでおく。開くときだけ出す */
+.toggle-head { cursor: pointer; user-select: none; transition: background 0.12s; }
+.toggle-head:hover { background: #fafafa; }
+.toggle-head.closed { border-bottom: none; }
+.toggle-arrow { font-size: 11px; color: #bbb; width: 12px; transition: transform 0.15s; }
+.toggle-head.closed .toggle-arrow { transform: rotate(-90deg); }
+.panel-body.closed { display: none; }
 .panel-title { font-size: 13px; font-weight: 700; }
 .panel-body { padding: 14px; }
 
@@ -182,11 +189,12 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
     <!-- 右：編集＋プレビュー -->
     <div>
       <div class="panel" style="margin-bottom:14px;">
-        <div class="panel-head">
+        <div class="panel-head toggle-head" id="editHead" onclick="toggleEditor()">
+          <span class="toggle-arrow" id="editArrow">▾</span>
           <div class="panel-title" id="editTitle">新しい定型文</div>
           <div style="margin-left:auto;font-size:11px;color:#bbb;" id="updatedAt"></div>
         </div>
-        <div class="panel-body">
+        <div class="panel-body" id="editBody">
 
           <div class="field-row">
             <div class="field">
@@ -220,8 +228,11 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
             <div class="var-bar" id="varBarManual"></div>
             <div class="var-hint">
               ここに無い名前でも <code>{{◯◯}}</code> と書けば送信時の入力欄になります。
-              名前が「日付」で終わる変数（例: <code>{{納品日付}}</code>）は年ありの日付ダイヤル、
-              「月日」で終わる変数（例: <code>{{初校月日}}</code>）は月日だけのダイヤルになります。
+              名前の終わり方で入力のしかたが決まります ―
+              <code>年月日</code>（例 <code>{{納品年月日}}</code>）は年月日のダイヤル＋カレンダー、
+              <code>月日</code>（例 <code>{{初校月日}}</code>）は年を出さないカレンダー、
+              <code>月</code>（例 <code>{{請求月}}</code>）は1〜12月のダイヤル。
+              旧来の <code>日付</code> も年月日として扱います。
             </div>
           </div>
 
@@ -438,11 +449,21 @@ function renderList() {
 }
 
 // ===== 編集 =====
+// 編集欄の開閉。使うときだけ開くので、普段はプレビューが前に出る
+function toggleEditor(open) {
+  const head = document.getElementById('editHead');
+  const body = document.getElementById('editBody');
+  const show = (open === undefined) ? body.classList.contains('closed') : open;
+  head.classList.toggle('closed', !show);
+  body.classList.toggle('closed', !show);
+}
+
 function selectTemplate(id) {
   const t = templates.find(x => x.id === id);
   if (!t) return;
   prevEdited = false;   // 別の定型文を開いたらプレビューは作り直す
   currentId = t.id;
+  toggleEditor(false);  // 選んだら編集欄はたたむ
   document.getElementById('fName').value     = t.name;
   document.getElementById('fSubject').value  = t.subject;
   document.getElementById('fBody').value     = t.body;
@@ -450,7 +471,7 @@ function selectTemplate(id) {
   document.getElementById('fCategory').value = t.category || '';
   document.getElementById('fOrder').value    = t.order ?? '';
   document.getElementById('fEnabled').checked = t.enabled;
-  document.getElementById('editTitle').textContent = t.name;
+  document.getElementById('editTitle').textContent = `定型文を編集：${t.name}`;
   document.getElementById('updatedAt').textContent =
     t.updated ? '更新: ' + new Date(t.updated).toLocaleString('ja-JP') : '';
   document.getElementById('delBtn').style.display = '';
@@ -458,7 +479,11 @@ function selectTemplate(id) {
   renderPreview();
 }
 
-function newTemplate() { clearForm(); document.getElementById('fName').focus(); }
+function newTemplate() {
+  clearForm();
+  toggleEditor(true);   // 新規のときは編集欄を開く
+  document.getElementById('fName').focus();
+}
 
 function clearForm() {
   currentId = '';
@@ -574,15 +599,8 @@ function renderPreview() {
 
 /* 確認ビューで変数を選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
 function applyVarValue(key, value) {
-  if (value && typeof value === 'object') {      // カレンダーで選んだ日付
-    varState.dates[key] = value;
-    const fmtSel = document.querySelector(`#pInputs .mtp-fmt[data-var="${CSS.escape(key)}"]`);
-    const kind = /月日$/.test(key) ? 'md' : 'ymd';
-    varState.values[key] = MailTpl.formatDate(value.y, value.m, value.d,
-                                              (fmtSel && fmtSel.value) || MailTpl.dateFormat(kind));
-  } else {
-    varState.values[key] = value;
-  }
+  const fmtSel = document.querySelector(`#pInputs .mtp-fmt[data-var="${CSS.escape(key)}"]`);
+  MailTpl.commitVarValue(varState, key, value, fmtSel && fmtSel.value);
   MailTpl.setSlotValue(document.getElementById('prevSubject'), key, varState.values[key]);
   MailTpl.setSlotValue(document.getElementById('prevBody'),    key, varState.values[key]);
   varSig = null;          // 入力欄にも反映する

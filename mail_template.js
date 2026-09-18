@@ -27,10 +27,10 @@
 
   // 送信時に手入力する変数の見本。これ以外の名前を書いても入力欄になる
   const MANUAL_VARS = [
-    { key: '日付',     desc: '任意の日付をダイヤルで選ぶ（年あり）' },
-    { key: '月日',     desc: '任意の日付をダイヤルで選ぶ（月日だけ）' },
-    { key: '案件名',   desc: '送信時に入力' },
-    { key: '請求月',   desc: '送信時に入力' },
+    { key: '年月日',   desc: '年・月・日をダイヤルかカレンダーで選ぶ' },
+    { key: '月日',     desc: '月・日だけ（年は出ない）' },
+    { key: '請求月',   desc: '1〜12月をダイヤルで選ぶ' },
+    { key: '案件名',   desc: 'その顧客の案件から選ぶ（直接入力も可）' },
     { key: '自由記載', desc: '好きな文章を送信時に入力' },
   ];
 
@@ -94,8 +94,9 @@
     return placeholders(text)
       .filter(k => !AUTO_KEYS.includes(k))
       .map(k => {
-        if (/月日$/.test(k)) return { key: k, type: 'date', kind: 'md'  };
-        if (/日付$/.test(k)) return { key: k, type: 'date', kind: 'ymd' };
+        const kind = slotKind(k);
+        if (kind === 'ymd' || kind === 'md') return { key: k, type: 'date',  kind };
+        if (kind === 'month')                return { key: k, type: 'month', kind };
         return { key: k, type: 'text' };
       });
   }
@@ -224,18 +225,23 @@
      手で打ち替えられたスロットは「ただの文字」に降格させる（＝変数ではなくなる）。 */
   const SLOT_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 
+  // 判定の順番が大事：年月日→月日→月 の順に見る
   function slotKind(key) {
-    if (/月日$/.test(key)) return 'md';
-    if (/日付$/.test(key)) return 'ymd';
-    if (isCaseVar(key))    return 'case';
+    if (/年月日$|日付$/.test(key)) return 'ymd';
+    if (/月日$/.test(key))         return 'md';
+    if (/月$/.test(key))           return 'month';
+    if (isCaseVar(key))            return 'case';
     return 'text';
   }
 
+  const MONTHS = Array.from({ length: 12 }, (_, i) => `${i + 1}月`);
+
   const SLOT_HINT = {
-    ymd:  'クリックでカレンダー',
-    md:   'クリックでカレンダー',
-    case: 'クリックで案件を選ぶ',
-    text: 'クリックで書き込む',
+    ymd:   'クリックでカレンダー',
+    md:    'クリックでカレンダー',
+    month: 'クリックで月を選ぶ',
+    case:  'クリックで案件を選ぶ',
+    text:  'クリックで書き込む',
   };
 
   function slotSpan(key, value) {
@@ -276,6 +282,27 @@
       sp.classList.toggle('empty', !value);
     });
     autoGrow(el);
+  }
+
+  /* 確認ビューで選んだ値を状態に反映する。
+     ダイヤル側の初期値も一緒に揃えないと、入力欄を組み直した拍子に
+     選んだ値が上書きされてしまう。 */
+  function commitVarValue(state, key, value, fmt) {
+    state.values = state.values || {};
+    if (value && typeof value === 'object') {          // カレンダーで選んだ日付
+      state.dates = state.dates || {};
+      state.dates[key] = value;
+      const kind = slotKind(key) === 'md' ? 'md' : 'ymd';
+      state.values[key] = formatDate(value.y, value.m, value.d, fmt || dateFormat(kind));
+    } else {
+      state.values[key] = value;
+      const m = /^(\d{1,2})月$/.exec(String(value || ''));
+      if (m) {                                         // 月を選んだらダイヤルも合わせる
+        state.months = state.months || {};
+        state.months[key] = Number(m[1]);
+      }
+    }
+    return state.values[key];
   }
 
   /* 手直し後でも、変数のまま残っているスロットには値の変更を届ける */
@@ -448,25 +475,35 @@
       return;
     }
 
+    if (kind === 'month') {
+      openSlotMenu(el, sp, MONTHS.map(m => ({ label: m })), commit);
+      return;
+    }
+
     const cands = (o.candidates && o.candidates(key)) || [];
     if (cands.length) {
-      const menu = document.createElement('div');
-      menu.className = 'mtp-slotmenu';
-      menu.innerHTML = cands.map(c => {
-        const label = c.label !== undefined ? c.label : c;
-        return `<button type="button" class="mtp-slotmenu-item" data-val="${esc(label)}">
-                  <span>${esc(label)}</span>${c.hint ? `<em>${esc(c.hint)}</em>` : ''}</button>`;
-      }).join('') + '<div class="mtp-slotmenu-note">そのまま打ち替えると変数ではなくなります</div>';
-      placeNear(sp, menu);
-      menu.querySelectorAll('.mtp-slotmenu-item').forEach(b => {
-        b.addEventListener('click', () => { commit(b.dataset.val); closeSlotMenu(); });
-      });
-      closeOnOutside(menu);
+      openSlotMenu(el, sp, cands, commit);
       return;
     }
 
     // 候補が無い変数は、その場に入力枠を出して書いてもらう
     openSlotInput(el, sp, key, commit);
+  }
+
+  /* 候補から選ぶメニュー（案件名・月） */
+  function openSlotMenu(el, sp, cands, commit) {
+    const menu = document.createElement('div');
+    menu.className = 'mtp-slotmenu';
+    menu.innerHTML = cands.map(c => {
+      const label = c.label !== undefined ? c.label : c;
+      return `<button type="button" class="mtp-slotmenu-item" data-val="${esc(label)}">
+                <span>${esc(label)}</span>${c.hint ? `<em>${esc(c.hint)}</em>` : ''}</button>`;
+    }).join('') + '<div class="mtp-slotmenu-note">そのまま打ち替えると変数ではなくなります</div>';
+    placeNear(sp, menu);
+    menu.querySelectorAll('.mtp-slotmenu-item').forEach(b => {
+      b.addEventListener('click', () => { commit(b.dataset.val); closeSlotMenu(); });
+    });
+    closeOnOutside(menu);
   }
 
   /* 自由記載など、候補の無い変数の入力枠。書いた内容はそのまま反映する */
@@ -483,7 +520,7 @@
              : `<input class="mtp-slotinput-in" placeholder="${esc(key)}を入力">`}
       <div class="mtp-slotinput-foot">
         <button type="button" class="mtp-slotinput-clear">空にする</button>
-        <span class="mtp-slotmenu-note">Escで閉じる／このまま Delete で丸ごと消せます</span>
+        <span class="mtp-slotmenu-note">${long ? '⌘Enter' : 'Enter'}かEscで閉じる／このまま Delete で丸ごと消せます</span>
       </div>`;
     placeNear(sp, box);
     const inp = box.querySelector('.mtp-slotinput-in');
@@ -491,6 +528,14 @@
     inp.focus();
     inp.setSelectionRange(cur.length, cur.length);
     inp.addEventListener('input', () => commit(inp.value));
+    // Enterで閉じる。複数行の欄では改行を優先し、⌘/Ctrl+Enterで閉じる
+    inp.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (long && !(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      closeSlotMenu();
+      el.focus();
+    });
     box.querySelector('.mtp-slotinput-clear').addEventListener('click', () => {
       inp.value = ''; commit(''); inp.focus();
     });
@@ -562,6 +607,7 @@
     state.values = state.values || {};
     state.dates  = state.dates  || {};
     state.ranges = state.ranges || {};
+    state.months = state.months || {};
     container._mtpArgs = { text, state, onChange };   // 期間を変えた時に組み直すため
     const vars = manualVars(text);
 
@@ -576,7 +622,7 @@
         return `
           <div class="mtp-field">
             <label class="mtp-flabel">${esc(v.key)}</label>
-            <div class="mtp-dial" data-var="${esc(v.key)}">
+            <div class="mtp-dial mtp-datedial" data-var="${esc(v.key)}">
               <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${d.y}" style="width:60px">
               <span class="mtp-dial-sep">年</span>
               <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${d.m}" style="width:40px">
@@ -631,6 +677,18 @@
             </div>
           </div>`;
       }
+      if (v.type === 'month') {
+        const m = state.months[v.key] || (state.months[v.key] = new Date().getMonth() + 1);
+        return `
+          <div class="mtp-field">
+            <label class="mtp-flabel">${esc(v.key)}</label>
+            <span class="mtp-dial mtp-monthonly" data-var="${esc(v.key)}">
+              <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13"
+                     value="${m}" style="width:44px">
+              <span class="mtp-dial-sep">月</span>
+            </span>
+          </div>`;
+      }
       const isLong = /自由記載|本文|メモ|備考|内容/.test(v.key);
       return `
         <div class="mtp-field">
@@ -674,6 +732,25 @@
       });
     });
 
+    // 月だけのダイヤル（12の次は1、1の前は12）
+    container.querySelectorAll('.mtp-monthonly').forEach(dial => {
+      const key = dial.dataset.var;
+      const inp = dial.querySelector('[data-part=m]');
+      const apply = () => {
+        let m = parseInt(inp.value, 10);
+        if (!Number.isFinite(m)) m = new Date().getMonth() + 1;
+        if (m > 12) m = 1;
+        if (m < 1)  m = 12;
+        inp.value = m;
+        state.months[key] = m;
+        state.values[key] = `${m}月`;
+        onChange();
+      };
+      inp.addEventListener('change', apply);
+      inp.addEventListener('input',  apply);
+      apply();
+    });
+
     // テキスト欄
     container.querySelectorAll('.mtp-fin').forEach(el => {
       el.addEventListener('input', () => {
@@ -682,8 +759,8 @@
       });
     });
 
-    // 日付ダイヤル（案件の年月しぼりダイヤルは見た目が同じだけなので除く）
-    container.querySelectorAll('.mtp-dial:not(.mtp-monthdial)').forEach(dial => {
+    // 日付ダイヤル（年月しぼり・月だけのダイヤルは見た目が同じなだけなので拾わない）
+    container.querySelectorAll('.mtp-datedial').forEach(dial => {
       const key = dial.dataset.var;
       const fmtSel = container.querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
       const apply = () => {
@@ -996,6 +1073,7 @@
       .mtp-cal.open .mtp-cal-btn { display:none; }
 
       .mtp-monthdial { padding:2px 8px; }
+      .mtp-monthonly { padding:3px 10px; }
       .mtp-monthdial .mtp-dial-num { font-size:13px; }
     `;
     document.head.appendChild(st);
@@ -1117,14 +1195,8 @@
 
     /* 確認ビューで選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
     function applyVarValue(key, value) {
-      if (value && typeof value === 'object') {
-        state.dates[key] = value;
-        const fmtSel = $('mtpInputs').querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
-        const kind = /月日$/.test(key) ? 'md' : 'ymd';
-        state.values[key] = formatDate(value.y, value.m, value.d, (fmtSel && fmtSel.value) || dateFormat(kind));
-      } else {
-        state.values[key] = value;
-      }
+      const fmtSel = $('mtpInputs').querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
+      commitVarValue(state, key, value, fmtSel && fmtSel.value);
       setSlotValue($('mtpSubj'), key, state.values[key]);
       setSlotValue($('mtpBody'), key, state.values[key]);
       const t = templates[Number($('mtpSel').value)] || {};
@@ -1167,12 +1239,12 @@
   window.MailTpl = {
     VARS, AUTO_VARS, MANUAL_VARS, AUTO_KEYS, DATE_FORMATS,
     fill, missingVars, placeholders, manualVars, renderVarInputs,
-    formatDate, todayJa, senderName, dateFormat, formatsFor, MD_FORMATS,
+    formatDate, todayJa, senderName, dateFormat, formatsFor, MD_FORMATS, MONTHS,
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
     copyText, selectElementText, injectStyle, autoGrow, wireCalendar, openPicker,
     resolveVar, slotKind, renderPreviewInto, previewText, setSlotValue, refreshSlots,
     clearCustomerOverrides,
-    detachEditedSlots, wirePreview, closeSlotMenu, slotAtCaret,
+    detachEditedSlots, wirePreview, closeSlotMenu, slotAtCaret, commitVarValue,
   };
 })();
