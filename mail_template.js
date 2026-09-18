@@ -88,17 +88,46 @@
     return names;
   }
 
+  /* 出てきた順に、重複も含めて全部返す */
+  function placeholderList(text) {
+    const list = [];
+    const re = /\{\{\s*([^}]+?)\s*\}\}/g;
+    let m;
+    while ((m = re.exec(String(text || ''))) !== null) list.push(m[1]);
+    return list;
+  }
+
+  /* 同じ名前の変数が複数あっても、既定では1つずつ独立して扱う。
+     「同じ値にする」を入れた名前だけ、値を共有する。 */
+  function instKeyOf(name, inst, linked) {
+    return (linked && linked[name]) ? name : `${name}#${inst}`;
+  }
+
+  function countNames(text) {
+    const n = {};
+    placeholderList(text).forEach(k => { n[k] = (n[k] || 0) + 1; });
+    return n;
+  }
+
   /* 送信時に手入力が必要な変数（＝自動で埋まらないもの）。
      名前が「日付」で終わるものはダイヤルで入れる */
-  function manualVars(text) {
-    return placeholders(text)
-      .filter(k => !AUTO_KEYS.includes(k))
-      .map(k => {
-        const kind = slotKind(k);
-        if (kind === 'ymd' || kind === 'md') return { key: k, type: 'date',  kind };
-        if (kind === 'month')                return { key: k, type: 'month', kind };
-        return { key: k, type: 'text' };
-      });
+  function manualVars(text, linked) {
+    const total = countNames(text);
+    const seen  = {};
+    const out   = [];
+    placeholderList(text).forEach(name => {
+      if (AUTO_KEYS.includes(name)) return;
+      const inst = (seen[name] = (seen[name] || 0) + 1);
+      const isLinked = !!(linked && linked[name]);
+      if (isLinked && inst > 1) return;          // 連動中は入力欄を1つにまとめる
+      const kind = slotKind(name);
+      const type = (kind === 'ymd' || kind === 'md') ? 'date'
+                 : (kind === 'month') ? 'month' : 'text';
+      out.push({ key: name, inst, kind, type,
+                 vkey: instKeyOf(name, inst, linked),
+                 total: total[name], linked: isLinked });
+    });
+    return out;
   }
 
   /* 本文・件名の {{変数}} を実データに置き換える。
@@ -117,6 +146,15 @@
     // 自動で埋まる変数でも、確認ビューで選び直したらそちらを優先する
     // （宛名を「◯◯様」に変える、日付を今日以外にする、といった調整のため）
     return (ctx.values || {})[key] || auto[key] || '';
+  }
+
+  /* 何番目の差し込みかを見て値を引く */
+  function resolveSlot(name, inst, ctx) {
+    ctx = ctx || {};
+    const vkey = instKeyOf(name, inst, ctx.linked);
+    const v = (ctx.values || {})[vkey];
+    if (v) return v;
+    return resolveVar(name, Object.assign({}, ctx, { values: {} }));
   }
 
   // 顧客が変わったら、顧客由来の手直しは捨てる
@@ -244,12 +282,13 @@
     text:  'クリックで書き込む',
   };
 
-  function slotSpan(key, value) {
+  function slotSpan(key, inst, value, total) {
     const kind  = slotKind(key);
     const shown = value || `{{${key}}}`;
-    const hint  = `${key}：${SLOT_HINT[kind]}／Deleteで丸ごと消す`;
+    const num   = total > 1 ? `（${inst}つ目）` : '';
+    const hint  = `${key}${num}：${SLOT_HINT[kind]}／Deleteで丸ごと消す`;
     return `<span class="mtp-slot${value ? '' : ' empty'}" data-var="${esc(key)}"` +
-           ` data-kind="${kind}" data-shown="${esc(shown)}"` +
+           ` data-inst="${inst}" data-kind="${kind}" data-shown="${esc(shown)}"` +
            ` title="${esc(hint)}">${esc(shown)}</span>`;
   }
 
@@ -257,10 +296,14 @@
   function renderPreviewInto(el, text, ctx) {
     let out = '', last = 0, m;
     SLOT_RE.lastIndex = 0;
-    const src = String(text || '');
+    const src   = String(text || '');
+    const total = countNames(src);
+    const seen  = {};
     while ((m = SLOT_RE.exec(src)) !== null) {
+      const name = m[1];
+      const inst = (seen[name] = (seen[name] || 0) + 1);
       out += esc(src.slice(last, m.index));
-      out += slotSpan(m[1], resolveVar(m[1], ctx));
+      out += slotSpan(name, inst, resolveSlot(name, inst, ctx), total[name]);
       last = m.index + m[0].length;
     }
     out += esc(src.slice(last));
@@ -274,8 +317,11 @@
   }
 
   /* 変数の値が変わったとき、まだ変数のままのスロットだけ書き換える */
-  function setSlotValue(el, key, value) {
-    el.querySelectorAll(`.mtp-slot[data-var="${CSS.escape(key)}"]`).forEach(sp => {
+  function setSlotValue(el, key, inst, value) {
+    // inst を省いたら、その名前の全部を書き換える（連動しているとき）
+    const sel = `.mtp-slot[data-var="${CSS.escape(key)}"]` +
+                (inst ? `[data-inst="${inst}"]` : '');
+    el.querySelectorAll(sel).forEach(sp => {
       const shown = value || `{{${key}}}`;
       sp.textContent = shown;
       sp.dataset.shown = shown;
@@ -287,27 +333,31 @@
   /* 確認ビューで選んだ値を状態に反映する。
      ダイヤル側の初期値も一緒に揃えないと、入力欄を組み直した拍子に
      選んだ値が上書きされてしまう。 */
-  function commitVarValue(state, key, value, fmt) {
+  function commitVarValue(state, name, vkey, value, fmt) {
     state.values = state.values || {};
     if (value && typeof value === 'object') {          // カレンダーで選んだ日付
       state.dates = state.dates || {};
-      state.dates[key] = value;
-      const kind = slotKind(key) === 'md' ? 'md' : 'ymd';
-      state.values[key] = formatDate(value.y, value.m, value.d, fmt || dateFormat(kind));
+      state.dates[vkey] = value;
+      const kind = slotKind(name) === 'md' ? 'md' : 'ymd';
+      state.values[vkey] = formatDate(value.y, value.m, value.d, fmt || dateFormat(kind));
     } else {
-      state.values[key] = value;
+      state.values[vkey] = value;
       const m = /^(\d{1,2})月$/.exec(String(value || ''));
       if (m) {                                         // 月を選んだらダイヤルも合わせる
         state.months = state.months || {};
-        state.months[key] = Number(m[1]);
+        state.months[vkey] = Number(m[1]);
       }
     }
-    return state.values[key];
+    return state.values[vkey];
   }
 
   /* 手直し後でも、変数のまま残っているスロットには値の変更を届ける */
   function refreshSlots(el, text, ctx) {
-    placeholders(text).forEach(k => setSlotValue(el, k, resolveVar(k, ctx)));
+    const seen = {};
+    placeholderList(text).forEach(name => {
+      const inst = (seen[name] = (seen[name] || 0) + 1);
+      setSlotValue(el, name, inst, resolveSlot(name, inst, ctx));
+    });
   }
 
   /* 打ち替えられたスロットを普通の文字に降格させる */
@@ -437,14 +487,16 @@
     closeSlotMenu();
     const o    = el._mtpOpts || {};
     const key  = sp.dataset.var;
+    const inst = Number(sp.dataset.inst) || 1;
     const kind = sp.dataset.kind;
+    const vkey = (o.vkeyOf && o.vkeyOf(key, inst)) || key;
     const commit = (value) => {
-      if (o.onPick) o.onPick(key, value);   // 同じ変数のスロットと入力欄もまとめて更新
-      else setSlotValue(el, key, value);
+      if (o.onPick) o.onPick(key, inst, value);   // 入力欄と連動先もまとめて更新
+      else setSlotValue(el, key, inst, value);
     };
 
     if (kind === 'ymd' || kind === 'md') {
-      const d = (o.dateOf && o.dateOf(key)) || defaultDate();
+      const d = (o.dateOf && o.dateOf(vkey)) || defaultDate();
       const inp = document.createElement('input');
       inp.type = 'date';
       inp.className = 'mtp-slotdate';
@@ -487,7 +539,7 @@
     }
 
     // 候補が無い変数は、その場に入力枠を出して書いてもらう
-    openSlotInput(el, sp, key, commit);
+    openSlotInput(el, sp, key, vkey, commit);
   }
 
   /* 候補から選ぶメニュー（案件名・月） */
@@ -507,9 +559,9 @@
   }
 
   /* 自由記載など、候補の無い変数の入力枠。書いた内容はそのまま反映する */
-  function openSlotInput(el, sp, key, commit) {
+  function openSlotInput(el, sp, key, vkey, commit) {
     const o    = el._mtpOpts || {};
-    const cur  = (o.valueOf && o.valueOf(key)) || '';
+    const cur  = (o.valueOf && o.valueOf(vkey)) || '';
     const long = /自由記載|本文|メモ|備考|内容|理由|原因/.test(key);
     const box  = document.createElement('div');
     box.className = 'mtp-slotmenu mtp-slotinput';
@@ -602,215 +654,6 @@
   /* ---------- 送信時の入力欄 ----------
      テンプレートが使っている変数だけを見て、必要な入力欄を組み立てる。
      container: 差し込む要素 / text: 件名＋本文 / state: 値の入れ物 / onChange: 再描画 */
-  function renderVarInputs(container, text, state, onChange) {
-    injectStyle();
-    state.values = state.values || {};
-    state.dates  = state.dates  || {};
-    state.ranges = state.ranges || {};
-    state.months = state.months || {};
-    container._mtpArgs = { text, state, onChange };   // 期間を変えた時に組み直すため
-    const vars = manualVars(text);
-
-    if (!vars.length) {
-      container.innerHTML = '<div class="mtp-noinput">この定型文に入力が必要な項目はありません</div>';
-      return;
-    }
-
-    container.innerHTML = vars.map(v => {
-      if (v.type === 'date') {
-        const d = state.dates[v.key] || (state.dates[v.key] = defaultDate());
-        return `
-          <div class="mtp-field">
-            <label class="mtp-flabel">${esc(v.key)}</label>
-            <div class="mtp-dial mtp-datedial" data-var="${esc(v.key)}">
-              <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${d.y}" style="width:60px">
-              <span class="mtp-dial-sep">年</span>
-              <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${d.m}" style="width:40px">
-              <span class="mtp-dial-sep">月</span>
-              <input class="mtp-dial-num" type="number" data-part="d" min="0" max="32" value="${d.d}" style="width:40px">
-              <span class="mtp-dial-sep">日</span>
-              <button class="mtp-dial-today" type="button" title="今日に戻す">今日</button>
-              <span class="mtp-cal">
-                <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
-                <input class="mtp-cal-in" type="date" tabindex="-1"
-                       value="${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}">
-              </span>
-            </div>
-            <select class="mtp-fmt" data-var="${esc(v.key)}" data-kind="${esc(v.kind || 'ymd')}">
-              ${formatsFor(v.kind).map(f =>
-                  `<option value="${f.id}"${f.id === dateFormat(v.kind) ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}
-            </select>
-          </div>`;
-      }
-      if (isCaseVar(v.key)) {
-        const all = state.cases || [];
-        const range = state.ranges[v.key] || (state.ranges[v.key] = initialRange(all));
-        const shown = filterCases(all, range);
-        const note = state.casesLoading ? '読み込み中…'
-                   : (all.length ? `${shown.length}件` : '候補なし');
-        const md = range.month || (range.month = newestCaseMonth(all));
-        return `
-          <div class="mtp-field">
-            <label class="mtp-flabel">${esc(v.key)}</label>
-            <div class="mtp-casewrap">
-              ${comboHTML(v.key, state.values[v.key], shown,
-                          all.length ? '候補から選ぶか直接入力' : '案件名を入力', note)}
-              <div class="mtp-range" data-var="${esc(v.key)}">
-                ${CASE_RANGES.map(r => {
-                    const n = r.id === 'month' ? null : filterCases(all, { mode: r.id }).length;
-                    return `<button type="button" class="mtp-range-btn${r.id === range.mode ? ' on' : ''}"
-                              data-range="${r.id}">${esc(r.label)}${n === null ? '' : ` <span class="mtp-range-n">${n}</span>`}</button>`;
-                  }).join('')}
-                ${range.mode === 'month' ? `
-                  <span class="mtp-dial mtp-monthdial">
-                    <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${md.y}" style="width:60px">
-                    <span class="mtp-dial-sep">年</span>
-                    <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${md.m}" style="width:40px">
-                    <span class="mtp-dial-sep">月</span>
-                    <span class="mtp-cal">
-                      <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
-                      <input class="mtp-cal-in" type="month" tabindex="-1"
-                             value="${md.y}-${String(md.m).padStart(2, '0')}">
-                    </span>
-                  </span>` : ''}
-              </div>
-            </div>
-          </div>`;
-      }
-      if (v.type === 'month') {
-        const m = state.months[v.key] || (state.months[v.key] = new Date().getMonth() + 1);
-        return `
-          <div class="mtp-field">
-            <label class="mtp-flabel">${esc(v.key)}</label>
-            <span class="mtp-dial mtp-monthonly" data-var="${esc(v.key)}">
-              <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13"
-                     value="${m}" style="width:44px">
-              <span class="mtp-dial-sep">月</span>
-            </span>
-          </div>`;
-      }
-      const isLong = /自由記載|本文|メモ|備考|内容/.test(v.key);
-      return `
-        <div class="mtp-field">
-          <label class="mtp-flabel">${esc(v.key)}</label>
-          ${isLong
-            ? `<textarea class="mtp-fin mtp-ftext" data-var="${esc(v.key)}" rows="3"
-                 placeholder="${esc(v.key)}を入力（改行できます）">${esc(state.values[v.key] || '')}</textarea>`
-            : `<input class="mtp-fin" data-var="${esc(v.key)}" value="${esc(state.values[v.key] || '')}"
-                 placeholder="${esc(v.key)}を入力">`}
-        </div>`;
-    }).join('');
-
-    wireCombo(container, (varKey) => isCaseVar(varKey)
-      ? filterCases(state.cases, state.ranges[varKey])
-      : [], onChange);
-
-    // 期間ボタン
-    container.querySelectorAll('.mtp-range-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const key = btn.closest('.mtp-range').dataset.var;
-        state.ranges[key] = Object.assign({}, state.ranges[key], { mode: btn.dataset.range });
-        rerenderVarInputs(container);
-      });
-    });
-
-    // 年月ダイヤル（その月の案件だけに絞る）
-    container.querySelectorAll('.mtp-monthdial').forEach(dial => {
-      const key = dial.closest('.mtp-range').dataset.var;
-      dial.querySelectorAll('.mtp-dial-num').forEach(inp => {
-        const handler = () => {
-          const md = state.ranges[key].month;
-          md[inp.dataset.part] = parseInt(inp.value, 10);
-          normalizeDate(md);
-          rerenderVarInputs(container);
-        };
-        inp.addEventListener('change', handler);
-      });
-      wireCalendar(dial, (cal, picked) => {
-        state.ranges[key].month = { y: picked.y, m: picked.m, d: 1 };
-        rerenderVarInputs(container);
-      });
-    });
-
-    // 月だけのダイヤル（12の次は1、1の前は12）
-    container.querySelectorAll('.mtp-monthonly').forEach(dial => {
-      const key = dial.dataset.var;
-      const inp = dial.querySelector('[data-part=m]');
-      const apply = () => {
-        let m = parseInt(inp.value, 10);
-        if (!Number.isFinite(m)) m = new Date().getMonth() + 1;
-        if (m > 12) m = 1;
-        if (m < 1)  m = 12;
-        inp.value = m;
-        state.months[key] = m;
-        state.values[key] = `${m}月`;
-        onChange();
-      };
-      inp.addEventListener('change', apply);
-      inp.addEventListener('input',  apply);
-      apply();
-    });
-
-    // テキスト欄
-    container.querySelectorAll('.mtp-fin').forEach(el => {
-      el.addEventListener('input', () => {
-        state.values[el.dataset.var] = el.value;
-        onChange();
-      });
-    });
-
-    // 日付ダイヤル（年月しぼり・月だけのダイヤルは見た目が同じなだけなので拾わない）
-    container.querySelectorAll('.mtp-datedial').forEach(dial => {
-      const key = dial.dataset.var;
-      const fmtSel = container.querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
-      const apply = () => {
-        const d = state.dates[key];
-        state.values[key] = formatDate(d.y, d.m, d.d, fmtSel.value);
-        onChange();
-      };
-      dial.querySelectorAll('.mtp-dial-num').forEach(inp => {
-        const handler = () => {
-          const d = state.dates[key];
-          const part = inp.dataset.part;
-          d[part] = parseInt(inp.value, 10);
-          normalizeDate(d);
-          dial.querySelector('[data-part=y]').value = d.y;
-          dial.querySelector('[data-part=m]').value = d.m;
-          dial.querySelector('[data-part=d]').value = d.d;
-          apply();
-        };
-        inp.addEventListener('change', handler);
-        inp.addEventListener('input',  handler);
-      });
-      const showOnDial = () => {
-        const d = state.dates[key];
-        dial.querySelector('[data-part=y]').value = d.y;
-        dial.querySelector('[data-part=m]').value = d.m;
-        dial.querySelector('[data-part=d]').value = d.d;
-        const cal = dial.querySelector('.mtp-cal-in');
-        if (cal) cal.value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-      };
-      dial.querySelector('.mtp-dial-today').addEventListener('click', () => {
-        state.dates[key] = defaultDate();
-        showOnDial();
-        apply();
-      });
-      // カレンダーから選んでもダイヤルと表示を合わせる
-      wireCalendar(dial, (cal, picked) => {
-        state.dates[key] = picked;
-        showOnDial();
-        apply();
-      });
-      fmtSel.addEventListener('change', () => {
-        // 形式の好みは「年あり」「月日だけ」で別々に覚える
-        localStorage.setItem('mailtpl_datefmt_' + (fmtSel.dataset.kind === 'md' ? 'md' : 'ymd'),
-                             fmtSel.value);
-        apply();
-      });
-      apply();   // 初期値をすぐ反映する
-    });
-  }
-
   /* ---------- 選択と自由入力を兼ねるコントロール ----------
      候補は ◀▶ のダイヤルで送れるが、欄に直接打ち込んでもいい。
      候補が無いときはただのテキスト欄として振る舞う。 */
@@ -864,6 +707,258 @@
       sync();
     });
   }
+
+  function renderVarInputs(container, text, state, onChange) {
+    injectStyle();
+    state.values = state.values || {};
+    state.dates  = state.dates  || {};
+    state.ranges = state.ranges || {};
+    state.months = state.months || {};
+    state.linked = state.linked || {};
+    container._mtpArgs = { text, state, onChange };   // 組み直すときのため
+    const vars = manualVars(text, state.linked);
+
+    if (!vars.length) {
+      container.innerHTML = '<div class="mtp-noinput">この定型文に入力が必要な項目はありません</div>';
+      return;
+    }
+
+    /* 同じ名前が何回か出てくるときだけ、番号と「連動」ボタンを出す */
+    const label = (v) => {
+      const num = (v.total > 1 && !v.linked) ? `<span class="mtp-fnum">${v.inst}つ目</span>` : '';
+      const link = (v.total > 1 && (v.inst === 1 || v.linked))
+        ? `<button type="button" class="mtp-link${v.linked ? ' on' : ''}" data-link="${esc(v.key)}"
+             title="${v.linked ? 'それぞれ別の値に戻す' : v.key + 'の' + v.total + '箇所を同じ値にする'}"
+             >${v.linked ? '🔗 連動中' : '🔗 連動'}</button>` : '';
+      return `<label class="mtp-flabel">${esc(v.key)}${num}${link}</label>`;
+    };
+
+    container.innerHTML = vars.map(v => {
+      if (v.type === 'date') {
+        const d = state.dates[v.vkey] || (state.dates[v.vkey] = defaultDate());
+        return `
+          <div class="mtp-field">
+            ${label(v)}
+            <div class="mtp-dial mtp-datedial" data-vkey="${esc(v.vkey)}">
+              <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${d.y}" style="width:60px">
+              <span class="mtp-dial-sep">年</span>
+              <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${d.m}" style="width:40px">
+              <span class="mtp-dial-sep">月</span>
+              <input class="mtp-dial-num" type="number" data-part="d" min="0" max="32" value="${d.d}" style="width:40px">
+              <span class="mtp-dial-sep">日</span>
+              <button class="mtp-dial-today" type="button" title="今日に戻す">今日</button>
+              <span class="mtp-cal">
+                <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
+                <input class="mtp-cal-in" type="date" tabindex="-1"
+                       value="${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}">
+              </span>
+            </div>
+            <select class="mtp-fmt" data-vkey="${esc(v.vkey)}" data-kind="${esc(v.kind || 'ymd')}">
+              ${formatsFor(v.kind).map(f =>
+                  `<option value="${f.id}"${f.id === dateFormat(v.kind) ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}
+            </select>
+          </div>`;
+      }
+
+      if (isCaseVar(v.key)) {
+        const all = state.cases || [];
+        const range = state.ranges[v.vkey] || (state.ranges[v.vkey] = initialRange(all));
+        const shown = filterCases(all, range);
+        const note = state.casesLoading ? '読み込み中…'
+                   : (all.length ? `${shown.length}件` : '候補なし');
+        const md = range.month || (range.month = newestCaseMonth(all));
+        return `
+          <div class="mtp-field">
+            ${label(v)}
+            <div class="mtp-casewrap">
+              ${comboHTML(v.vkey, state.values[v.vkey], shown,
+                          all.length ? '候補から選ぶか直接入力' : '案件名を入力', note)}
+              <div class="mtp-range" data-vkey="${esc(v.vkey)}">
+                ${CASE_RANGES.map(r => {
+                    const n = r.id === 'month' ? null : filterCases(all, { mode: r.id }).length;
+                    return `<button type="button" class="mtp-range-btn${r.id === range.mode ? ' on' : ''}"
+                              data-range="${r.id}">${esc(r.label)}${n === null ? '' : ` <span class="mtp-range-n">${n}</span>`}</button>`;
+                  }).join('')}
+                ${range.mode === 'month' ? `
+                  <span class="mtp-dial mtp-monthdial">
+                    <input class="mtp-dial-num" type="number" data-part="y" min="2020" max="2035" value="${md.y}" style="width:60px">
+                    <span class="mtp-dial-sep">年</span>
+                    <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13" value="${md.m}" style="width:40px">
+                    <span class="mtp-dial-sep">月</span>
+                    <span class="mtp-cal">
+                      <button class="mtp-cal-btn" type="button" title="カレンダーから選ぶ">📅</button>
+                      <input class="mtp-cal-in" type="month" tabindex="-1"
+                             value="${md.y}-${String(md.m).padStart(2, '0')}">
+                    </span>
+                  </span>` : ''}
+              </div>
+            </div>
+          </div>`;
+      }
+
+      if (v.type === 'month') {
+        const m = state.months[v.vkey] || (state.months[v.vkey] = new Date().getMonth() + 1);
+        return `
+          <div class="mtp-field">
+            ${label(v)}
+            <span class="mtp-dial mtp-monthonly" data-vkey="${esc(v.vkey)}">
+              <input class="mtp-dial-num" type="number" data-part="m" min="0" max="13"
+                     value="${m}" style="width:44px">
+              <span class="mtp-dial-sep">月</span>
+            </span>
+          </div>`;
+      }
+
+      const isLong = /自由記載|本文|メモ|備考|内容/.test(v.key);
+      return `
+        <div class="mtp-field">
+          ${label(v)}
+          ${isLong
+            ? `<textarea class="mtp-fin mtp-ftext" data-vkey="${esc(v.vkey)}" rows="3"
+                 placeholder="${esc(v.key)}を入力（改行できます）">${esc(state.values[v.vkey] || '')}</textarea>`
+            : `<input class="mtp-fin" data-vkey="${esc(v.vkey)}" value="${esc(state.values[v.vkey] || '')}"
+                 placeholder="${esc(v.key)}を入力">`}
+        </div>`;
+    }).join('');
+
+    wireCombo(container, (vkey) => isCaseVar(vkey.split('#')[0])
+      ? filterCases(state.cases, state.ranges[vkey])
+      : [], onChange);
+
+    // 「連動」ボタン：同じ名前の箇所をまとめる／それぞれ別に戻す。
+    // 切り替えたときに入力済みの値が消えないよう、値を引き継いでおく。
+    container.querySelectorAll('.mtp-link').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name  = btn.dataset.link;
+        const total = countNames(text)[name] || 1;
+        const on    = !state.linked[name];
+        const copy  = (from, to) => {
+          if (state.values[from] !== undefined && state.values[to] === undefined)
+            state.values[to] = state.values[from];
+          if (state.dates[from]  && !state.dates[to])  state.dates[to]  = Object.assign({}, state.dates[from]);
+          if (state.months[from] && !state.months[to]) state.months[to] = state.months[from];
+        };
+        if (on) {
+          // 値が入っている一番早い箇所にそろえる（1つ目が空のこともある）
+          let src = `${name}#1`;
+          for (let i = 1; i <= total; i++) {
+            if (state.values[`${name}#${i}`]) { src = `${name}#${i}`; break; }
+          }
+          delete state.values[name];
+          delete state.dates[name];
+          delete state.months[name];
+          copy(src, name);
+        } else {
+          for (let i = 1; i <= total; i++) copy(name, `${name}#${i}`);
+        }
+        state.linked[name] = on;
+        rerenderVarInputs(container);
+      });
+    });
+
+    // 期間ボタン
+    container.querySelectorAll('.mtp-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const vkey = btn.closest('.mtp-range').dataset.vkey;
+        state.ranges[vkey] = Object.assign({}, state.ranges[vkey], { mode: btn.dataset.range });
+        rerenderVarInputs(container);
+      });
+    });
+
+    // 年月ダイヤル（その月の案件だけに絞る）
+    container.querySelectorAll('.mtp-monthdial').forEach(dial => {
+      const vkey = dial.closest('.mtp-range').dataset.vkey;
+      dial.querySelectorAll('.mtp-dial-num').forEach(inp => {
+        const handler = () => {
+          const md = state.ranges[vkey].month;
+          md[inp.dataset.part] = parseInt(inp.value, 10);
+          normalizeDate(md);
+          rerenderVarInputs(container);
+        };
+        inp.addEventListener('change', handler);
+      });
+      wireCalendar(dial, (cal, picked) => {
+        state.ranges[vkey].month = { y: picked.y, m: picked.m, d: 1 };
+        rerenderVarInputs(container);
+      });
+    });
+
+    // 月だけのダイヤル（12の次は1、1の前は12）
+    container.querySelectorAll('.mtp-monthonly').forEach(dial => {
+      const vkey = dial.dataset.vkey;
+      const inp = dial.querySelector('[data-part=m]');
+      const apply = () => {
+        let m = parseInt(inp.value, 10);
+        if (!Number.isFinite(m)) m = new Date().getMonth() + 1;
+        if (m > 12) m = 1;
+        if (m < 1)  m = 12;
+        inp.value = m;
+        state.months[vkey] = m;
+        state.values[vkey] = `${m}月`;
+        onChange();
+      };
+      inp.addEventListener('change', apply);
+      inp.addEventListener('input',  apply);
+      apply();
+    });
+
+    // テキスト欄
+    container.querySelectorAll('.mtp-fin').forEach(el => {
+      el.addEventListener('input', () => {
+        state.values[el.dataset.vkey] = el.value;
+        onChange();
+      });
+    });
+
+    // 日付ダイヤル（年月しぼり・月だけのダイヤルは見た目が同じなだけなので拾わない）
+    container.querySelectorAll('.mtp-datedial').forEach(dial => {
+      const vkey = dial.dataset.vkey;
+      const fmtSel = container.querySelector(`.mtp-fmt[data-vkey="${CSS.escape(vkey)}"]`);
+      const apply = () => {
+        const d = state.dates[vkey];
+        state.values[vkey] = formatDate(d.y, d.m, d.d, fmtSel.value);
+        onChange();
+      };
+      dial.querySelectorAll('.mtp-dial-num').forEach(inp => {
+        const handler = () => {
+          const d = state.dates[vkey];
+          d[inp.dataset.part] = parseInt(inp.value, 10);
+          normalizeDate(d);
+          showOnDial();
+          apply();
+        };
+        inp.addEventListener('change', handler);
+        inp.addEventListener('input',  handler);
+      });
+      const showOnDial = () => {
+        const d = state.dates[vkey];
+        dial.querySelector('[data-part=y]').value = d.y;
+        dial.querySelector('[data-part=m]').value = d.m;
+        dial.querySelector('[data-part=d]').value = d.d;
+        const cal = dial.querySelector('.mtp-cal-in');
+        if (cal) cal.value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      };
+      dial.querySelector('.mtp-dial-today').addEventListener('click', () => {
+        state.dates[vkey] = defaultDate();
+        showOnDial();
+        apply();
+      });
+      // カレンダーから選んでもダイヤルと表示を合わせる
+      wireCalendar(dial, (cal, picked) => {
+        state.dates[vkey] = picked;
+        showOnDial();
+        apply();
+      });
+      fmtSel.addEventListener('change', () => {
+        // 形式の好みは「年あり」「月日だけ」で別々に覚える
+        localStorage.setItem('mailtpl_datefmt_' + (fmtSel.dataset.kind === 'md' ? 'md' : 'ymd'),
+                             fmtSel.value);
+        apply();
+      });
+      apply();   // 初期値をすぐ反映する
+    });
+  }
+
 
   /* 期間を変えたときなど、同じ引数で入力欄を組み直す */
   function rerenderVarInputs(container) {
@@ -1020,6 +1115,12 @@
       .mtp-fin:focus { outline:none; border-color:#4f6ef7; background:#fff; }
       .mtp-ftext { line-height:1.7; resize:vertical; }
       .mtp-noinput { font-size:12px; color:#bbb; padding:4px 0; }
+      .mtp-fnum { display:block; font-size:10px; color:#c4c4c4; font-weight:400; }
+      .mtp-link { display:block; margin-top:3px; border:1.5px solid #e8e8e8; background:#fff;
+        border-radius:20px; font-size:10px; color:#999; padding:2px 7px; cursor:pointer;
+        font-family:inherit; }
+      .mtp-link:hover { background:#f5f5f5; color:#666; }
+      .mtp-link.on { background:#eef1ff; border-color:#4f6ef7; color:#4f6ef7; font-weight:600; }
 
       /* 日付ダイヤル（請求書ツールの月ダイヤルと同じ操作感） */
       .mtp-dial { display:flex; align-items:center; gap:4px; background:#fff;
@@ -1143,7 +1244,8 @@
       </div>`);
 
     const $ = (id) => modal.querySelector('#' + id);
-    const state = { values: {}, dates: {}, cases: [], ranges: {}, casesLoading: true };
+    const state = { values: {}, dates: {}, months: {}, linked: {},
+                    cases: [], ranges: {}, casesLoading: true };
 
 
     // その顧客の案件を案件名の候補にする（引けなくても手入力はできる）
@@ -1159,6 +1261,7 @@
       customerNo:   customer.no || '',
       invoiceName:  customer.invoiceName || '',
       values:       state.values,
+      linked:       state.linked,
     });
 
     // プレビューを手で直したら、変数を変えてもその編集を上書きしない
@@ -1194,20 +1297,25 @@
     }
 
     /* 確認ビューで選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
-    function applyVarValue(key, value) {
-      const fmtSel = $('mtpInputs').querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
-      commitVarValue(state, key, value, fmtSel && fmtSel.value);
-      setSlotValue($('mtpSubj'), key, state.values[key]);
-      setSlotValue($('mtpBody'), key, state.values[key]);
+    function applyVarValue(name, inst, value) {
+      const vkey = instKeyOf(name, inst, state.linked);
+      const fmtSel = $('mtpInputs').querySelector(`.mtp-fmt[data-vkey="${CSS.escape(vkey)}"]`);
+      commitVarValue(state, name, vkey, value, fmtSel && fmtSel.value);
+      // 連動しているときは同じ名前の全部、していないときはその箇所だけ
+      const only = state.linked[name] ? null : inst;
+      setSlotValue($('mtpSubj'), name, only, state.values[vkey]);
+      setSlotValue($('mtpBody'), name, only, state.values[vkey]);
       const t = templates[Number($('mtpSel').value)] || {};
       renderVarInputs($('mtpInputs'), (t.subject || '') + '\n' + (t.body || ''), state, render);
       syncWarn();
     }
 
     const previewOpts = {
-      candidates: (key) => isCaseVar(key) ? filterCases(state.cases, state.ranges[key]) : [],
-      dateOf:     (key) => state.dates[key],
-      valueOf:    (key) => state.values[key] || '',
+      vkeyOf:     (name, inst) => instKeyOf(name, inst, state.linked),
+      candidates: (name) => isCaseVar(name.split('#')[0])
+        ? filterCases(state.cases, state.ranges[name]) : [],
+      dateOf:     (vkey) => state.dates[vkey],
+      valueOf:    (vkey) => state.values[vkey] || '',
       onPick:     applyVarValue,
       onEdit:     () => { edited = true; syncWarn(); },
     };
@@ -1246,5 +1354,6 @@
     resolveVar, slotKind, renderPreviewInto, previewText, setSlotValue, refreshSlots,
     clearCustomerOverrides,
     detachEditedSlots, wirePreview, closeSlotMenu, slotAtCaret, commitVarValue,
+    placeholderList, instKeyOf, resolveSlot, countNames,
   };
 })();

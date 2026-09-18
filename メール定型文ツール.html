@@ -301,7 +301,8 @@ let templates = [];    // 登録済み定型文
 let customers = [];    // 差し込み用の顧客リスト
 let currentId = '';    // 編集中のNotionページID（空＝新規）
 let lastField = null;  // 変数を挿し込む対象（件名 or 本文）
-let varState = { values: {}, dates: {} };  // 送信時に入力した値
+// 送信時に入力した値。同じ名前の変数も箇所ごとに別々に持つ（linkedに入れた名前だけ共有）
+let varState = { values: {}, dates: {}, months: {}, linked: {}, ranges: {}, cases: [] };
 let varSig = null;     // 入力欄を組み直すかの判定用（変数の顔ぶれ）
 let currentCustomerName = '';              // 宛先（選択でも手入力でも入る）
 let prevEdited = false;                    // プレビューを手で直したか
@@ -317,10 +318,11 @@ window.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('input', renderPreview);
   });
   const previewOpts = {
-    candidates: (key) => MailTpl.isCaseVar(key)
-      ? MailTpl.filterCases(varState.cases, varState.ranges[key]) : [],
-    dateOf:     (key) => varState.dates[key],
-    valueOf:    (key) => varState.values[key] || '',
+    vkeyOf:     (name, inst) => MailTpl.instKeyOf(name, inst, varState.linked),
+    candidates: (name) => MailTpl.isCaseVar(name.split('#')[0])
+      ? MailTpl.filterCases(varState.cases, varState.ranges[name]) : [],
+    dateOf:     (vkey) => varState.dates[vkey],
+    valueOf:    (vkey) => varState.values[vkey] || '',
     onPick:     applyVarValue,
     onEdit:     () => { prevEdited = true; syncPrevNotes(); },
   };
@@ -568,6 +570,7 @@ function previewCtx() {
     customerNo:   c.no || '',
     invoiceName:  c.invoiceName || '',
     values:       varState.values,
+    linked:       varState.linked,
   };
 }
 
@@ -575,7 +578,8 @@ function previewCtx() {
 // 毎回作り直すと、入力中のカーソルが飛んでしまうため。
 function syncVarInputs() {
   const text = document.getElementById('fSubject').value + '\n' + document.getElementById('fBody').value;
-  const sig = MailTpl.manualVars(text).map(v => v.key + ':' + v.type).join('|');
+  const sig = MailTpl.manualVars(text, varState.linked)
+    .map(v => v.vkey + ':' + v.type).join('|');
   if (sig === varSig) return;
   varSig = sig;
   MailTpl.renderVarInputs(document.getElementById('pInputs'), text, varState, renderPreview);
@@ -598,11 +602,14 @@ function renderPreview() {
 }
 
 /* 確認ビューで変数を選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
-function applyVarValue(key, value) {
-  const fmtSel = document.querySelector(`#pInputs .mtp-fmt[data-var="${CSS.escape(key)}"]`);
-  MailTpl.commitVarValue(varState, key, value, fmtSel && fmtSel.value);
-  MailTpl.setSlotValue(document.getElementById('prevSubject'), key, varState.values[key]);
-  MailTpl.setSlotValue(document.getElementById('prevBody'),    key, varState.values[key]);
+function applyVarValue(name, inst, value) {
+  const vkey = MailTpl.instKeyOf(name, inst, varState.linked);
+  const fmtSel = document.querySelector(`#pInputs .mtp-fmt[data-vkey="${CSS.escape(vkey)}"]`);
+  MailTpl.commitVarValue(varState, name, vkey, value, fmtSel && fmtSel.value);
+  // 連動しているときは同じ名前の全部、していないときはその箇所だけ
+  const only = varState.linked[name] ? null : inst;
+  MailTpl.setSlotValue(document.getElementById('prevSubject'), name, only, varState.values[vkey]);
+  MailTpl.setSlotValue(document.getElementById('prevBody'),    name, only, varState.values[vkey]);
   varSig = null;          // 入力欄にも反映する
   syncVarInputs();
   syncPrevNotes();
