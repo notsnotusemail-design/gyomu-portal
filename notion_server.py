@@ -56,6 +56,9 @@ SCHEDULE_DB_ID = "4a2a3ad54b5b41a6b138420ee5841ee3"
 # 引き継ぎデータベースID（Notionで管理）
 HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 
+# メール定型文データベースID（Notionで管理）
+MAIL_TEMPLATE_DB_ID = os.environ.get("MAIL_TEMPLATE_DB_ID", "3df3288b-84b0-814e-a04b-ddcb121341e9")
+
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 
@@ -299,6 +302,42 @@ def case_label(case):
             return v
     return case.get("number", "")
 
+
+# ========== メール定型文（Notion DB）==========
+# Notionの rich_text は1要素あたりの文字数に上限があるため分割して格納する
+MAIL_TPL_CHUNK = 1900
+
+def mail_rt_chunks(text):
+    """長文を Notion rich_text の要素に分割"""
+    text = text or ""
+    return [{"text": {"content": text[i:i + MAIL_TPL_CHUNK]}}
+            for i in range(0, len(text), MAIL_TPL_CHUNK)]
+
+def mail_rt_plain(props, key):
+    """rich_textプロパティを1本の文字列に戻す"""
+    return "".join(t.get("plain_text", "")
+                   for t in (props.get(key, {}).get("rich_text") or []))
+
+def parse_mail_template_page(page):
+    """Notionページをメール定型文アイテムに変換"""
+    try:
+        props    = page["properties"]
+        title_rt = props.get("テンプレート名", {}).get("title") or []
+        name     = "".join(t.get("plain_text", "") for t in title_rt).strip()
+        return {
+            "id":        page["id"],
+            "name":      name,
+            "subject":   mail_rt_plain(props, "件名"),
+            "body":      mail_rt_plain(props, "本文"),
+            "memo":      mail_rt_plain(props, "メモ"),
+            "category":  (props.get("カテゴリ", {}).get("select") or {}).get("name", ""),
+            "order":     props.get("並び順", {}).get("number"),
+            "enabled":   props.get("有効", {}).get("checkbox", True),
+            "updated":   page.get("last_edited_time", ""),
+            "notionUrl": page.get("url", ""),
+        }
+    except Exception:
+        return None
 
 def notion_request(method, path, body=None):
     url = NOTION_API + path
@@ -599,6 +638,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("請求書管理ツール.html")
         elif path == "/ワーカー請求書.html":
             self.send_html("ワーカー請求書.html")
+        elif path == "/メール定型文ツール.html":
+            self.send_html("メール定型文ツール.html")
         elif path == "/api/invoices":
             invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
@@ -637,6 +678,8 @@ class Handler(BaseHTTPRequestHandler):
                 "next_3000s":    next_in_range(nos, 3000, 3999), # 新規チャンネル・裁量高
                 "next_regular":  next_in_range(nos, 1, 99),      # 通常（固有値・再利用不可）
             })
+        elif path == "/mail_template.js":
+            self.send_static("mail_template.js", "application/javascript; charset=utf-8")
         elif path == "/customer_link.js":
             self.send_static("customer_link.js", "application/javascript; charset=utf-8")
         elif path == "/api/customer-links":
@@ -647,6 +690,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_customers()
         elif path == "/api/customers-all":
             self.handle_get_all_customers()
+        elif path == "/api/mail-templates":
+            self.handle_mail_templates_list()
         elif path.startswith("/api/invoice-data"):
             self.handle_get_invoice_data()
         elif path.startswith("/api/calendar/day"):
@@ -765,6 +810,10 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_bulk_update_customers(data)
         elif self.path == "/api/customers/bulk-archive":
             self.handle_bulk_archive_customers(data)
+        elif self.path == "/api/mail-templates/save":
+            self.handle_mail_template_save(data)
+        elif self.path == "/api/mail-templates/delete":
+            self.handle_mail_template_delete(data)
         elif self.path == "/api/customers/invoice-name":
             self.handle_set_invoice_name(data)
         elif self.path == "/api/handover/add":
@@ -1293,6 +1342,80 @@ class Handler(BaseHTTPRequestHandler):
         date_str = (qs.get('date') or [None])[0] or datetime.date.today().isoformat()
         items = get_active_handover(date_str)
         self.send_json(200, {"ok": True, "items": items, "date": date_str})
+
+    # ========== メール定型文 ==========
+    def handle_mail_templates_list(self):
+        """メール定型文を全件取得"""
+        items, cursor = [], None
+        while True:
+            body = {"page_size": 100}
+            if cursor:
+                body["start_cursor"] = cursor
+            result, err = notion_request("POST", f"/databases/{MAIL_TEMPLATE_DB_ID}/query", body)
+            if not result:
+                self.send_json(400, {"ok": False, "error": err}); return
+            for page in result.get("results", []):
+                item = parse_mail_template_page(page)
+                if item:
+                    items.append(item)
+            if not result.get("has_more"):
+                break
+            cursor = result.get("next_cursor")
+        # 並び順（未設定は末尾）→ テンプレート名 の順に並べる
+        items.sort(key=lambda x: (x["order"] is None,
+                                  x["order"] if x["order"] is not None else 0,
+                                  x["name"]))
+        print(f"\n✉️ メール定型文取得: {len(items)}件")
+        self.send_json(200, {"ok": True, "templates": items})
+
+    def handle_mail_template_save(self, data):
+        """メール定型文を登録／更新（idがあれば更新）"""
+        name = (data.get("name") or "").strip()
+        if not name:
+            self.send_json(400, {"ok": False, "error": "テンプレート名が必要です"}); return
+        props = {
+            "テンプレート名": {"title": [{"text": {"content": name[:MAIL_TPL_CHUNK]}}]},
+            "件名":          {"rich_text": mail_rt_chunks(data.get("subject", ""))},
+            "本文":          {"rich_text": mail_rt_chunks(data.get("body", ""))},
+            "メモ":          {"rich_text": mail_rt_chunks(data.get("memo", ""))},
+            "有効":          {"checkbox": bool(data.get("enabled", True))},
+        }
+        cat = (data.get("category") or "").strip()
+        props["カテゴリ"] = {"select": {"name": cat}} if cat else {"select": None}
+        order = data.get("order")
+        if order in (None, ""):
+            props["並び順"] = {"number": None}
+        else:
+            try:
+                num = float(order)
+                props["並び順"] = {"number": int(num) if num == int(num) else num}
+            except (TypeError, ValueError):
+                props["並び順"] = {"number": None}
+
+        page_id = data.get("id") or ""
+        if page_id:
+            result, err = notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
+            action = "更新"
+        else:
+            result, err = notion_request("POST", "/pages",
+                                         {"parent": {"database_id": MAIL_TEMPLATE_DB_ID},
+                                          "properties": props})
+            action = "登録"
+        if not result:
+            self.send_json(400, {"ok": False, "error": err}); return
+        print(f"  ✅ メール定型文{action}: {name[:30]}")
+        self.send_json(200, {"ok": True, "template": parse_mail_template_page(result)})
+
+    def handle_mail_template_delete(self, data):
+        """メール定型文を削除（Notion上はアーカイブ）"""
+        page_id = data.get("id", "")
+        if not page_id:
+            self.send_json(400, {"ok": False, "error": "idが必要"}); return
+        result, err = notion_request("PATCH", f"/pages/{page_id}", {"archived": True})
+        if result is None:
+            self.send_json(400, {"ok": False, "error": err}); return
+        print(f"  🗑 メール定型文削除: {page_id[:8]}")
+        self.send_json(200, {"ok": True})
 
     def handle_handover_add(self, data):
         text = data.get("text","").strip()

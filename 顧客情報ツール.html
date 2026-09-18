@@ -126,6 +126,14 @@ input[type=checkbox] {
   width: 16px; height: 16px; cursor: pointer; accent-color: #4f6ef7;
 }
 
+/* メール定型文ボタン */
+.mail-btn {
+  border: 1.5px solid #e2e2e2; background: white; border-radius: 7px;
+  padding: 4px 8px; cursor: pointer; font-size: 13px; line-height: 1.2;
+  transition: all 0.15s;
+}
+.mail-btn:hover { background: #f5f3ff; border-color: #8b5cf6; }
+
 /* 空状態・ロード */
 .empty { text-align: center; padding: 48px 20px; color: #aaa; font-size: 14px; }
 .empty .icon { font-size: 32px; margin-bottom: 10px; }
@@ -202,10 +210,11 @@ input[type=checkbox] {
           <th onclick="setSortKey('kind')">種別 <span class="sort-arrow" data-col="kind"></span></th>
           <th>連絡方法</th>
           <th>重要備考</th>
+          <th style="width:52px">メール</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="8"><div class="loading">読み込み中…</div></td></tr>
+        <tr><td colspan="9"><div class="loading">読み込み中…</div></td></tr>
       </tbody>
     </table>
   </div>
@@ -223,7 +232,7 @@ let sortAsc = true;
 // ===== 初期ロード =====
 async function loadCustomers() {
   document.getElementById('tableBody').innerHTML =
-    '<tr><td colspan="8"><div class="loading">Notionから取得中…</div></td></tr>';
+    '<tr><td colspan="9"><div class="loading">Notionから取得中…</div></td></tr>';
   try {
     const r = await fetch(SERVER + '/api/customers-all',
       { signal: AbortSignal.timeout(12000) });
@@ -234,7 +243,7 @@ async function loadCustomers() {
     applyFilters();
   } catch(e) {
     document.getElementById('tableBody').innerHTML =
-      `<tr><td colspan="8"><div class="empty"><div class="icon">⚠️</div>取得失敗: ${e.message}</div></td></tr>`;
+      `<tr><td colspan="9"><div class="empty"><div class="icon">⚠️</div>取得失敗: ${e.message}</div></td></tr>`;
   }
 }
 
@@ -303,7 +312,7 @@ function updateSortUI() {
 function renderTable() {
   const body = document.getElementById('tableBody');
   if (filteredList.length === 0) {
-    body.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="icon">🔍</div>該当する顧客が見つかりません</div></td></tr>';
+    body.innerHTML = '<tr><td colspan="9"><div class="empty"><div class="icon">🔍</div>該当する顧客が見つかりません</div></td></tr>';
     return;
   }
   body.innerHTML = '';
@@ -351,6 +360,10 @@ function renderTable() {
       <td>${c.kind ? `<span class="kind-badge">${esc(c.kind)}</span>` : '―'}</td>
       <td style="font-size:12px;color:#666">${esc(c.contact) || '―'}</td>
       <td class="notes-cell" title="${esc(c.notes)}">${esc(c.notes) || '―'}</td>
+      <td style="text-align:center">
+        <button class="mail-btn" title="メール定型文から文面を作る"
+                onclick="openMailPicker('${c.id}')">✉️</button>
+      </td>
     `;
     body.appendChild(tr);
   });
@@ -359,6 +372,12 @@ function renderTable() {
 
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// 定型文を選んで、その顧客のデータを差し込んだ文面をコピーする
+function openMailPicker(id) {
+  const c = allCustomers.find(x => x.id === id);
+  if (c) MailTpl.openPicker(c);
 }
 
 // ===== チェックボックス =====
@@ -457,6 +476,7 @@ async function bulkArchive() {
 // 起動
 loadCustomers();
 </script>
+<script src="/mail_template.js"></script>
 <script src="/customer_link.js" defer></script>
 </body>
 </html>

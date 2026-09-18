@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>メール定型文</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 1100px; margin: 0 auto; }
+
+/* ヘッダー */
+.page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.back-btn {
+  display: flex; align-items: center; gap: 5px; font-size: 13px; color: #888;
+  text-decoration: none; padding: 6px 10px; border-radius: 8px; transition: background 0.15s;
+}
+.back-btn:hover { background: #e8e8e5; color: #333; }
+.page-title { font-size: 20px; font-weight: 700; }
+.page-count { font-size: 13px; color: #aaa; margin-left: auto; }
+.refresh-btn {
+  padding: 7px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+  background: white; cursor: pointer; font-size: 13px; font-family: inherit;
+  transition: all 0.15s; color: #555;
+}
+.refresh-btn:hover { background: #f5f5f5; }
+
+/* レイアウト */
+.layout { display: grid; grid-template-columns: 300px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+
+.panel {
+  background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.panel-title { font-size: 13px; font-weight: 700; }
+.panel-body { padding: 14px; }
+
+/* 一覧 */
+.list-ctrl { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; display: grid; gap: 8px; }
+.search-input, .filter-sel, .field-in, .field-sel, .field-ta {
+  width: 100%; padding: 8px 11px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 13px; font-family: inherit; background: #fafafa; color: #1a1a1a;
+}
+.search-input:focus, .filter-sel:focus, .field-in:focus, .field-sel:focus, .field-ta:focus {
+  outline: none; border-color: #4f6ef7; background: white;
+}
+.filter-sel, .field-sel { cursor: pointer; }
+.tpl-list { max-height: 62vh; overflow-y: auto; }
+.tpl-item {
+  padding: 11px 14px; border-bottom: 1px solid #f4f4f4; cursor: pointer;
+  transition: background 0.1s;
+}
+.tpl-item:last-child { border-bottom: none; }
+.tpl-item:hover { background: #fafafa; }
+.tpl-item.active { background: #eef1ff; }
+.tpl-item.off { opacity: 0.45; }
+.tpl-name { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.tpl-sub  { font-size: 11px; color: #aaa; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; }
+.cat-badge {
+  display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 20px;
+  background: #f1f1f1; color: #777; margin-right: 5px; vertical-align: 1px;
+}
+.c-初回連絡   { background:#dbeafe; color:#1e40af; }
+.c-納品       { background:#dcfce7; color:#166534; }
+.c-請求       { background:#ffedd5; color:#9a3412; }
+.c-リマインド { background:#fef9c3; color:#854d0e; }
+.c-日程調整   { background:#ede9fe; color:#5b21b6; }
+.c-お礼・挨拶 { background:#fce7f3; color:#9d174d; }
+.c-その他     { background:#f1f5f9; color:#475569; }
+
+/* フォーム */
+.field { margin-bottom: 12px; }
+.field-label { font-size: 11px; font-weight: 600; color: #999; margin-bottom: 5px; display: block; }
+.field-label .req { color: #ef4444; }
+.field-ta { min-height: 230px; resize: vertical; line-height: 1.75; }
+.field-row { display: grid; grid-template-columns: 1fr 110px auto; gap: 10px; align-items: end; }
+@media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } }
+.check-wrap { display: flex; align-items: center; gap: 6px; font-size: 13px;
+              color: #555; padding-bottom: 9px; white-space: nowrap; }
+input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #4f6ef7; }
+
+/* 変数チップ */
+.var-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.var-chip {
+  font-size: 11px; padding: 4px 9px; border-radius: 20px; border: 1.5px solid #e2e6ff;
+  background: #f5f7ff; color: #4f6ef7; cursor: pointer; font-family: inherit;
+  transition: all 0.12s;
+}
+.var-chip:hover { background: #4f6ef7; color: white; border-color: #4f6ef7; }
+.var-hint { font-size: 11px; color: #bbb; margin-bottom: 10px; }
+
+/* ボタン */
+.btn {
+  padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit; border: 1.5px solid #e2e2e2;
+  background: white; color: #555; transition: all 0.15s;
+}
+.btn:hover { background: #f3f3f3; }
+.btn.primary { background: #4f6ef7; border-color: #4f6ef7; color: white; }
+.btn.primary:hover { background: #3b5ce0; }
+.btn.danger { border-color: #fecaca; color: #dc2626; }
+.btn.danger:hover { background: #fef2f2; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-bar { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.btn-bar .right { margin-left: auto; }
+
+/* プレビュー */
+.prev-ctrl { display: grid; grid-template-columns: 1fr 130px 120px; gap: 8px; margin-bottom: 12px; }
+@media (max-width: 660px) { .prev-ctrl { grid-template-columns: 1fr; } }
+.prev-box {
+  background: #fafafa; border: 1.5px solid #eee; border-radius: 9px; padding: 10px 12px;
+  font-size: 13px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+  min-height: 40px;
+}
+.prev-box.subj { white-space: normal; font-weight: 600; min-height: 0; }
+.warn {
+  font-size: 11.5px; color: #b45309; background: #fffbeb; border: 1px solid #fde68a;
+  border-radius: 7px; padding: 7px 10px; margin-top: 8px;
+}
+.empty { text-align: center; padding: 42px 20px; color: #aaa; font-size: 13px; }
+.empty .icon { font-size: 30px; margin-bottom: 10px; }
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: #1a1a1a; color: white; font-size: 13px; padding: 10px 18px;
+  border-radius: 10px; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 9500;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="page-header">
+    <a class="back-btn" href="/">← ポータル</a>
+    <div class="page-title">✉️ メール定型文</div>
+    <div class="page-count" id="pageCount"></div>
+    <button class="refresh-btn" onclick="loadTemplates()">🔄 更新</button>
+  </div>
+
+  <div class="layout">
+
+    <!-- 左：一覧 -->
+    <div class="panel">
+      <div class="list-ctrl">
+        <input class="search-input" id="searchInput" placeholder="🔍  名前・件名・本文で検索…" oninput="renderList()">
+        <select class="filter-sel" id="catFilter" onchange="renderList()">
+          <option value="">すべてのカテゴリ</option>
+        </select>
+        <button class="btn primary" onclick="newTemplate()">＋ 新しい定型文</button>
+      </div>
+      <div class="tpl-list" id="tplList">
+        <div class="empty">読み込み中…</div>
+      </div>
+    </div>
+
+    <!-- 右：編集＋プレビュー -->
+    <div>
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-head">
+          <div class="panel-title" id="editTitle">新しい定型文</div>
+          <div style="margin-left:auto;font-size:11px;color:#bbb;" id="updatedAt"></div>
+        </div>
+        <div class="panel-body">
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">テンプレート名 <span class="req">*</span></label>
+              <input class="field-in" id="fName" placeholder="例: 納品連絡（通常）">
+            </div>
+            <div class="field">
+              <label class="field-label">並び順</label>
+              <input class="field-in" id="fOrder" type="number" placeholder="10">
+            </div>
+            <div class="check-wrap">
+              <input type="checkbox" id="fEnabled" checked><label for="fEnabled">使用する</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">カテゴリ</label>
+            <select class="field-sel" id="fCategory">
+              <option value="">（なし）</option>
+              <option>初回連絡</option><option>納品</option><option>請求</option>
+              <option>リマインド</option><option>日程調整</option>
+              <option>お礼・挨拶</option><option>その他</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label">差し込み変数（クリックでカーソル位置に挿入）</label>
+            <div class="var-bar" id="varBar"></div>
+            <div class="var-hint">送信時に顧客を選ぶと実データに置き換わります。</div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">件名</label>
+            <input class="field-in" id="fSubject" placeholder="例: 【納品のご連絡】{{案件名}}">
+          </div>
+
+          <div class="field">
+            <label class="field-label">本文</label>
+            <textarea class="field-ta" id="fBody" placeholder="{{顧客名}}&#10;&#10;いつもお世話になっております。野津です。&#10;&#10;{{案件名}}の編集が完了いたしましたのでご連絡いたします。&#10;…"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="field-label">メモ（社内用・メールには入りません）</label>
+            <input class="field-in" id="fMemo" placeholder="例: 初回のクライアントにはこちらを使う">
+          </div>
+
+          <div class="btn-bar">
+            <button class="btn primary" id="saveBtn" onclick="saveTemplate()">保存</button>
+            <button class="btn" onclick="duplicateTemplate()">複製して新規</button>
+            <button class="btn danger right" id="delBtn" onclick="deleteTemplate()">削除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- プレビュー -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">プレビュー・コピー</div>
+          <a href="#" style="margin-left:auto;font-size:11px;color:#aaa;" onclick="setSender();return false;">送信者名: <span id="senderLabel"></span></a>
+        </div>
+        <div class="panel-body">
+          <div class="prev-ctrl">
+            <select class="field-sel" id="pCustomer" onchange="renderPreview()">
+              <option value="">顧客を選択（差し込み用）</option>
+            </select>
+            <input class="field-in" id="pCase"  placeholder="案件名" oninput="renderPreview()">
+            <input class="field-in" id="pMonth" placeholder="請求月 例:8月" oninput="renderPreview()">
+          </div>
+          <label class="field-label">件名</label>
+          <div class="prev-box subj" id="prevSubject"></div>
+          <div style="height:10px"></div>
+          <label class="field-label">本文</label>
+          <div class="prev-box" id="prevBody"></div>
+          <div id="prevWarn"></div>
+          <div class="btn-bar" style="margin-top:12px;">
+            <button class="btn primary" onclick="copyPrev('body', this)">本文をコピー</button>
+            <button class="btn" onclick="copyPrev('subject', this)">件名をコピー</button>
+            <button class="btn" onclick="openMail()">メールを開く</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/mail_template.js"></script>
+<script>
+const SERVER = window.location.origin;
+let templates = [];    // 登録済み定型文
+let customers = [];    // 差し込み用の顧客リスト
+let currentId = '';    // 編集中のNotionページID（空＝新規）
+let lastField = null;  // 変数を挿し込む対象（件名 or 本文）
+
+// ===== 初期化 =====
+window.addEventListener('DOMContentLoaded', () => {
+  buildVarBar();
+  document.getElementById('senderLabel').textContent = MailTpl.senderName();
+  ['fSubject', 'fBody'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('focus', () => { lastField = el; });
+    el.addEventListener('input', renderPreview);
+  });
+  loadTemplates();
+  loadCustomers();
+});
+
+function buildVarBar() {
+  document.getElementById('varBar').innerHTML = MailTpl.VARS
+    .map(v => `<button class="var-chip" title="${esc(v.desc)}" onclick="insertVar('{{${v.key}}}')">${esc(v.key)}</button>`)
+    .join('');
+}
+
+// 直前に触っていた入力欄のカーソル位置へ変数を差し込む
+function insertVar(text) {
+  const el = lastField || document.getElementById('fBody');
+  el.focus();
+  const s = el.selectionStart ?? el.value.length;
+  const e = el.selectionEnd   ?? el.value.length;
+  el.value = el.value.slice(0, s) + text + el.value.slice(e);
+  const pos = s + text.length;
+  el.setSelectionRange(pos, pos);
+  renderPreview();
+}
+
+// ===== 読み込み =====
+async function loadTemplates() {
+  document.getElementById('tplList').innerHTML = '<div class="empty">Notionから取得中…</div>';
+  try {
+    templates = await MailTpl.loadTemplates();
+    buildCatFilter();
+    renderList();
+    if (currentId && !templates.some(t => t.id === currentId)) clearForm();
+  } catch (e) {
+    document.getElementById('tplList').innerHTML =
+      `<div class="empty"><div class="icon">⚠️</div>取得失敗: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadCustomers() {
+  try {
+    const r = await fetch(SERVER + '/api/customers-all', { signal: AbortSignal.timeout(15000) });
+    const d = await r.json();
+    if (!d.ok) return;
+    customers = d.customers.filter(c => c.status !== '取引終了');
+    document.getElementById('pCustomer').innerHTML =
+      '<option value="">顧客を選択（差し込み用）</option>' +
+      customers.map((c, i) => `<option value="${i}">${esc(c.no)} ${esc(c.name || c.pageName)}</option>`).join('');
+  } catch (e) { /* 差し込みは任意機能なので失敗しても編集は続けられる */ }
+}
+
+function buildCatFilter() {
+  const cats = [...new Set(templates.map(t => t.category).filter(Boolean))];
+  const sel = document.getElementById('catFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">すべてのカテゴリ</option>' +
+    cats.map(c => `<option${c === cur ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
+
+// ===== 一覧 =====
+function renderList() {
+  const q   = document.getElementById('searchInput').value.toLowerCase();
+  const cat = document.getElementById('catFilter').value;
+  const list = templates.filter(t => {
+    if (cat && t.category !== cat) return false;
+    if (q && !((t.name + t.subject + t.body + t.memo).toLowerCase().includes(q))) return false;
+    return true;
+  });
+  document.getElementById('pageCount').textContent = `${templates.length}件`;
+  const box = document.getElementById('tplList');
+  if (!list.length) {
+    box.innerHTML = templates.length
+      ? '<div class="empty"><div class="icon">🔍</div>該当する定型文がありません</div>'
+      : '<div class="empty"><div class="icon">✉️</div>まだ登録がありません<br>「＋ 新しい定型文」から登録できます</div>';
+    return;
+  }
+  box.innerHTML = list.map(t => `
+    <div class="tpl-item ${t.id === currentId ? 'active' : ''} ${t.enabled ? '' : 'off'}"
+         onclick="selectTemplate('${t.id}')">
+      <div class="tpl-name">
+        ${t.category ? `<span class="cat-badge c-${esc(t.category)}">${esc(t.category)}</span>` : ''}
+        ${esc(t.name)}${t.enabled ? '' : '（停止中）'}
+      </div>
+      <div class="tpl-sub">${esc(t.subject || t.body.slice(0, 40) || '―')}</div>
+    </div>`).join('');
+}
+
+// ===== 編集 =====
+function selectTemplate(id) {
+  const t = templates.find(x => x.id === id);
+  if (!t) return;
+  currentId = t.id;
+  document.getElementById('fName').value     = t.name;
+  document.getElementById('fSubject').value  = t.subject;
+  document.getElementById('fBody').value     = t.body;
+  document.getElementById('fMemo').value     = t.memo;
+  document.getElementById('fCategory').value = t.category || '';
+  document.getElementById('fOrder').value    = t.order ?? '';
+  document.getElementById('fEnabled').checked = t.enabled;
+  document.getElementById('editTitle').textContent = t.name;
+  document.getElementById('updatedAt').textContent =
+    t.updated ? '更新: ' + new Date(t.updated).toLocaleString('ja-JP') : '';
+  document.getElementById('delBtn').style.display = '';
+  renderList();
+  renderPreview();
+}
+
+function newTemplate() { clearForm(); document.getElementById('fName').focus(); }
+
+function clearForm() {
+  currentId = '';
+  ['fName', 'fSubject', 'fBody', 'fMemo', 'fOrder'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fCategory').value = '';
+  document.getElementById('fEnabled').checked = true;
+  document.getElementById('editTitle').textContent = '新しい定型文';
+  document.getElementById('updatedAt').textContent = '';
+  document.getElementById('delBtn').style.display = 'none';
+  renderList();
+  renderPreview();
+}
+
+// 既存を下敷きに別バージョンを作るとき用
+function duplicateTemplate() {
+  currentId = '';
+  const n = document.getElementById('fName');
+  n.value = (n.value || '定型文') + ' のコピー';
+  document.getElementById('editTitle').textContent = '新しい定型文';
+  document.getElementById('updatedAt').textContent = '';
+  document.getElementById('delBtn').style.display = 'none';
+  renderList();
+  toast('複製しました。保存すると別の定型文として登録されます');
+}
+
+async function saveTemplate() {
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { toast('テンプレート名を入れてください'); document.getElementById('fName').focus(); return; }
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    const r = await fetch(SERVER + '/api/mail-templates/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: currentId, name,
+        subject:  document.getElementById('fSubject').value,
+        body:     document.getElementById('fBody').value,
+        memo:     document.getElementById('fMemo').value,
+        category: document.getElementById('fCategory').value,
+        order:    document.getElementById('fOrder').value,
+        enabled:  document.getElementById('fEnabled').checked,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'サーバーエラー');
+    currentId = d.template.id;
+    await loadTemplates();
+    selectTemplate(currentId);
+    toast('✅ 保存しました');
+  } catch (e) {
+    alert('保存に失敗しました: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '保存';
+  }
+}
+
+async function deleteTemplate() {
+  if (!currentId) return;
+  const t = templates.find(x => x.id === currentId);
+  if (!confirm(`「${t ? t.name : ''}」を削除します。よろしいですか？`)) return;
+  try {
+    const r = await fetch(SERVER + '/api/mail-templates/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: currentId }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'サーバーエラー');
+    clearForm();
+    await loadTemplates();
+    toast('🗑 削除しました');
+  } catch (e) {
+    alert('削除に失敗しました: ' + e.message);
+  }
+}
+
+// ===== プレビュー =====
+function previewCtx() {
+  const idx = document.getElementById('pCustomer').value;
+  const c = idx === '' ? {} : (customers[Number(idx)] || {});
+  return {
+    customerName: c.name || c.pageName || '',
+    customerNo:   c.no || '',
+    invoiceName:  c.invoiceName || '',
+    caseName:     document.getElementById('pCase').value.trim(),
+    billingMonth: document.getElementById('pMonth').value.trim(),
+  };
+}
+
+function renderPreview() {
+  const ctx = previewCtx();
+  const subj = MailTpl.fill(document.getElementById('fSubject').value, ctx);
+  const body = MailTpl.fill(document.getElementById('fBody').value, ctx);
+  document.getElementById('prevSubject').textContent = subj || '（件名なし）';
+  document.getElementById('prevBody').textContent    = body || '（本文なし）';
+  const miss = MailTpl.missingVars(subj + '\n' + body);
+  document.getElementById('prevWarn').innerHTML = miss.length
+    ? `<div class="warn">未入力の変数があります: ${esc(miss.join(' '))}</div>` : '';
+}
+
+async function copyPrev(which, btn) {
+  const el = document.getElementById(which === 'subject' ? 'prevSubject' : 'prevBody');
+  const ok = await MailTpl.copyText(el.textContent);
+  // コピーが拒否される環境では選択状態にして ⌘C で拾えるようにする
+  if (!ok) MailTpl.selectElementText(el);
+  const old = btn.textContent;
+  btn.textContent = ok ? '✅ コピーしました' : '⌘Cでコピーしてください';
+  setTimeout(() => { btn.textContent = old; }, 1600);
+}
+
+function openMail() {
+  const s = document.getElementById('prevSubject').textContent;
+  const b = document.getElementById('prevBody').textContent;
+  window.location.href = `mailto:?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`;
+}
+
+function setSender() {
+  const v = prompt('メール本文の {{担当者名}} に入る名前', MailTpl.senderName());
+  if (v === null) return;
+  localStorage.setItem('mailtpl_sender', v.trim());
+  document.getElementById('senderLabel').textContent = MailTpl.senderName();
+  renderPreview();
+}
+
+// ===== ユーティリティ =====
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+// ⌘S / Ctrl+S で保存
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); saveTemplate(); }
+});
+</script>
+</body>
+</html>
