@@ -105,7 +105,7 @@
      （空のままコピーして送ってしまわないよう、警告で拾えるようにする）。 */
   function resolveVar(key, ctx) {
     ctx = ctx || {};
-    const map = {
+    const auto = {
       '顧客名':     ctx.customerName || '',
       'お客様No':   ctx.customerNo   || '',
       '請求書宛名': ctx.invoiceName  || ctx.customerName || '',
@@ -113,7 +113,15 @@
       '今日の月日': ctx.todayMd || todayJa('md'),
       '担当者名':   ctx.sender || senderName(),
     };
-    return map[key] || (ctx.values || {})[key] || '';
+    // 自動で埋まる変数でも、確認ビューで選び直したらそちらを優先する
+    // （宛名を「◯◯様」に変える、日付を今日以外にする、といった調整のため）
+    return (ctx.values || {})[key] || auto[key] || '';
+  }
+
+  // 顧客が変わったら、顧客由来の手直しは捨てる
+  const CUSTOMER_VARS = ['顧客名', 'お客様No', '請求書宛名'];
+  function clearCustomerOverrides(values) {
+    CUSTOMER_VARS.forEach(k => { delete values[k]; });
   }
 
   function fill(text, ctx) {
@@ -223,12 +231,20 @@
     return 'text';
   }
 
+  const SLOT_HINT = {
+    ymd:  'クリックでカレンダー',
+    md:   'クリックでカレンダー',
+    case: 'クリックで案件を選ぶ',
+    text: 'クリックで書き込む',
+  };
+
   function slotSpan(key, value) {
     const kind  = slotKind(key);
     const shown = value || `{{${key}}}`;
+    const hint  = `${key}：${SLOT_HINT[kind]}／Deleteで丸ごと消す`;
     return `<span class="mtp-slot${value ? '' : ' empty'}" data-var="${esc(key)}"` +
            ` data-kind="${kind}" data-shown="${esc(shown)}"` +
-           ` title="${esc(key)}：クリックで選び直せます">${esc(shown)}</span>`;
+           ` title="${esc(hint)}">${esc(shown)}</span>`;
   }
 
   /* テンプレート本文を、変数のところだけスロットにしたHTMLにする */
@@ -301,6 +317,19 @@
       if (o.onEdit) o.onEdit();
     });
 
+    /* 差し込み箇所は1つのまとまりとして扱う。
+       Delete / Backspace を押したら、文字を1つずつではなく丸ごと消す。 */
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      const slot = slotAtCaret(el, e.key);
+      if (!slot) return;
+      e.preventDefault();
+      slot.remove();
+      const o = el._mtpOpts || {};
+      autoGrow(el);
+      if (o.onEdit) o.onEdit();
+    });
+
     // 件名に改行は入れさせない
     if (el.classList.contains('subj')) {
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
@@ -314,8 +343,67 @@
     });
   }
 
+  /* キャレットが差し込み箇所の中／すぐ隣にあるかを見る */
+  function slotAtCaret(el, key) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if (!el.contains(r.startContainer)) return null;
+
+    const asSlot = (node) => {
+      if (!node) return null;
+      const e = node.nodeType === 1 ? node : node.parentElement;
+      const sp = e && e.closest ? e.closest('.mtp-slot') : null;
+      return sp && el.contains(sp) ? sp : null;
+    };
+
+    // 選択している／中にキャレットがある
+    const inside = asSlot(r.startContainer) || asSlot(r.endContainer);
+    if (inside) return inside;
+    if (r.collapsed) {
+      const node = r.startContainer;
+      const at   = r.startOffset;
+      if (node.nodeType === 3) {                       // テキストの端にいるとき
+        if (key === 'Backspace' && at === 0) return asSlot(node.previousSibling);
+        if (key === 'Delete' && at === node.length)    return asSlot(node.nextSibling);
+      } else {                                         // 要素の子の境目にいるとき
+        const kids = node.childNodes;
+        if (key === 'Backspace') return asSlot(kids[at - 1]);
+        if (key === 'Delete')    return asSlot(kids[at]);
+      }
+    }
+    return null;
+  }
+
+  /* 開いている選択肢・入力枠・カレンダーを閉じる。
+     外クリック用のリスナーが前回分も残っていると、開いた直後の枠まで
+     閉じてしまうので、閉じるときに必ず外しておく。 */
+  let _slotOff = null;
+
   function closeSlotMenu() {
-    document.querySelectorAll('.mtp-slotmenu').forEach(m => m.remove());
+    document.querySelectorAll('.mtp-slotmenu, .mtp-slotdate').forEach(m => m.remove());
+    if (_slotOff) {
+      document.removeEventListener('click', _slotOff, true);
+      document.removeEventListener('keydown', _slotOff, true);
+      _slotOff = null;
+    }
+  }
+
+  /* 外をクリック／Escで閉じる。開いた枠は常にこれ1つだけ */
+  function closeOnOutside(node) {
+    if (_slotOff) {
+      document.removeEventListener('click', _slotOff, true);
+      document.removeEventListener('keydown', _slotOff, true);
+    }
+    _slotOff = (ev) => {
+      if (ev.type === 'keydown') { if (ev.key === 'Escape') closeSlotMenu(); return; }
+      if (!node.contains(ev.target)) closeSlotMenu();
+    };
+    setTimeout(() => {
+      if (!_slotOff) return;
+      document.addEventListener('click', _slotOff, true);
+      document.addEventListener('keydown', _slotOff, true);
+    }, 0);
   }
 
   function openSlotEditor(el, sp) {
@@ -335,16 +423,27 @@
       inp.className = 'mtp-slotdate';
       inp.value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
       placeNear(sp, inp);
+
+      // カレンダーを閉じたのに入力欄だけ残る、を防ぐ
       inp.addEventListener('change', () => {
-        if (!inp.value) return;
-        const [y, m, dd] = inp.value.split('-').map(Number);
-        commit({ y, m, d: dd });
-        inp.remove();
+        if (inp.value) {
+          const [y, m, dd] = inp.value.split('-').map(Number);
+          commit({ y, m, d: dd });
+        }
+        closeSlotMenu();
       });
-      inp.addEventListener('blur', () => setTimeout(() => inp.remove(), 200));
+      inp.addEventListener('blur', () => setTimeout(closeSlotMenu, 200));
+      closeOnOutside(inp);
+
       try {
-        if (typeof inp.showPicker === 'function') { inp.showPicker(); return; }
-      } catch (err) { /* 開けない環境では入力欄をそのまま使ってもらう */ }
+        if (typeof inp.showPicker === 'function') {
+          inp.classList.add('hidden');   // ネイティブのカレンダーだけ見せる
+          inp.showPicker();
+          return;
+        }
+      } catch (err) {
+        inp.classList.remove('hidden');  // 開けない環境では入力欄をそのまま使ってもらう
+      }
       inp.focus();
       return;
     }
@@ -362,20 +461,40 @@
       menu.querySelectorAll('.mtp-slotmenu-item').forEach(b => {
         b.addEventListener('click', () => { commit(b.dataset.val); closeSlotMenu(); });
       });
-      setTimeout(() => {
-        document.addEventListener('click', function off(ev) {
-          if (!menu.contains(ev.target)) { closeSlotMenu(); document.removeEventListener('click', off); }
-        });
-      }, 0);
+      closeOnOutside(menu);
       return;
     }
 
-    // 候補が無い変数は、中身を選択状態にして打ち替えやすくする
-    const range = document.createRange();
-    range.selectNodeContents(sp);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    // 候補が無い変数は、その場に入力枠を出して書いてもらう
+    openSlotInput(el, sp, key, commit);
+  }
+
+  /* 自由記載など、候補の無い変数の入力枠。書いた内容はそのまま反映する */
+  function openSlotInput(el, sp, key, commit) {
+    const o    = el._mtpOpts || {};
+    const cur  = (o.valueOf && o.valueOf(key)) || '';
+    const long = /自由記載|本文|メモ|備考|内容|理由|原因/.test(key);
+    const box  = document.createElement('div');
+    box.className = 'mtp-slotmenu mtp-slotinput';
+    box.innerHTML = `
+      <div class="mtp-slotinput-head">${esc(key)}</div>
+      ${long ? `<textarea class="mtp-slotinput-in" rows="4"
+                  placeholder="ここに書いた内容がそのまま入ります（改行できます）"></textarea>`
+             : `<input class="mtp-slotinput-in" placeholder="${esc(key)}を入力">`}
+      <div class="mtp-slotinput-foot">
+        <button type="button" class="mtp-slotinput-clear">空にする</button>
+        <span class="mtp-slotmenu-note">Escで閉じる／このまま Delete で丸ごと消せます</span>
+      </div>`;
+    placeNear(sp, box);
+    const inp = box.querySelector('.mtp-slotinput-in');
+    inp.value = cur;
+    inp.focus();
+    inp.setSelectionRange(cur.length, cur.length);
+    inp.addEventListener('input', () => commit(inp.value));
+    box.querySelector('.mtp-slotinput-clear').addEventListener('click', () => {
+      inp.value = ''; commit(''); inp.focus();
+    });
+    closeOnOutside(box);
   }
 
   /* スロットのすぐ下に出す */
@@ -759,8 +878,28 @@
       .mtp-slot:hover { background:#4f6ef7; color:#fff; box-shadow:inset 0 -1px 0 #3b5ce0; }
       .mtp-slot.empty { background:#fffbeb; color:#b45309; box-shadow:inset 0 -1px 0 #fde68a; }
       .mtp-slot.empty:hover { background:#f59e0b; color:#fff; }
+      /* 自由記載など「ここを実情に合わせて書く」場所は、書ける枠だと分かる見た目にする */
+      .mtp-slot[data-kind="text"] { cursor:text; border-bottom:1px dashed #a5b4fc; }
+      .mtp-slot[data-kind="text"]:hover { background:#e0e7ff; color:#3b5ce0;
+        box-shadow:inset 0 0 0 1px #a5b4fc; border-bottom-color:transparent; }
+      .mtp-slot[data-kind="text"].empty:hover { background:#fef3c7; color:#92400e;
+        box-shadow:inset 0 0 0 1px #fcd34d; }
+
+      .mtp-slotinput { padding:10px; min-width:280px; }
+      .mtp-slotinput-head { font-size:11px; font-weight:600; color:#999; margin-bottom:6px; }
+      .mtp-slotinput-in { width:100%; border:1.5px solid #e2e2e2; border-radius:8px;
+        padding:8px 10px; font-size:13px; font-family:inherit; line-height:1.7;
+        background:#fafafa; color:#1a1a1a; resize:vertical; }
+      .mtp-slotinput-in:focus { outline:none; border-color:#4f6ef7; background:#fff; }
+      .mtp-slotinput-foot { display:flex; align-items:center; gap:8px; margin-top:6px; }
+      .mtp-slotinput-clear { border:1.5px solid #e2e2e2; background:#fff; border-radius:7px;
+        font-size:11px; color:#666; padding:3px 9px; cursor:pointer; font-family:inherit; }
+      .mtp-slotinput-clear:hover { background:#f5f5f5; }
+      .mtp-slotinput .mtp-slotmenu-note { border:none; margin:0; padding:0; }
       .mtp-slotdate { border:1.5px solid #4f6ef7; border-radius:8px; padding:5px 8px;
         font-size:13px; font-family:inherit; background:#fff; }
+      .mtp-slotdate.hidden { opacity:0; width:1px; height:1px; padding:0; border:none;
+        pointer-events:none; }
       .mtp-slotmenu { background:#fff; border:1.5px solid #e2e2e2; border-radius:10px;
         box-shadow:0 8px 24px rgba(0,0,0,0.16); padding:5px; max-height:260px; overflow-y:auto;
         min-width:200px; max-width:340px;
@@ -996,6 +1135,7 @@
     const previewOpts = {
       candidates: (key) => isCaseVar(key) ? filterCases(state.cases, state.ranges[key]) : [],
       dateOf:     (key) => state.dates[key],
+      valueOf:    (key) => state.values[key] || '',
       onPick:     applyVarValue,
       onEdit:     () => { edited = true; syncWarn(); },
     };
@@ -1032,6 +1172,7 @@
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
     copyText, selectElementText, injectStyle, autoGrow, wireCalendar, openPicker,
     resolveVar, slotKind, renderPreviewInto, previewText, setSlotValue, refreshSlots,
-    detachEditedSlots, wirePreview, closeSlotMenu,
+    clearCustomerOverrides,
+    detachEditedSlots, wirePreview, closeSlotMenu, slotAtCaret,
   };
 })();

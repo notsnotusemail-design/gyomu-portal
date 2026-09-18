@@ -309,6 +309,7 @@ window.addEventListener('DOMContentLoaded', () => {
     candidates: (key) => MailTpl.isCaseVar(key)
       ? MailTpl.filterCases(varState.cases, varState.ranges[key]) : [],
     dateOf:     (key) => varState.dates[key],
+    valueOf:    (key) => varState.values[key] || '',
     onPick:     applyVarValue,
     onEdit:     () => { prevEdited = true; syncPrevNotes(); },
   };
@@ -384,6 +385,7 @@ function onCustomerChange() {
   varSig = null;            // 候補が変わったので入力欄を組み直す
   renderPreview();
   _caseTimer = setTimeout(async () => {
+    MailTpl.clearCustomerOverrides(varState.values);   // 前の顧客向けの手直しを捨てる
     varState.cases  = c ? await MailTpl.loadCases(c.no) : [];
     varState.ranges = {};   // 顧客が変わったら期間は既定（直近1ヶ月）に戻す
     varState.casesLoading = false;
