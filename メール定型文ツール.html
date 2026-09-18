@@ -123,7 +123,8 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
   display: block; width: 100%;
   background: #fafafa; border: 1.5px solid #eee; border-radius: 9px; padding: 10px 12px;
   font-size: 13px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
-  min-height: 40px; font-family: inherit; color: #1a1a1a; resize: vertical;
+  min-height: 40px; font-family: inherit; color: #1a1a1a;
+  max-height: 60vh; overflow-y: auto;
 }
 .prev-box:focus { outline: none; border-color: #4f6ef7; background: white; }
 .prev-box.subj { white-space: normal; font-weight: 600; min-height: 0; resize: none; }
@@ -261,11 +262,11 @@ input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color:
             </div>
           </div>
           <div class="mtp-inputs" id="pInputs" style="margin-bottom:14px"></div>
-          <label class="field-label">件名<span class="editable-note">ここで直接直せます</span></label>
-          <input class="prev-box subj" id="prevSubject">
+          <label class="field-label">件名<span class="editable-note">色の付いた所をクリックすると選び直せます</span></label>
+          <div class="prev-box subj" id="prevSubject" contenteditable="true"></div>
           <div style="height:10px"></div>
           <label class="field-label">本文</label>
-          <textarea class="prev-box" id="prevBody" rows="8"></textarea>
+          <div class="prev-box" id="prevBody" contenteditable="true"></div>
           <div id="prevEdited"></div>
           <div id="prevWarn"></div>
           <div class="btn-bar" style="margin-top:12px;">
@@ -304,11 +305,15 @@ window.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('focus', () => { lastField = el; });
     el.addEventListener('input', renderPreview);
   });
+  const previewOpts = {
+    candidates: (key) => MailTpl.isCaseVar(key)
+      ? MailTpl.filterCases(varState.cases, varState.ranges[key]) : [],
+    dateOf:     (key) => varState.dates[key],
+    onPick:     applyVarValue,
+    onEdit:     () => { prevEdited = true; syncPrevNotes(); },
+  };
   ['prevSubject', 'prevBody'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-      prevEdited = true;
-      syncPrevNotes();
-    });
+    MailTpl.wirePreview(document.getElementById(id), previewOpts);
   });
   loadTemplates();
   loadCustomers();
@@ -551,18 +556,41 @@ function syncVarInputs() {
 
 function renderPreview() {
   syncVarInputs();
-  // 手で直したあとは、変数を変えてもその編集を上書きしない
-  if (!prevEdited) {
-    const ctx = previewCtx();
-    document.getElementById('prevSubject').value = MailTpl.fill(document.getElementById('fSubject').value, ctx);
-    document.getElementById('prevBody').value    = MailTpl.fill(document.getElementById('fBody').value, ctx);
+  const ctx  = previewCtx();
+  const subj = document.getElementById('fSubject').value;
+  const body = document.getElementById('fBody').value;
+  if (prevEdited) {
+    // 手直しした文章は残したまま、変数のままの箇所だけ更新する
+    MailTpl.refreshSlots(document.getElementById('prevSubject'), subj, ctx);
+    MailTpl.refreshSlots(document.getElementById('prevBody'),    body, ctx);
+  } else {
+    MailTpl.renderPreviewInto(document.getElementById('prevSubject'), subj, ctx);
+    MailTpl.renderPreviewInto(document.getElementById('prevBody'),    body, ctx);
   }
   syncPrevNotes();
 }
 
+/* 確認ビューで変数を選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
+function applyVarValue(key, value) {
+  if (value && typeof value === 'object') {      // カレンダーで選んだ日付
+    varState.dates[key] = value;
+    const fmtSel = document.querySelector(`#pInputs .mtp-fmt[data-var="${CSS.escape(key)}"]`);
+    const kind = /月日$/.test(key) ? 'md' : 'ymd';
+    varState.values[key] = MailTpl.formatDate(value.y, value.m, value.d,
+                                              (fmtSel && fmtSel.value) || MailTpl.dateFormat(kind));
+  } else {
+    varState.values[key] = value;
+  }
+  MailTpl.setSlotValue(document.getElementById('prevSubject'), key, varState.values[key]);
+  MailTpl.setSlotValue(document.getElementById('prevBody'),    key, varState.values[key]);
+  varSig = null;          // 入力欄にも反映する
+  syncVarInputs();
+  syncPrevNotes();
+}
+
 function syncPrevNotes() {
-  const subj = document.getElementById('prevSubject').value;
-  const body = document.getElementById('prevBody').value;
+  const subj = MailTpl.previewText(document.getElementById('prevSubject'));
+  const body = MailTpl.previewText(document.getElementById('prevBody'));
   const miss = MailTpl.missingVars(subj + '\n' + body);
   document.getElementById('prevWarn').innerHTML = miss.length
     ? `<div class="warn">未入力の項目があります: ${esc(miss.join(' '))}</div>` : '';
@@ -570,7 +598,6 @@ function syncPrevNotes() {
     ? `<div class="edited-note">手で直した内容を表示しています（変数を変えても反映されません）
          <button type="button" class="relink-btn" onclick="relinkPreview()">テンプレートから作り直す</button></div>`
     : '';
-  MailTpl.autoGrow(document.getElementById('prevBody'));
 }
 
 // 手編集を捨てて、テンプレート＋変数から作り直す
@@ -581,7 +608,7 @@ function relinkPreview() {
 
 async function copyPrev(which, btn) {
   const el = document.getElementById(which === 'subject' ? 'prevSubject' : 'prevBody');
-  const ok = await MailTpl.copyText(el.value);
+  const ok = await MailTpl.copyText(MailTpl.previewText(el));
   // コピーが拒否される環境では選択状態にして ⌘C で拾えるようにする
   if (!ok) MailTpl.selectElementText(el);
   const old = btn.textContent;
@@ -590,8 +617,8 @@ async function copyPrev(which, btn) {
 }
 
 function openMail() {
-  const s = document.getElementById('prevSubject').value;
-  const b = document.getElementById('prevBody').value;
+  const s = MailTpl.previewText(document.getElementById('prevSubject'));
+  const b = MailTpl.previewText(document.getElementById('prevBody'));
   window.location.href = `mailto:?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`;
 }
 

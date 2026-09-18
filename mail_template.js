@@ -103,9 +103,8 @@
   /* 本文・件名の {{変数}} を実データに置き換える。
      対応表に無い変数、値が空の変数はそのまま残す
      （空のままコピーして送ってしまわないよう、警告で拾えるようにする）。 */
-  function fill(text, ctx) {
+  function resolveVar(key, ctx) {
     ctx = ctx || {};
-    const vals = ctx.values || {};
     const map = {
       '顧客名':     ctx.customerName || '',
       'お客様No':   ctx.customerNo   || '',
@@ -114,8 +113,12 @@
       '今日の月日': ctx.todayMd || todayJa('md'),
       '担当者名':   ctx.sender || senderName(),
     };
+    return map[key] || (ctx.values || {})[key] || '';
+  }
+
+  function fill(text, ctx) {
     return String(text || '').replace(/\{\{\s*([^}]+?)\s*\}\}/g,
-      (m, k) => map[k] || vals[k] || m);
+      (m, k) => resolveVar(k, ctx) || m);
   }
 
   // 未入力のまま残っている変数を拾う（コピー前の警告用）
@@ -207,6 +210,183 @@
     return { mode: 'all' };
   }
 
+
+  /* ---------- 確認ビュー（プレビュー）の変数スロット ----------
+     差し込んだ箇所を span で包み、そこをクリックしたらカレンダーや候補を出す。
+     手で打ち替えられたスロットは「ただの文字」に降格させる（＝変数ではなくなる）。 */
+  const SLOT_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
+
+  function slotKind(key) {
+    if (/月日$/.test(key)) return 'md';
+    if (/日付$/.test(key)) return 'ymd';
+    if (isCaseVar(key))    return 'case';
+    return 'text';
+  }
+
+  function slotSpan(key, value) {
+    const kind  = slotKind(key);
+    const shown = value || `{{${key}}}`;
+    return `<span class="mtp-slot${value ? '' : ' empty'}" data-var="${esc(key)}"` +
+           ` data-kind="${kind}" data-shown="${esc(shown)}"` +
+           ` title="${esc(key)}：クリックで選び直せます">${esc(shown)}</span>`;
+  }
+
+  /* テンプレート本文を、変数のところだけスロットにしたHTMLにする */
+  function renderPreviewInto(el, text, ctx) {
+    let out = '', last = 0, m;
+    SLOT_RE.lastIndex = 0;
+    const src = String(text || '');
+    while ((m = SLOT_RE.exec(src)) !== null) {
+      out += esc(src.slice(last, m.index));
+      out += slotSpan(m[1], resolveVar(m[1], ctx));
+      last = m.index + m[0].length;
+    }
+    out += esc(src.slice(last));
+    el.innerHTML = out;
+    autoGrow(el);
+  }
+
+  /* 画面に出ている文章をそのまま取り出す（コピー・メール用） */
+  function previewText(el) {
+    return el ? (el.innerText !== undefined ? el.innerText : el.textContent) : '';
+  }
+
+  /* 変数の値が変わったとき、まだ変数のままのスロットだけ書き換える */
+  function setSlotValue(el, key, value) {
+    el.querySelectorAll(`.mtp-slot[data-var="${CSS.escape(key)}"]`).forEach(sp => {
+      const shown = value || `{{${key}}}`;
+      sp.textContent = shown;
+      sp.dataset.shown = shown;
+      sp.classList.toggle('empty', !value);
+    });
+    autoGrow(el);
+  }
+
+  /* 手直し後でも、変数のまま残っているスロットには値の変更を届ける */
+  function refreshSlots(el, text, ctx) {
+    placeholders(text).forEach(k => setSlotValue(el, k, resolveVar(k, ctx)));
+  }
+
+  /* 打ち替えられたスロットを普通の文字に降格させる */
+  function detachEditedSlots(el) {
+    let changed = false;
+    el.querySelectorAll('.mtp-slot').forEach(sp => {
+      if (sp.textContent !== sp.dataset.shown) {
+        sp.classList.remove('mtp-slot', 'empty');
+        sp.removeAttribute('title');
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  /* ---------- スロットの操作（クリックでカレンダー／候補） ----------
+     opts = { candidates(key), dateOf(key), onPick(key, value), onEdit() } */
+  function wirePreview(el, opts) {
+    injectStyle();
+    if (el._mtpWired) { el._mtpOpts = opts; return; }
+    el._mtpWired = true;
+    el._mtpOpts = opts;
+
+    el.addEventListener('click', (e) => {
+      const sp = e.target.closest && e.target.closest('.mtp-slot');
+      if (!sp || !el.contains(sp)) return;
+      openSlotEditor(el, sp);
+    });
+
+    el.addEventListener('input', () => {
+      if (detachEditedSlots(el)) { /* 変数ではなくなった */ }
+      autoGrow(el);
+      const o = el._mtpOpts || {};
+      if (o.onEdit) o.onEdit();
+    });
+
+    // 件名に改行は入れさせない
+    if (el.classList.contains('subj')) {
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+    }
+
+    // 書式付きで貼られると崩れるので、貼り付けは常に文字だけにする
+    el.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const t = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, t);
+    });
+  }
+
+  function closeSlotMenu() {
+    document.querySelectorAll('.mtp-slotmenu').forEach(m => m.remove());
+  }
+
+  function openSlotEditor(el, sp) {
+    closeSlotMenu();
+    const o    = el._mtpOpts || {};
+    const key  = sp.dataset.var;
+    const kind = sp.dataset.kind;
+    const commit = (value) => {
+      if (o.onPick) o.onPick(key, value);   // 同じ変数のスロットと入力欄もまとめて更新
+      else setSlotValue(el, key, value);
+    };
+
+    if (kind === 'ymd' || kind === 'md') {
+      const d = (o.dateOf && o.dateOf(key)) || defaultDate();
+      const inp = document.createElement('input');
+      inp.type = 'date';
+      inp.className = 'mtp-slotdate';
+      inp.value = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      placeNear(sp, inp);
+      inp.addEventListener('change', () => {
+        if (!inp.value) return;
+        const [y, m, dd] = inp.value.split('-').map(Number);
+        commit({ y, m, d: dd });
+        inp.remove();
+      });
+      inp.addEventListener('blur', () => setTimeout(() => inp.remove(), 200));
+      try {
+        if (typeof inp.showPicker === 'function') { inp.showPicker(); return; }
+      } catch (err) { /* 開けない環境では入力欄をそのまま使ってもらう */ }
+      inp.focus();
+      return;
+    }
+
+    const cands = (o.candidates && o.candidates(key)) || [];
+    if (cands.length) {
+      const menu = document.createElement('div');
+      menu.className = 'mtp-slotmenu';
+      menu.innerHTML = cands.map(c => {
+        const label = c.label !== undefined ? c.label : c;
+        return `<button type="button" class="mtp-slotmenu-item" data-val="${esc(label)}">
+                  <span>${esc(label)}</span>${c.hint ? `<em>${esc(c.hint)}</em>` : ''}</button>`;
+      }).join('') + '<div class="mtp-slotmenu-note">そのまま打ち替えると変数ではなくなります</div>';
+      placeNear(sp, menu);
+      menu.querySelectorAll('.mtp-slotmenu-item').forEach(b => {
+        b.addEventListener('click', () => { commit(b.dataset.val); closeSlotMenu(); });
+      });
+      setTimeout(() => {
+        document.addEventListener('click', function off(ev) {
+          if (!menu.contains(ev.target)) { closeSlotMenu(); document.removeEventListener('click', off); }
+        });
+      }, 0);
+      return;
+    }
+
+    // 候補が無い変数は、中身を選択状態にして打ち替えやすくする
+    const range = document.createRange();
+    range.selectNodeContents(sp);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /* スロットのすぐ下に出す */
+  function placeNear(sp, node) {
+    const r = sp.getBoundingClientRect();
+    node.style.position = 'absolute';
+    node.style.left = (window.scrollX + r.left) + 'px';
+    node.style.top  = (window.scrollY + r.bottom + 4) + 'px';
+    node.style.zIndex = 9600;
+    document.body.appendChild(node);
+  }
 
   async function loadTemplates() {
     const r = await fetch(SERVER + '/api/mail-templates', { signal: AbortSignal.timeout(15000) });
@@ -568,10 +748,31 @@
       .mtp-prev { display:block; width:100%; background:#fafafa; border:1.5px solid #eee;
         border-radius:9px; padding:10px 12px; font-size:13px; line-height:1.75;
         font-family:inherit; color:#1a1a1a; white-space:pre-wrap; word-break:break-word;
-        min-height:40px; resize:vertical; }
+        min-height:40px; max-height:50vh; overflow-y:auto; }
       .mtp-prev:focus { outline:none; border-color:#4f6ef7; background:#fff; }
       .mtp-prev.subj { white-space:normal; font-weight:600; min-height:0; resize:none; }
       .mtp-editable { font-size:10px; color:#ccc; font-weight:400; margin-left:6px; }
+
+      /* 確認ビューの変数スロット */
+      .mtp-slot { background:#eef1ff; border-radius:4px; padding:1px 3px; cursor:pointer;
+        box-shadow:inset 0 -1px 0 #c7d2fe; transition:background 0.12s, box-shadow 0.12s; }
+      .mtp-slot:hover { background:#4f6ef7; color:#fff; box-shadow:inset 0 -1px 0 #3b5ce0; }
+      .mtp-slot.empty { background:#fffbeb; color:#b45309; box-shadow:inset 0 -1px 0 #fde68a; }
+      .mtp-slot.empty:hover { background:#f59e0b; color:#fff; }
+      .mtp-slotdate { border:1.5px solid #4f6ef7; border-radius:8px; padding:5px 8px;
+        font-size:13px; font-family:inherit; background:#fff; }
+      .mtp-slotmenu { background:#fff; border:1.5px solid #e2e2e2; border-radius:10px;
+        box-shadow:0 8px 24px rgba(0,0,0,0.16); padding:5px; max-height:260px; overflow-y:auto;
+        min-width:200px; max-width:340px;
+        font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif; }
+      .mtp-slotmenu-item { display:flex; align-items:baseline; gap:8px; width:100%;
+        border:none; background:none; text-align:left; font-size:13px; font-family:inherit;
+        color:#1a1a1a; padding:6px 9px; border-radius:7px; cursor:pointer; }
+      .mtp-slotmenu-item:hover { background:#eef1ff; color:#3b5ce0; }
+      .mtp-slotmenu-item em { font-style:normal; font-size:10.5px; color:#bbb; margin-left:auto;
+        white-space:nowrap; }
+      .mtp-slotmenu-note { font-size:10.5px; color:#bbb; padding:5px 9px 3px; border-top:1px solid #f0f0f0;
+        margin-top:3px; }
       .mtp-edited { font-size:11.5px; color:#3b5ce0; background:#eef1ff; border:1px solid #c7d2fe;
         border-radius:7px; padding:7px 10px; margin-top:8px;
         display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -710,10 +911,10 @@
         </select>
       </div>
       <div class="mtp-inputs" id="mtpInputs"></div>
-      <div class="mtp-label">件名<span class="mtp-editable">ここで直接直せます</span></div>
-      <input class="mtp-prev subj" id="mtpSubj">
+      <div class="mtp-label">件名<span class="mtp-editable">色の付いた所をクリックすると選び直せます</span></div>
+      <div class="mtp-prev subj" id="mtpSubj" contenteditable="true"></div>
       <div class="mtp-label">本文</div>
-      <textarea class="mtp-prev" id="mtpBody" rows="6"></textarea>
+      <div class="mtp-prev" id="mtpBody" contenteditable="true"></div>
       <div id="mtpEdited"></div>
       <div id="mtpWarn"></div>`;
     modal.insertAdjacentHTML('beforeend', `
@@ -747,7 +948,7 @@
     let edited = false;
 
     function syncWarn() {
-      const miss = missingVars($('mtpSubj').value + '\n' + $('mtpBody').value);
+      const miss = missingVars(previewText($('mtpSubj')) + '\n' + previewText($('mtpBody')));
       $('mtpWarn').innerHTML = miss.length
         ? `<div class="mtp-warn">未入力の項目があります: ${esc(miss.join(' '))}</div>` : '';
       $('mtpEdited').innerHTML = edited
@@ -755,14 +956,17 @@
              <button type="button" class="mtp-relink">テンプレートから作り直す</button></div>` : '';
       const relink = $('mtpEdited').querySelector('.mtp-relink');
       if (relink) relink.onclick = () => { edited = false; render(); };
-      autoGrow($('mtpBody'));
     }
 
     function render() {
-      if (!edited) {
-        const t = templates[Number($('mtpSel').value)] || {};
-        $('mtpSubj').value = fill(t.subject, ctx());
-        $('mtpBody').value = fill(t.body, ctx());
+      const t = templates[Number($('mtpSel').value)] || {};
+      if (edited) {
+        // 手直しした文章は残したまま、変数のままの箇所だけ更新する
+        refreshSlots($('mtpSubj'), t.subject, ctx());
+        refreshSlots($('mtpBody'), t.body, ctx());
+      } else {
+        renderPreviewInto($('mtpSubj'), t.subject, ctx());
+        renderPreviewInto($('mtpBody'), t.body, ctx());
       }
       syncWarn();
     }
@@ -771,9 +975,32 @@
       renderVarInputs($('mtpInputs'), (t.subject || '') + '\n' + (t.body || ''), state, render);
       render();
     }
-    ['mtpSubj', 'mtpBody'].forEach(id => {
-      $(id).addEventListener('input', () => { edited = true; syncWarn(); });
-    });
+
+    /* 確認ビューで選び直したとき。同じ変数の箇所と入力欄をまとめて更新する */
+    function applyVarValue(key, value) {
+      if (value && typeof value === 'object') {
+        state.dates[key] = value;
+        const fmtSel = $('mtpInputs').querySelector(`.mtp-fmt[data-var="${CSS.escape(key)}"]`);
+        const kind = /月日$/.test(key) ? 'md' : 'ymd';
+        state.values[key] = formatDate(value.y, value.m, value.d, (fmtSel && fmtSel.value) || dateFormat(kind));
+      } else {
+        state.values[key] = value;
+      }
+      setSlotValue($('mtpSubj'), key, state.values[key]);
+      setSlotValue($('mtpBody'), key, state.values[key]);
+      const t = templates[Number($('mtpSel').value)] || {};
+      renderVarInputs($('mtpInputs'), (t.subject || '') + '\n' + (t.body || ''), state, render);
+      syncWarn();
+    }
+
+    const previewOpts = {
+      candidates: (key) => isCaseVar(key) ? filterCases(state.cases, state.ranges[key]) : [],
+      dateOf:     (key) => state.dates[key],
+      onPick:     applyVarValue,
+      onEdit:     () => { edited = true; syncWarn(); },
+    };
+    wirePreview($('mtpSubj'), previewOpts);
+    wirePreview($('mtpBody'), previewOpts);
     // 定型文を選び直したら、その定型文の内容から作り直す
     $('mtpSel').onchange = () => { edited = false; rebuild(); };
     rebuild();
@@ -788,11 +1015,11 @@
       selectElementText(previewEl);   // 選択しておけば ⌘C で拾える
       flash(btn, '⌘Cでコピーしてください');
     }
-    $('mtpCopyBody').onclick = (e) => copyOr(e.target, $('mtpBody').value, $('mtpBody'));
-    $('mtpCopySubj').onclick = (e) => copyOr(e.target, $('mtpSubj').value, $('mtpSubj'));
+    $('mtpCopyBody').onclick = (e) => copyOr(e.target, previewText($('mtpBody')), $('mtpBody'));
+    $('mtpCopySubj').onclick = (e) => copyOr(e.target, previewText($('mtpSubj')), $('mtpSubj'));
     $('mtpMail').onclick = () => {
-      window.location.href = `mailto:?subject=${encodeURIComponent($('mtpSubj').value)}` +
-                             `&body=${encodeURIComponent($('mtpBody').value)}`;
+      window.location.href = `mailto:?subject=${encodeURIComponent(previewText($('mtpSubj')))}` +
+                             `&body=${encodeURIComponent(previewText($('mtpBody')))}`;
     };
     $('mtpEdit').onclick = () => { window.location.href = '/メール定型文ツール.html'; };
   }
@@ -804,5 +1031,7 @@
     loadTemplates, loadCases, isCaseVar, comboHTML, wireCombo,
     filterCases, initialRange, rerenderVarInputs, CASE_RANGES,
     copyText, selectElementText, injectStyle, autoGrow, wireCalendar, openPicker,
+    resolveVar, slotKind, renderPreviewInto, previewText, setSlotValue, refreshSlots,
+    detachEditedSlots, wirePreview, closeSlotMenu,
   };
 })();
