@@ -397,6 +397,7 @@
     /* 差し込み箇所は1つのまとまりとして扱う。
        Delete / Backspace を押したら、文字を1つずつではなく丸ごと消す。 */
     el.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;   // 変換中の削除はIMEに任せる
       if (e.key !== 'Backspace' && e.key !== 'Delete') return;
       const slot = slotAtCaret(el, e.key);
       if (!slot) return;
@@ -409,7 +410,10 @@
 
     // 件名に改行は入れさせない
     if (el.classList.contains('subj')) {
-      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+      el.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.keyCode === 229) return;   // 変換確定のEnterは止めない
+        if (e.key === 'Enter') e.preventDefault();
+      });
     }
 
     // 書式付きで貼られると崩れるので、貼り付けは常に文字だけにする
@@ -473,7 +477,11 @@
       document.removeEventListener('keydown', _slotOff, true);
     }
     _slotOff = (ev) => {
-      if (ev.type === 'keydown') { if (ev.key === 'Escape') closeSlotMenu(); return; }
+      if (ev.type === 'keydown') {
+        if (ev.isComposing || ev.keyCode === 229) return;   // 変換取り消しのEscでは閉じない
+        if (ev.key === 'Escape') closeSlotMenu();
+        return;
+      }
       if (!node.contains(ev.target)) closeSlotMenu();
     };
     setTimeout(() => {
@@ -582,6 +590,7 @@
     inp.addEventListener('input', () => commit(inp.value));
     // Enterで閉じる。複数行の欄では改行を優先し、⌘/Ctrl+Enterで閉じる
     inp.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;   // 日本語変換の確定Enterでは閉じない
       if (e.key !== 'Enter') return;
       if (long && !(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
@@ -667,7 +676,8 @@
     return `
       <div class="mtp-combo" data-var="${esc(varKey)}" data-list="${id}">
         <button class="mtp-combo-arw" type="button" data-step="-1" title="前の候補"${dis}>◀</button>
-        <input class="mtp-fin mtp-combo-in" data-var="${esc(varKey)}" value="${esc(value || '')}"
+        <input class="mtp-fin mtp-combo-in" data-var="${esc(varKey)}" data-vkey="${esc(varKey)}"
+               value="${esc(value || '')}"
                placeholder="${esc(placeholder || '')}" list="${id}">
         <button class="mtp-combo-arw" type="button" data-step="1" title="次の候補"${dis}>▶</button>
         <span class="mtp-combo-count"${note !== undefined ? ` data-note="${esc(note)}"` : ''}
@@ -902,10 +912,12 @@
       apply();
     });
 
-    // テキスト欄
+    // テキスト欄（案件名の候補欄は data-vkey を持つ combo の入力欄として拾う）
     container.querySelectorAll('.mtp-fin').forEach(el => {
       el.addEventListener('input', () => {
-        state.values[el.dataset.vkey] = el.value;
+        const vkey = el.dataset.vkey || el.dataset.var;
+        if (!vkey) return;
+        state.values[vkey] = el.value;
         onChange();
       });
     });
