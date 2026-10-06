@@ -78,6 +78,11 @@ def _make_admin_token(pw):
 _DEFAULT_ADMIN_TOKEN = "ec31d1b13ecbc5c119f79ae5ea02ce8a3f3265a354acd6063894c2b8bf863c8f"
 ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else _DEFAULT_ADMIN_TOKEN
 
+# ── Chadeck の連絡（Slack・Chatwork）── 別系統。Chadeck のサーバーに問い合わせるだけで、Notion には触れない
+# 合言葉（CHADECK_INBOX_KEY）はこのサーバーにだけ置き、ブラウザには渡さない
+CHADECK_INBOX_URL = os.environ.get("CHADECK_INBOX_URL", "https://ngyabbsbkfficinuybya.supabase.co/functions/v1/portal-inbox")
+CHADECK_INBOX_KEY = os.environ.get("CHADECK_INBOX_KEY", "")
+
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
 INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
 os.makedirs(INVOICE_PDF_DIR, exist_ok=True)
@@ -612,6 +617,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def handle_chadeck_inbox(self, data):
+        """Chadeck に届いた連絡を読む・既読/未読にする・消す（管理者だけ）"""
+        if not ADMIN_TOKEN or data.get("token", "") != ADMIN_TOKEN:
+            self.send_json(401, {"ok": False, "error": "管理者ログインが必要です"})
+            return
+        if not CHADECK_INBOX_KEY:
+            self.send_json(200, {"ok": False, "error": "Railway の環境変数 CHADECK_INBOX_KEY が未設定です"})
+            return
+        action = data.get("action", "list")
+        if action not in ("list", "read", "unread", "delete"):
+            self.send_json(400, {"ok": False, "error": "unknown action"})
+            return
+        payload = jsonlib.dumps({"action": action, "ids": data.get("ids", [])}).encode()
+        req = Request(CHADECK_INBOX_URL, data=payload, method="POST",
+                      headers={"Content-Type": "application/json", "x-portal-key": CHADECK_INBOX_KEY})
+        try:
+            with urlopen(req, timeout=20) as r:
+                self.send_json(200, jsonlib.loads(r.read()))
+        except HTTPError as e:
+            self.send_json(502, {"ok": False, "error": f"Chadeck に接続できませんでした（{e.code}）"})
+        except Exception:
+            self.send_json(502, {"ok": False, "error": "Chadeck に接続できませんでした"})
+
     def do_GET(self):
         from urllib.parse import unquote
         path = unquote(self.path.split('?')[0])  # デコード＆クエリ除去
@@ -640,6 +668,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("ワーカー請求書.html")
         elif path == "/メール定型文ツール.html":
             self.send_html("メール定型文ツール.html")
+        elif path == "/連絡ツール.html":
+            self.send_html("連絡ツール.html")
         elif path == "/api/invoices":
             invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
@@ -791,6 +821,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/api/register-worker-from-invoice/"):
             inv_id = path.split("/")[-1]
             self.handle_register_worker_from_invoice(inv_id, data)
+            return
+        if path == "/api/chadeck/inbox":
+            self.handle_chadeck_inbox(data)
             return
         if self.path == "/api/register":
             self.handle_register(data)
