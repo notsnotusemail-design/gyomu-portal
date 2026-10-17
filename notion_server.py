@@ -344,14 +344,32 @@ def parse_mail_template_page(page):
 
 
 # ========== 日報（Notion DB）==========
+def nippo_task_label(t):
+    """作業1件を一覧用の1行にする（例：302 山内様／10月分：カット）"""
+    who = " ".join(x for x in [t.get("customer", ""), t.get("customerName", "")] if x).strip()
+    head = "／".join(x for x in [who, t.get("case", "")] if x)
+    body = (t.get("content") or "").strip()
+    return f"{head}：{body}" if head and body else (head or body)
+
 def parse_nippo_page(page):
     """Notionページを日報アイテムに変換"""
     try:
         props    = page["properties"]
         title_rt = props.get("作業内容", {}).get("title") or []
+        title    = "".join(t.get("plain_text", "") for t in title_rt).strip()
+        tasks = []
+        raw = mail_rt_plain(props, "タスク").strip()
+        if raw:
+            try:
+                tasks = [t for t in jsonlib.loads(raw) if isinstance(t, dict)]
+            except Exception:
+                tasks = []
+        if not tasks and title:          # タスク欄ができる前の日報
+            tasks = [{"customer": "", "customerName": "", "case": "", "content": title}]
         return {
             "id":     page["id"],
-            "title":  "".join(t.get("plain_text", "") for t in title_rt).strip(),
+            "title":  title,
+            "tasks":  tasks,
             "detail": mail_rt_plain(props, "詳細"),
             "date":   ((props.get("作業日", {}).get("date") or {}).get("start") or "")[:10],
             "start":  mail_rt_plain(props, "開始").strip(),
@@ -1470,10 +1488,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_nippo_save(self, data):
         """日報を登録／更新（idがあれば更新）"""
-        title = (data.get("title") or "").strip()
         date  = (data.get("date") or "").strip()
+        tasks = []
+        for t in data.get("tasks") or []:
+            if not isinstance(t, dict):
+                continue
+            t = {k: str(t.get(k) or "").strip() for k in ("customer", "customerName", "case", "content")}
+            if any(t.values()):
+                tasks.append(t)
+        title = "／".join(nippo_task_label(t) for t in tasks) or (data.get("title") or "").strip()
         if not title:
-            self.send_json(400, {"ok": False, "error": "作業内容を入れてください"}); return
+            self.send_json(400, {"ok": False, "error": "作業を1つ以上入れてください"}); return
         if not date:
             self.send_json(400, {"ok": False, "error": "作業日を入れてください"}); return
         props = {
@@ -1483,6 +1508,7 @@ class Handler(BaseHTTPRequestHandler):
             "開始":     {"rich_text": mail_rt_chunks((data.get("start") or "").strip())},
             "終了":     {"rich_text": mail_rt_chunks((data.get("end") or "").strip())},
             "場所":     {"rich_text": mail_rt_chunks((data.get("place") or "").strip())},
+            "タスク":   {"rich_text": mail_rt_chunks(jsonlib.dumps(tasks, ensure_ascii=False))},
         }
         page_id = data.get("id") or ""
         if page_id:

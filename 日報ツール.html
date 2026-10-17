@@ -10,7 +10,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
   background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px;
 }
-.container { max-width: 1100px; margin: 0 auto; }
+.container { max-width: 1180px; margin: 0 auto; }
 
 .page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .back-btn {
@@ -26,29 +26,62 @@ body {
 }
 .refresh-btn:hover { background: #f5f5f5; }
 
-.layout { display: grid; grid-template-columns: 360px 1fr; gap: 14px; align-items: start; }
-@media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+.layout { display: grid; grid-template-columns: 440px 1fr; gap: 14px; align-items: start; }
+@media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
 
 .panel { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
 .panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #f0f0f0; }
 .panel-title { font-size: 13px; font-weight: 700; }
 .panel-sub { font-size: 12px; color: #aaa; margin-left: auto; }
-.panel-body { padding: 14px; display: grid; gap: 12px; }
+.panel-body { padding: 14px; display: grid; gap: 14px; }
 
-.field label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
-.field .req { color: #e5484d; font-weight: 700; margin-left: 2px; }
-.field-in, .field-ta, .filter-sel, .search-input {
-  width: 100%; padding: 8px 11px; border: 1.5px solid #e2e2e2; border-radius: 8px;
-  font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a;
+.field > label, .field-label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
+.req { color: #e5484d; font-weight: 700; margin-left: 2px; }
+.field-in, .field-ta, .filter-in {
+  width: 100%; padding: 8px 10px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a; min-width: 0;
 }
-.field-ta { min-height: 130px; resize: vertical; line-height: 1.6; }
-.field-in:focus, .field-ta:focus, .filter-sel:focus, .search-input:focus {
-  outline: none; border-color: #4f6ef7; background: white;
-}
+.field-ta { min-height: 120px; resize: vertical; line-height: 1.6; }
+.field-in:focus, .field-ta:focus, .filter-in:focus { outline: none; border-color: #4f6ef7; background: white; }
+input[type=date], input[type=time] { cursor: pointer; }
 .time-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
 .time-row span { color: #aaa; font-size: 13px; }
 .duration { font-size: 12px; color: #4f6ef7; margin-top: 5px; min-height: 16px; }
-.hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+.hint { font-size: 11px; color: #aaa; margin-top: 5px; }
+
+/* 場所 */
+.place-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.map-btn {
+  padding: 0 12px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: white; color: #444;
+  font-size: 12px; font-family: inherit; cursor: pointer; white-space: nowrap; text-decoration: none;
+  display: flex; align-items: center;
+}
+.map-btn:hover { background: #f5f5f5; }
+.map-frame { margin-top: 8px; width: 100%; height: 160px; border: 0; border-radius: 8px; display: none; background: #eee; }
+.map-frame.on { display: block; }
+
+/* 作業（複数） */
+.tasks { display: grid; gap: 8px; }
+.task {
+  border: 1.5px solid #ececec; border-radius: 10px; padding: 10px; display: grid; gap: 6px; background: #fcfcfb;
+}
+.task-top { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.task-bottom { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.task-no { font-size: 11px; font-weight: 700; color: #aaa; }
+.icon-btn {
+  height: 36px; padding: 0 10px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: white;
+  font-size: 12px; font-family: inherit; color: #555; cursor: pointer; white-space: nowrap;
+}
+.icon-btn:hover { background: #f5f5f5; }
+.icon-btn.del { color: #c0392b; }
+.add-btn {
+  padding: 8px; border-radius: 8px; border: 1.5px dashed #d6d6d6; background: transparent;
+  font-size: 13px; font-family: inherit; color: #777; cursor: pointer;
+}
+.add-btn:hover { background: #fafafa; color: #333; }
+
+/* メモへの貼り付け */
+.paste-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px; }
 
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn {
@@ -64,22 +97,36 @@ body {
 .edit-banner { font-size: 12px; color: #b26a00; background: #fff7e6; border-radius: 8px; padding: 7px 10px; display: none; }
 .edit-banner.on { display: block; }
 
-.list-ctrl { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; display: grid; grid-template-columns: 160px 1fr; gap: 8px; }
+/* 検索 */
+.search { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; display: grid; gap: 8px; }
+.search-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+.search-row span { color: #aaa; font-size: 13px; }
+.search-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  padding: 4px 10px; border-radius: 20px; border: 1.5px solid #e2e2e2; background: white;
+  font-size: 12px; font-family: inherit; color: #666; cursor: pointer;
+}
+.chip:hover { background: #f5f5f5; }
+.chip.on { background: #1a1a1a; border-color: #1a1a1a; color: white; }
 .summary { padding: 10px 14px; font-size: 12px; color: #666; background: #fafafa; border-bottom: 1px solid #f0f0f0; }
 .summary b { color: #1a1a1a; }
-.list { max-height: 70vh; overflow-y: auto; }
+.list { max-height: 68vh; overflow-y: auto; }
 .day-head { padding: 8px 14px 4px; font-size: 12px; font-weight: 700; color: #888; background: #fcfcfb; border-bottom: 1px solid #f4f4f4; }
 .item { padding: 11px 14px; border-bottom: 1px solid #f4f4f4; cursor: pointer; transition: background 0.1s; }
 .item:hover { background: #fafafa; }
 .item.active { background: #eef1ff; }
-.item-meta { font-size: 12px; color: #888; margin-bottom: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
-.item-title { font-size: 14px; font-weight: 600; }
+.item-meta { font-size: 12px; color: #888; margin-bottom: 4px; display: flex; gap: 10px; flex-wrap: wrap; }
+.item-meta a { color: #4f6ef7; text-decoration: none; }
+.item-meta a:hover { text-decoration: underline; }
+.item-task { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.item-task .who { font-size: 12px; font-weight: 600; color: #4f6ef7; margin-right: 6px; }
 .item-detail { font-size: 12px; color: #777; margin-top: 4px; white-space: pre-wrap; line-height: 1.55;
                display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .empty { padding: 40px 14px; text-align: center; color: #aaa; font-size: 13px; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1a1a1a; color: white;
-         font-size: 13px; padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+         font-size: 13px; padding: 10px 16px; border-radius: 8px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 10; }
 .toast.on { opacity: 1; }
 .toast.err { background: #e5484d; }
 </style>
@@ -96,9 +143,7 @@ body {
   <div class="layout">
     <!-- 入力 -->
     <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title" id="formTitle">新しく記録する</div>
-      </div>
+      <div class="panel-head"><div class="panel-title" id="formTitle">新しく記録する</div></div>
       <div class="panel-body">
         <div class="edit-banner" id="editBanner">登録済みの日報を編集しています</div>
 
@@ -119,17 +164,28 @@ body {
 
         <div class="field">
           <label for="fPlace">場所</label>
-          <input type="text" class="field-in" id="fPlace" list="placeList" placeholder="例：スターバックス 渋谷店" autocomplete="off">
-          <datalist id="placeList"></datalist>
+          <div class="place-row">
+            <input type="text" class="field-in" id="fPlace" list="placeList" placeholder="例：スターバックス 渋谷店" autocomplete="off">
+            <a class="map-btn" id="mapBtn" href="https://www.google.com/maps" target="_blank" rel="noopener">Googleマップ</a>
+          </div>
+          <iframe class="map-frame" id="mapFrame" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="地図"></iframe>
+          <div class="hint">過去に入れた場所が候補に出ます。地図は入れた場所をGoogleマップで表示します。</div>
         </div>
 
         <div class="field">
-          <label for="fTitle">作業内容<span class="req">*</span></label>
-          <input type="text" class="field-in" id="fTitle" placeholder="例：302 山内様 10/5回のカット" autocomplete="off">
+          <div class="field-label">作業<span class="req">*</span></div>
+          <div class="tasks" id="tasks"></div>
+          <button type="button" class="add-btn" id="addTaskBtn" style="margin-top:8px;width:100%">＋ 作業を追加</button>
+          <div class="hint">顧客と案件は一覧から選べます。案件に関係ない作業は、作業内容だけでもかまいません。</div>
         </div>
 
         <div class="field">
-          <label for="fDetail">詳細</label>
+          <label for="fDetail">メモ</label>
+          <div class="paste-row">
+            <input type="text" class="field-in" id="pCust" list="custList" placeholder="顧客" autocomplete="off">
+            <input type="text" class="field-in" id="pCase" placeholder="案件" autocomplete="off">
+            <button type="button" class="icon-btn" id="pasteBtn">メモに貼り付け</button>
+          </div>
           <textarea class="field-ta" id="fDetail" placeholder="やったこと・使ったお金のメモなど"></textarea>
           <div class="hint">Enter で改行・変換の確定。登録は ⌘＋Enter でもできます。</div>
         </div>
@@ -142,42 +198,55 @@ body {
       </div>
     </div>
 
-    <!-- 一覧 -->
+    <!-- 一覧と検索 -->
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">これまでの日報</div>
         <div class="panel-sub" id="countTxt"></div>
       </div>
-      <div class="list-ctrl">
-        <select class="filter-sel" id="monthSel"></select>
-        <input type="text" class="search-input" id="searchIn" placeholder="作業内容・場所・詳細で絞り込み">
+      <div class="search">
+        <div class="chips" id="chips">
+          <button type="button" class="chip" data-range="thisMonth">今月</button>
+          <button type="button" class="chip" data-range="lastMonth">先月</button>
+          <button type="button" class="chip" data-range="thisYear">今年</button>
+          <button type="button" class="chip" data-range="all">すべて</button>
+        </div>
+        <div class="search-row">
+          <input type="date" class="filter-in" id="sFrom" title="この日から">
+          <span>〜</span>
+          <input type="date" class="filter-in" id="sTo" title="この日まで">
+        </div>
+        <div class="search-row2">
+          <input type="text" class="filter-in" id="sPlace" list="placeList" placeholder="場所で検索" autocomplete="off">
+          <input type="text" class="filter-in" id="sWord" placeholder="顧客・案件・作業・メモで検索" autocomplete="off">
+        </div>
       </div>
       <div class="summary" id="summary"></div>
       <div class="list" id="list"><div class="empty">読み込み中…</div></div>
     </div>
   </div>
 </div>
+
+<datalist id="placeList"></datalist>
+<datalist id="custList"></datalist>
 <div class="toast" id="toast"></div>
 
 <script>
 const SERVER = window.location.origin;
 const $ = id => document.getElementById(id);
 let items = [];
+let customers = [];          // [{no, name, label}]
+const caseCache = {};        // 顧客No. → [{label, hint}]
 let editingId = '';
 
 /* ---------- 補助 ---------- */
-function todayStr() {
-  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
-function minutesOf(hhmm) {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
-  return m ? (+m[1]) * 60 + (+m[2]) : null;
-}
-function durationMin(start, end) {
-  const a = minutesOf(start), b = minutesOf(end);
+function ymd(d) { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); }
+const todayStr = () => ymd(new Date());
+function minutesOf(hhmm) { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function durationMin(s, e) {
+  const a = minutesOf(s), b = minutesOf(e);
   if (a === null || b === null) return null;
-  return b >= a ? b - a : b + 1440 - a;   // 日をまたいだ場合
+  return b >= a ? b - a : b + 1440 - a;
 }
 function fmtDuration(min) {
   if (min === null || min === undefined) return '';
@@ -189,28 +258,176 @@ function fmtDate(iso) {
   const d = new Date(iso + 'T00:00:00');
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${'日月火水木金土'[d.getDay()]}）`;
 }
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mapUrl = q => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q);
 function toast(msg, err) {
   const t = $('toast'); t.textContent = msg; t.className = 'toast on' + (err ? ' err' : '');
   clearTimeout(toast._t); toast._t = setTimeout(() => t.className = 'toast', 2200);
 }
 
+/* 日付・時刻の欄は、どこを押してもカレンダー（時刻の選択）が開くようにする */
+document.addEventListener('click', e => {
+  const el = e.target;
+  if (el.tagName === 'INPUT' && (el.type === 'date' || el.type === 'time') && el.showPicker) {
+    try { el.showPicker(); } catch (_) {}
+  }
+});
+
+/* ---------- 顧客・案件 ---------- */
+async function loadCustomers() {
+  try {
+    const r = await fetch(SERVER + '/api/customers-all', { signal: AbortSignal.timeout(20000) });
+    const d = await r.json();
+    if (!d.ok) return;
+    customers = (d.customers || [])
+      .filter(c => c.no)
+      .map(c => {
+        const name = (c.name || '').replace(/（取引終了）/, '').trim();
+        return { no: String(c.no).trim(), name, active: c.status !== '取引終了', label: `${String(c.no).trim()} ${name}` };
+      })
+      .sort((a, b) => (b.active - a.active) || a.no.localeCompare(b.no, 'ja', { numeric: true }));
+    $('custList').innerHTML = customers.map(c => `<option value="${esc(c.label)}">${c.active ? '' : '取引終了'}</option>`).join('');
+  } catch (_) { /* 顧客が引けなくても手入力はできる */ }
+}
+// 入力欄の文字から顧客を割り出す（「302」「302 山内様」どちらでも）
+function findCustomer(text) {
+  const t = (text || '').trim();
+  if (!t) return null;
+  return customers.find(c => c.label === t) || customers.find(c => c.no === t.split(/\s+/)[0]) || null;
+}
+async function loadCases(no) {
+  if (!no) return [];
+  if (caseCache[no]) return caseCache[no];
+  try {
+    const r = await fetch(SERVER + '/api/cases/list?customer=' + encodeURIComponent(no), { signal: AbortSignal.timeout(20000) });
+    const d = await r.json();
+    const seen = new Set();
+    caseCache[no] = (d.cases || [])
+      .filter(c => String(c.customer || '').trim() === no)        // 302 が 3302 も拾うので絞り直す
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(c => ({ label: (c.filename || '').trim() || (c.note || '').trim() || (c.number || '').trim(),
+                   hint: [c.date, c.number].filter(Boolean).join('  ') }))
+      .filter(c => c.label && !seen.has(c.label) && seen.add(c.label))
+      .slice(0, 80);
+  } catch (_) { caseCache[no] = []; }
+  return caseCache[no];
+}
+// 顧客欄が変わったら、対になる案件欄の候補を差し替える
+async function bindCaseList(custInput, caseInput) {
+  const c = findCustomer(custInput.value);
+  let dl = document.getElementById(caseInput.dataset.list);
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = caseInput.dataset.list = 'cl' + Math.random().toString(36).slice(2);
+    document.body.appendChild(dl);
+    caseInput.setAttribute('list', dl.id);
+  }
+  if (!c) { dl.innerHTML = ''; caseInput.placeholder = '案件'; return; }
+  caseInput.placeholder = '案件（読み込み中…）';
+  const cases = await loadCases(c.no);
+  dl.innerHTML = cases.map(x => `<option value="${esc(x.label)}">${esc(x.hint)}</option>`).join('');
+  caseInput.placeholder = cases.length ? '案件（一覧から選べます）' : '案件';
+}
+
+/* ---------- 作業（複数） ---------- */
+function taskRow(t = {}) {
+  const el = document.createElement('div');
+  el.className = 'task';
+  const cust = t.customer ? ((findCustomer(t.customer) || {}).label || `${t.customer} ${t.customerName || ''}`.trim()) : '';
+  el.innerHTML = `
+    <div class="task-no"></div>
+    <div class="task-top">
+      <input type="text" class="field-in t-cust" list="custList" placeholder="顧客" autocomplete="off" value="${esc(cust)}">
+      <input type="text" class="field-in t-case" placeholder="案件" autocomplete="off" value="${esc(t.case || '')}">
+    </div>
+    <div class="task-bottom">
+      <input type="text" class="field-in t-content" placeholder="作業内容（例：カット・テロップ・経理）" autocomplete="off" value="${esc(t.content || '')}">
+      <button type="button" class="icon-btn t-paste" title="この顧客と案件をメモに貼り付け">メモへ</button>
+      <button type="button" class="icon-btn del t-del" title="この作業を消す">✕</button>
+    </div>`;
+  const ci = el.querySelector('.t-cust'), ki = el.querySelector('.t-case');
+  ci.addEventListener('change', () => bindCaseList(ci, ki));
+  ci.addEventListener('input', () => { if (findCustomer(ci.value)) bindCaseList(ci, ki); });
+  el.querySelector('.t-del').addEventListener('click', () => {
+    if ($('tasks').children.length > 1) el.remove(); else el.querySelectorAll('input').forEach(i => i.value = '');
+    renumber();
+  });
+  el.querySelector('.t-paste').addEventListener('click', () => pasteToMemo(ci.value, ki.value));
+  bindCaseList(ci, ki);
+  return el;
+}
+function renumber() {
+  const rows = [...$('tasks').children];
+  rows.forEach((r, i) => r.querySelector('.task-no').textContent = rows.length > 1 ? `作業 ${i + 1}` : '');
+}
+function setTasks(list) {
+  $('tasks').innerHTML = '';
+  (list && list.length ? list : [{}]).forEach(t => $('tasks').appendChild(taskRow(t)));
+  renumber();
+}
+function getTasks() {
+  return [...$('tasks').children].map(r => {
+    const raw = r.querySelector('.t-cust').value.trim();
+    const c = findCustomer(raw);
+    return {
+      customer: c ? c.no : raw,
+      customerName: c ? c.name : '',
+      case: r.querySelector('.t-case').value.trim(),
+      content: r.querySelector('.t-content').value.trim(),
+    };
+  }).filter(t => t.customer || t.case || t.content);
+}
+$('addTaskBtn').addEventListener('click', () => {
+  const prev = getTasks().slice(-1)[0];
+  const row = taskRow(prev ? { customer: prev.customer, customerName: prev.customerName } : {});
+  $('tasks').appendChild(row); renumber();
+  row.querySelector(prev ? '.t-case' : '.t-cust').focus();
+});
+
+/* ---------- メモへの貼り付け ---------- */
+function pasteToMemo(custText, caseText) {
+  const c = findCustomer(custText);
+  const who = c ? `${c.no} ${c.name}${/様$/.test(c.name) ? '' : '様'}` : (custText || '').trim();
+  const text = [who, (caseText || '').trim()].filter(Boolean).join('／');
+  if (!text) { toast('顧客か案件を選んでください', true); return; }
+  const ta = $('fDetail'), s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
+  const ins = `【${text}】`;
+  ta.value = ta.value.slice(0, s) + ins + ta.value.slice(e);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length;
+}
+$('pCust').addEventListener('change', () => bindCaseList($('pCust'), $('pCase')));
+$('pCust').addEventListener('input', () => { if (findCustomer($('pCust').value)) bindCaseList($('pCust'), $('pCase')); });
+$('pasteBtn').addEventListener('click', () => pasteToMemo($('pCust').value, $('pCase').value));
+
+/* ---------- 場所と地図 ---------- */
+let mapTimer;
+function updateMap() {
+  const q = $('fPlace').value.trim();
+  $('mapBtn').href = q ? mapUrl(q) : 'https://www.google.com/maps';
+  clearTimeout(mapTimer);
+  mapTimer = setTimeout(() => {
+    const f = $('mapFrame');
+    if (!q) { f.classList.remove('on'); f.removeAttribute('src'); return; }
+    const src = 'https://maps.google.com/maps?q=' + encodeURIComponent(q) + '&hl=ja&z=16&output=embed';
+    if (f.getAttribute('src') !== src) f.src = src;
+    f.classList.add('on');
+  }, 700);
+}
+$('fPlace').addEventListener('input', updateMap);
+$('fPlace').addEventListener('change', updateMap);
+
 /* ---------- Enter の扱い ----------
-   1行の欄：Enter は変換の確定だけ（登録はしない）。変換していないときは次の欄へ
-   詳細：Enter は改行（変換中は確定）。⌘/Ctrl＋Enter で登録 */
-const ORDER = ['fDate', 'fStart', 'fEnd', 'fPlace', 'fTitle', 'fDetail'];
+   変換中の Enter は確定だけ。1行の欄では次の欄へ移るだけで登録はしない（候補の選択も邪魔しない）。
+   メモ欄は改行。⌘/Ctrl＋Enter で登録 */
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  if (e.isComposing || e.keyCode === 229) return;          // 変換の確定は邪魔しない
-  const id = e.target && e.target.id;
-  if (!ORDER.includes(id)) return;
+  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+  const el = e.target;
+  if (!el.closest || !el.closest('.layout .panel:first-child')) return;
   if (e.metaKey || e.ctrlKey) { e.preventDefault(); save(); return; }
-  if (id === 'fDetail') return;                             // 改行
-  e.preventDefault();
-  const next = $(ORDER[ORDER.indexOf(id) + 1]);
-  if (next) next.focus();
+  if (el.tagName !== 'INPUT') return;
+  const fields = [...document.querySelectorAll('.layout .panel:first-child input')];
+  const next = fields[fields.indexOf(el) + 1];
+  if (next) setTimeout(() => next.focus(), 0);
 });
 
 /* ---------- 入力欄 ---------- */
@@ -224,70 +441,88 @@ function resetForm() {
   editingId = '';
   $('fDate').value = todayStr();
   $('fStart').value = ''; $('fEnd').value = '';
-  $('fPlace').value = items[0] ? items[0].place : '';   // 前回の場所を初期値に
-  $('fTitle').value = ''; $('fDetail').value = '';
+  $('fPlace').value = items[0] ? items[0].place : '';     // 前回の場所を初期値に
+  $('fDetail').value = ''; $('pCust').value = ''; $('pCase').value = '';
+  setTasks([]);
   $('formTitle').textContent = '新しく記録する';
   $('saveBtn').textContent = '登録する';
   $('delBtn').style.display = 'none';
   $('editBanner').classList.remove('on');
-  updateDuration(); renderList();
+  updateDuration(); updateMap(); renderList();
 }
-
 function loadToForm(it) {
   editingId = it.id;
   $('fDate').value = it.date; $('fStart').value = it.start; $('fEnd').value = it.end;
-  $('fPlace').value = it.place; $('fTitle').value = it.title; $('fDetail').value = it.detail;
+  $('fPlace').value = it.place; $('fDetail').value = it.detail;
+  setTasks(it.tasks);
   $('formTitle').textContent = '日報を編集';
   $('saveBtn').textContent = '更新する';
   $('delBtn').style.display = '';
   $('editBanner').classList.add('on');
-  updateDuration(); renderList();
-  if (window.innerWidth <= 880) window.scrollTo({ top: 0, behavior: 'smooth' });
+  updateDuration(); updateMap(); renderList();
+  if (window.innerWidth <= 920) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+/* ---------- 検索 ---------- */
+function setRange(kind) {
+  const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+  const r = {
+    thisMonth: [new Date(y, m, 1), new Date(y, m + 1, 0)],
+    lastMonth: [new Date(y, m - 1, 1), new Date(y, m, 0)],
+    thisYear:  [new Date(y, 0, 1), new Date(y, 11, 31)],
+  }[kind];
+  $('sFrom').value = r ? ymd(r[0]) : ''; $('sTo').value = r ? ymd(r[1]) : '';
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.range === kind));
+  renderList();
+}
+$('chips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) setRange(c.dataset.range); });
+['sFrom', 'sTo'].forEach(id => $(id).addEventListener('change', () => {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); renderList();
+}));
+['sPlace', 'sWord'].forEach(id => $(id).addEventListener('input', renderList));
 
 /* ---------- 一覧 ---------- */
-function buildMonthOptions() {
-  const sel = $('monthSel'), cur = sel.value;
-  const months = [...new Set(items.map(i => i.date.slice(0, 7)).filter(Boolean))].sort().reverse();
-  const thisMonth = todayStr().slice(0, 7);
-  if (!months.includes(thisMonth)) months.unshift(thisMonth);
-  sel.innerHTML = months.map(m => `<option value="${m}">${+m.slice(0, 4)}年${+m.slice(5)}月</option>`).join('')
-                + '<option value="all">すべて</option>';
-  sel.value = cur && [...sel.options].some(o => o.value === cur) ? cur : thisMonth;
-  $('placeList').innerHTML = [...new Set(items.map(i => i.place).filter(Boolean))]
-    .map(p => `<option value="${esc(p)}">`).join('');
+function taskText(t) {
+  const c = findCustomer(t.customer);
+  return [t.customer, c ? c.name : t.customerName, t.case, t.content].join(' ');
 }
-
 function renderList() {
-  const month = $('monthSel').value, q = $('searchIn').value.trim().toLowerCase();
-  const rows = items.filter(i => (month === 'all' || i.date.startsWith(month)) &&
-    (!q || [i.title, i.place, i.detail].join(' ').toLowerCase().includes(q)));
+  const from = $('sFrom').value, to = $('sTo').value;
+  const place = $('sPlace').value.trim().toLowerCase(), word = $('sWord').value.trim().toLowerCase();
+  const rows = items.filter(i =>
+    (!from || i.date >= from) && (!to || i.date <= to) &&
+    (!place || (i.place || '').toLowerCase().includes(place)) &&
+    (!word || [i.title, i.detail, ...(i.tasks || []).map(taskText)].join(' ').toLowerCase().includes(word)));
   const total = rows.reduce((s, i) => s + (durationMin(i.start, i.end) || 0), 0);
   const days = new Set(rows.map(i => i.date)).size;
-  $('countTxt').textContent = `${items.length}件`;
+  $('countTxt').textContent = `全${items.length}件`;
   $('summary').innerHTML = rows.length
-    ? `${month === 'all' ? 'すべて' : `${+month.slice(5)}月`}：<b>${days}日</b>・<b>${rows.length}件</b>・作業時間 合計 <b>${fmtDuration(total) || '0分'}</b>`
+    ? `<b>${days}日</b>・<b>${rows.length}件</b>・作業時間 合計 <b>${fmtDuration(total) || '0分'}</b>`
     : '';
-  if (!rows.length) { $('list').innerHTML = '<div class="empty">この期間の日報はまだありません</div>'; return; }
-  let html = '', lastDate = '';
+  if (!rows.length) { $('list').innerHTML = '<div class="empty">条件に合う日報はありません</div>'; return; }
+  let html = '', last = '';
   for (const i of rows) {
-    if (i.date !== lastDate) { html += `<div class="day-head">${fmtDate(i.date)}</div>`; lastDate = i.date; }
+    if (i.date !== last) { html += `<div class="day-head">${fmtDate(i.date)}</div>`; last = i.date; }
     const dur = durationMin(i.start, i.end);
     const time = i.start || i.end ? `${esc(i.start)}〜${esc(i.end)}${dur !== null ? `（${fmtDuration(dur)}）` : ''}` : '';
+    const tasks = (i.tasks && i.tasks.length ? i.tasks : [{ content: i.title }]).map(t => {
+      const c = findCustomer(t.customer);
+      const who = [t.customer && `${t.customer} ${c ? c.name : (t.customerName || '')}`.trim(), t.case].filter(Boolean).join('／');
+      return `<div class="item-task">${who ? `<span class="who">${esc(who)}</span>` : ''}${esc(t.content || '')}</div>`;
+    }).join('');
     html += `<div class="item${i.id === editingId ? ' active' : ''}" data-id="${i.id}">
-      <div class="item-meta">${time ? `<span>🕒 ${time}</span>` : ''}${i.place ? `<span>📍 ${esc(i.place)}</span>` : ''}</div>
-      <div class="item-title">${esc(i.title)}</div>
+      <div class="item-meta">${time ? `<span>🕒 ${time}</span>` : ''}${i.place ? `<span>📍 <a href="${mapUrl(i.place)}" target="_blank" rel="noopener">${esc(i.place)}</a></span>` : ''}</div>
+      ${tasks}
       ${i.detail ? `<div class="item-detail">${esc(i.detail)}</div>` : ''}
     </div>`;
   }
   $('list').innerHTML = html;
 }
 $('list').addEventListener('click', e => {
+  if (e.target.closest('a')) return;                 // 地図リンクは開くだけ
   const el = e.target.closest('.item'); if (!el) return;
   const it = items.find(i => i.id === el.dataset.id); if (it) loadToForm(it);
 });
-$('monthSel').addEventListener('change', renderList);
-$('searchIn').addEventListener('input', renderList);
 
 /* ---------- 通信 ---------- */
 async function load() {
@@ -300,8 +535,12 @@ async function load() {
     $('list').innerHTML = `<div class="empty">読み込めませんでした：${esc(e.message)}</div>`;
     return;
   }
-  buildMonthOptions();
-  if (!editingId) resetForm(); else renderList();
+  // 過去の場所（新しい順・重複なし）
+  $('placeList').innerHTML = [...new Set(items.map(i => i.place).filter(Boolean))]
+    .map(p => `<option value="${esc(p)}">`).join('');
+  // 読み込みが終わっても入力中の内容は消さない。場所が空なら前回の場所だけ入れる
+  if (!editingId && !$('fPlace').value && items[0]) { $('fPlace').value = items[0].place; updateMap(); }
+  renderList();
 }
 
 let saving = false;
@@ -309,10 +548,10 @@ async function save() {
   if (saving) return;
   const body = {
     id: editingId, date: $('fDate').value, start: $('fStart').value, end: $('fEnd').value,
-    place: $('fPlace').value.trim(), title: $('fTitle').value.trim(), detail: $('fDetail').value,
+    place: $('fPlace').value.trim(), tasks: getTasks(), detail: $('fDetail').value,
   };
   if (!body.date) { toast('作業日を入れてください', true); $('fDate').focus(); return; }
-  if (!body.title) { toast('作業内容を入れてください', true); $('fTitle').focus(); return; }
+  if (!body.tasks.length) { toast('作業を1つ以上入れてください', true); $('tasks').querySelector('input').focus(); return; }
   saving = true; $('saveBtn').disabled = true;
   try {
     const r = await fetch(SERVER + '/api/nippo/save', {
@@ -323,10 +562,10 @@ async function save() {
     toast(editingId ? '更新しました' : '登録しました');
     editingId = '';
     await load();
+    resetForm();
   } catch (e) { toast(e.message, true); }
   finally { saving = false; $('saveBtn').disabled = false; }
 }
-
 async function remove() {
   if (!editingId || !confirm('この日報を削除しますか？')) return;
   try {
@@ -335,7 +574,7 @@ async function remove() {
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || '削除に失敗しました');
-    toast('削除しました'); editingId = ''; await load();
+    toast('削除しました'); editingId = ''; await load(); resetForm();
   } catch (e) { toast(e.message, true); }
 }
 
@@ -345,6 +584,9 @@ $('delBtn').addEventListener('click', remove);
 $('reloadBtn').addEventListener('click', load);
 
 $('fDate').value = todayStr();
+setTasks([]);
+setRange('thisMonth');
+loadCustomers().then(() => { renderList(); [...$('tasks').children].forEach(r => bindCaseList(r.querySelector('.t-cust'), r.querySelector('.t-case'))); });
 load();
 </script>
 </body>
