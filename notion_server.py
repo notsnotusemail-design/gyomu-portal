@@ -59,6 +59,9 @@ HANDOVER_DB_ID = "92c91778-a575-445b-80b8-f233a0c23261"
 # メール定型文データベースID（Notionで管理）
 MAIL_TEMPLATE_DB_ID = os.environ.get("MAIL_TEMPLATE_DB_ID", "3df3288b-84b0-814e-a04b-ddcb121341e9")
 
+# 日報（カフェで作業した日の記録・経費メモ用）データベースID（Notionで管理）
+NIPPO_DB_ID = os.environ.get("NIPPO_DB_ID", "3fc3288b-84b0-81ed-9387-c8f3ac7f1adf")
+
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 
@@ -77,11 +80,6 @@ def _make_admin_token(pw):
 # デフォルトトークン = sha256("nts2026" + salt)。ADMIN_PASSWORDが設定されていれば上書き
 _DEFAULT_ADMIN_TOKEN = "ec31d1b13ecbc5c119f79ae5ea02ce8a3f3265a354acd6063894c2b8bf863c8f"
 ADMIN_TOKEN = _make_admin_token(ADMIN_PASSWORD) if ADMIN_PASSWORD else _DEFAULT_ADMIN_TOKEN
-
-# ── Chadeck の連絡（Slack・Chatwork）── 別系統。Chadeck のサーバーに問い合わせるだけで、Notion には触れない
-# 合言葉（CHADECK_INBOX_KEY）はこのサーバーにだけ置き、ブラウザには渡さない
-CHADECK_INBOX_URL = os.environ.get("CHADECK_INBOX_URL", "https://ngyabbsbkfficinuybya.supabase.co/functions/v1/portal-inbox")
-CHADECK_INBOX_KEY = os.environ.get("CHADECK_INBOX_KEY", "")
 
 # PDF は一時保存（Railwayでは再デプロイで消えるが、請求書データはNotionに永続保存）
 INVOICE_PDF_DIR = os.path.join(SCRIPT_DIR, "invoice_pdfs")
@@ -340,6 +338,25 @@ def parse_mail_template_page(page):
             "enabled":   props.get("有効", {}).get("checkbox", True),
             "updated":   page.get("last_edited_time", ""),
             "notionUrl": page.get("url", ""),
+        }
+    except Exception:
+        return None
+
+
+# ========== 日報（Notion DB）==========
+def parse_nippo_page(page):
+    """Notionページを日報アイテムに変換"""
+    try:
+        props    = page["properties"]
+        title_rt = props.get("作業内容", {}).get("title") or []
+        return {
+            "id":     page["id"],
+            "title":  "".join(t.get("plain_text", "") for t in title_rt).strip(),
+            "detail": mail_rt_plain(props, "詳細"),
+            "date":   ((props.get("作業日", {}).get("date") or {}).get("start") or "")[:10],
+            "start":  mail_rt_plain(props, "開始").strip(),
+            "end":    mail_rt_plain(props, "終了").strip(),
+            "place":  mail_rt_plain(props, "場所").strip(),
         }
     except Exception:
         return None
@@ -617,29 +634,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def handle_chadeck_inbox(self, data):
-        """Chadeck に届いた連絡を読む・既読/未読にする・消す（管理者だけ）"""
-        if not ADMIN_TOKEN or data.get("token", "") != ADMIN_TOKEN:
-            self.send_json(401, {"ok": False, "error": "管理者ログインが必要です"})
-            return
-        if not CHADECK_INBOX_KEY:
-            self.send_json(200, {"ok": False, "error": "Railway の環境変数 CHADECK_INBOX_KEY が未設定です"})
-            return
-        action = data.get("action", "list")
-        if action not in ("list", "read", "unread", "delete"):
-            self.send_json(400, {"ok": False, "error": "unknown action"})
-            return
-        payload = jsonlib.dumps({"action": action, "ids": data.get("ids", [])}).encode()
-        req = Request(CHADECK_INBOX_URL, data=payload, method="POST",
-                      headers={"Content-Type": "application/json", "x-portal-key": CHADECK_INBOX_KEY})
-        try:
-            with urlopen(req, timeout=20) as r:
-                self.send_json(200, jsonlib.loads(r.read()))
-        except HTTPError as e:
-            self.send_json(502, {"ok": False, "error": f"Chadeck に接続できませんでした（{e.code}）"})
-        except Exception:
-            self.send_json(502, {"ok": False, "error": "Chadeck に接続できませんでした"})
-
     def do_GET(self):
         from urllib.parse import unquote
         path = unquote(self.path.split('?')[0])  # デコード＆クエリ除去
@@ -668,8 +662,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("ワーカー請求書.html")
         elif path == "/メール定型文ツール.html":
             self.send_html("メール定型文ツール.html")
-        elif path == "/連絡ツール.html":
-            self.send_html("連絡ツール.html")
+        elif path == "/日報ツール.html":
+            self.send_html("日報ツール.html")
         elif path == "/api/invoices":
             invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
@@ -722,6 +716,8 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_get_all_customers()
         elif path == "/api/mail-templates":
             self.handle_mail_templates_list()
+        elif path == "/api/nippo":
+            self.handle_nippo_list()
         elif path.startswith("/api/invoice-data"):
             self.handle_get_invoice_data()
         elif path.startswith("/api/calendar/day"):
@@ -822,9 +818,6 @@ class Handler(BaseHTTPRequestHandler):
             inv_id = path.split("/")[-1]
             self.handle_register_worker_from_invoice(inv_id, data)
             return
-        if path == "/api/chadeck/inbox":
-            self.handle_chadeck_inbox(data)
-            return
         if self.path == "/api/register":
             self.handle_register(data)
         elif self.path == "/api/update-customer":
@@ -847,6 +840,10 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_mail_template_save(data)
         elif self.path == "/api/mail-templates/delete":
             self.handle_mail_template_delete(data)
+        elif self.path == "/api/nippo/save":
+            self.handle_nippo_save(data)
+        elif self.path == "/api/nippo/delete":
+            self.handle_nippo_delete(data)
         elif self.path == "/api/customers/invoice-name":
             self.handle_set_invoice_name(data)
         elif self.path == "/api/handover/add":
@@ -1448,6 +1445,64 @@ class Handler(BaseHTTPRequestHandler):
         if result is None:
             self.send_json(400, {"ok": False, "error": err}); return
         print(f"  🗑 メール定型文削除: {page_id[:8]}")
+        self.send_json(200, {"ok": True})
+
+    # ========== 日報 ==========
+    def handle_nippo_list(self):
+        """日報を全件取得（新しい日付が上）"""
+        items, cursor = [], None
+        while True:
+            body = {"page_size": 100, "sorts": [{"property": "作業日", "direction": "descending"}]}
+            if cursor:
+                body["start_cursor"] = cursor
+            result, err = notion_request("POST", f"/databases/{NIPPO_DB_ID}/query", body)
+            if not result:
+                self.send_json(400, {"ok": False, "error": err}); return
+            for page in result.get("results", []):
+                item = parse_nippo_page(page)
+                if item:
+                    items.append(item)
+            if not result.get("has_more"):
+                break
+            cursor = result.get("next_cursor")
+        items.sort(key=lambda x: (x["date"], x["start"]), reverse=True)
+        self.send_json(200, {"ok": True, "items": items})
+
+    def handle_nippo_save(self, data):
+        """日報を登録／更新（idがあれば更新）"""
+        title = (data.get("title") or "").strip()
+        date  = (data.get("date") or "").strip()
+        if not title:
+            self.send_json(400, {"ok": False, "error": "作業内容を入れてください"}); return
+        if not date:
+            self.send_json(400, {"ok": False, "error": "作業日を入れてください"}); return
+        props = {
+            "作業内容": {"title": [{"text": {"content": title[:MAIL_TPL_CHUNK]}}]},
+            "詳細":     {"rich_text": mail_rt_chunks(data.get("detail", ""))},
+            "作業日":   {"date": {"start": date}},
+            "開始":     {"rich_text": mail_rt_chunks((data.get("start") or "").strip())},
+            "終了":     {"rich_text": mail_rt_chunks((data.get("end") or "").strip())},
+            "場所":     {"rich_text": mail_rt_chunks((data.get("place") or "").strip())},
+        }
+        page_id = data.get("id") or ""
+        if page_id:
+            result, err = notion_request("PATCH", f"/pages/{page_id}", {"properties": props})
+        else:
+            result, err = notion_request("POST", "/pages",
+                                         {"parent": {"database_id": NIPPO_DB_ID}, "properties": props})
+        if not result:
+            self.send_json(400, {"ok": False, "error": err}); return
+        print(f"  📝 日報{'更新' if page_id else '登録'}: {date} {title[:30]}")
+        self.send_json(200, {"ok": True, "item": parse_nippo_page(result)})
+
+    def handle_nippo_delete(self, data):
+        """日報を削除（Notion上はアーカイブ）"""
+        page_id = data.get("id", "")
+        if not page_id:
+            self.send_json(400, {"ok": False, "error": "idが必要"}); return
+        result, err = notion_request("PATCH", f"/pages/{page_id}", {"archived": True})
+        if result is None:
+            self.send_json(400, {"ok": False, "error": err}); return
         self.send_json(200, {"ok": True})
 
     def handle_handover_add(self, data):
