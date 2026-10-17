@@ -46,6 +46,13 @@ body {
 input[type=date], input[type=time] { cursor: pointer; }
 .time-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
 .time-row span { color: #aaa; font-size: 13px; }
+.time-box { position: relative; }
+.time-box .time-in { padding-right: 38px; }
+.clock-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: transparent;
+             font-size: 15px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.clock-btn:hover { background: #eee; }
+.time-pick { position: absolute; left: 0; bottom: 0; width: 100%; height: 0; opacity: 0; border: 0; padding: 0; pointer-events: none; }
+.time-in.bad { border-color: #e5484d; background: #fff5f5; }
 .duration { font-size: 12px; color: #4f6ef7; margin-top: 5px; min-height: 16px; }
 .hint { font-size: 11px; color: #aaa; margin-top: 5px; }
 
@@ -66,7 +73,8 @@ input[type=date], input[type=time] { cursor: pointer; }
   border: 1.5px solid #ececec; border-radius: 10px; padding: 10px; display: grid; gap: 6px; background: #fcfcfb;
 }
 .task-top { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.task-bottom { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.task-bottom { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.t-memo { min-height: 64px; font-size: 13px; padding: 7px 10px; }
 .task-no { font-size: 11px; font-weight: 700; color: #aaa; }
 .icon-btn {
   height: 36px; padding: 0 10px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: white;
@@ -80,9 +88,6 @@ input[type=date], input[type=time] { cursor: pointer; }
 }
 .add-btn:hover { background: #fafafa; color: #333; }
 
-/* メモへの貼り付け */
-.paste-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px; }
-
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn {
   padding: 9px 16px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: white;
@@ -95,7 +100,13 @@ input[type=date], input[type=time] { cursor: pointer; }
 .btn-danger:hover { background: #fff5f5; }
 .btn[disabled] { opacity: 0.5; cursor: default; }
 .edit-banner { font-size: 12px; color: #b26a00; background: #fff7e6; border-radius: 8px; padding: 7px 10px; display: none; }
-.edit-banner.on { display: block; }
+.edit-banner.on { display: flex; align-items: center; gap: 8px; }
+.banner-btn { margin-left: auto; padding: 4px 10px; border-radius: 6px; border: 1px solid #f0c27a; background: white;
+              color: #8a5300; font-size: 12px; font-family: inherit; cursor: pointer; }
+.banner-btn:hover { background: #fffaf0; }
+.new-btn { margin-left: auto; padding: 5px 12px; border-radius: 8px; border: 1.5px solid #1a1a1a; background: #1a1a1a;
+           color: white; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.new-btn:hover { background: #333; }
 
 /* 検索 */
 .search { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; display: grid; gap: 8px; }
@@ -121,6 +132,7 @@ input[type=date], input[type=time] { cursor: pointer; }
 .item-meta a:hover { text-decoration: underline; }
 .item-task { font-size: 14px; font-weight: 600; line-height: 1.5; }
 .item-task .who { font-size: 12px; font-weight: 600; color: #4f6ef7; margin-right: 6px; }
+.item-memo { font-size: 12px; color: #777; margin: 2px 0 6px; padding-left: 10px; border-left: 2px solid #eee; white-space: pre-wrap; line-height: 1.55; }
 .item-detail { font-size: 12px; color: #777; margin-top: 4px; white-space: pre-wrap; line-height: 1.55;
                display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .empty { padding: 40px 14px; text-align: center; color: #aaa; font-size: 13px; }
@@ -143,9 +155,9 @@ input[type=date], input[type=time] { cursor: pointer; }
   <div class="layout">
     <!-- 入力 -->
     <div class="panel">
-      <div class="panel-head"><div class="panel-title" id="formTitle">新しく記録する</div></div>
+      <div class="panel-head"><div class="panel-title" id="formTitle">新しく記録する</div><button type="button" class="new-btn" id="newTopBtn" style="display:none">＋ 新しく記録する</button></div>
       <div class="panel-body">
-        <div class="edit-banner" id="editBanner">登録済みの日報を編集しています</div>
+        <div class="edit-banner" id="editBanner"><span>登録済みの日報を編集しています</span><button type="button" class="banner-btn" id="newBannerBtn">新しく記録する</button></div>
 
         <div class="field">
           <label for="fDate">作業日<span class="req">*</span></label>
@@ -155,11 +167,20 @@ input[type=date], input[type=time] { cursor: pointer; }
         <div class="field">
           <label>時間</label>
           <div class="time-row">
-            <input type="time" class="field-in" id="fStart" step="300">
+            <div class="time-box">
+              <input type="text" class="field-in time-in" id="fStart" inputmode="numeric" placeholder="13:00" autocomplete="off">
+              <button type="button" class="clock-btn" data-for="fStart" title="時刻を選ぶ">🕒</button>
+              <input type="time" class="time-pick" data-for="fStart" step="300" tabindex="-1" aria-hidden="true">
+            </div>
             <span>〜</span>
-            <input type="time" class="field-in" id="fEnd" step="300">
+            <div class="time-box">
+              <input type="text" class="field-in time-in" id="fEnd" inputmode="numeric" placeholder="16:30" autocomplete="off">
+              <button type="button" class="clock-btn" data-for="fEnd" title="時刻を選ぶ">🕒</button>
+              <input type="time" class="time-pick" data-for="fEnd" step="300" tabindex="-1" aria-hidden="true">
+            </div>
           </div>
           <div class="duration" id="fDuration"></div>
+          <div class="hint">キーボードで「1300」「13:00」「13時30分」「930」などと打てます。🕒 で選ぶこともできます。</div>
         </div>
 
         <div class="field">
@@ -176,18 +197,7 @@ input[type=date], input[type=time] { cursor: pointer; }
           <div class="field-label">作業<span class="req">*</span></div>
           <div class="tasks" id="tasks"></div>
           <button type="button" class="add-btn" id="addTaskBtn" style="margin-top:8px;width:100%">＋ 作業を追加</button>
-          <div class="hint">顧客と案件は一覧から選べます。案件に関係ない作業は、作業内容だけでもかまいません。</div>
-        </div>
-
-        <div class="field">
-          <label for="fDetail">メモ</label>
-          <div class="paste-row">
-            <input type="text" class="field-in" id="pCust" list="custList" placeholder="顧客" autocomplete="off">
-            <input type="text" class="field-in" id="pCase" placeholder="案件" autocomplete="off">
-            <button type="button" class="icon-btn" id="pasteBtn">メモに貼り付け</button>
-          </div>
-          <textarea class="field-ta" id="fDetail" placeholder="やったこと・使ったお金のメモなど"></textarea>
-          <div class="hint">Enter で改行・変換の確定。登録は ⌘＋Enter でもできます。</div>
+          <div class="hint">顧客と案件は一覧から選べます。案件に関係ない作業は、作業内容だけでもかまいません。<br>メモは Enter で改行・変換の確定。登録は ⌘＋Enter でもできます。</div>
         </div>
 
         <div class="btn-row">
@@ -268,7 +278,7 @@ function toast(msg, err) {
 /* 日付・時刻の欄は、どこを押してもカレンダー（時刻の選択）が開くようにする */
 document.addEventListener('click', e => {
   const el = e.target;
-  if (el.tagName === 'INPUT' && (el.type === 'date' || el.type === 'time') && el.showPicker) {
+  if (el.tagName === 'INPUT' && el.type === 'date' && el.showPicker) {
     try { el.showPicker(); } catch (_) {}
   }
 });
@@ -342,17 +352,16 @@ function taskRow(t = {}) {
     </div>
     <div class="task-bottom">
       <input type="text" class="field-in t-content" placeholder="作業内容（例：カット・テロップ・経理）" autocomplete="off" value="${esc(t.content || '')}">
-      <button type="button" class="icon-btn t-paste" title="この顧客と案件をメモに貼り付け">メモへ</button>
       <button type="button" class="icon-btn del t-del" title="この作業を消す">✕</button>
-    </div>`;
+    </div>
+    <textarea class="field-ta t-memo" placeholder="メモ（やったこと・使ったお金など）">${esc(t.memo || '')}</textarea>`;
   const ci = el.querySelector('.t-cust'), ki = el.querySelector('.t-case');
   ci.addEventListener('change', () => bindCaseList(ci, ki));
   ci.addEventListener('input', () => { if (findCustomer(ci.value)) bindCaseList(ci, ki); });
   el.querySelector('.t-del').addEventListener('click', () => {
-    if ($('tasks').children.length > 1) el.remove(); else el.querySelectorAll('input').forEach(i => i.value = '');
+    if ($('tasks').children.length > 1) el.remove(); else el.querySelectorAll('input, textarea').forEach(i => i.value = '');
     renumber();
   });
-  el.querySelector('.t-paste').addEventListener('click', () => pasteToMemo(ci.value, ki.value));
   bindCaseList(ci, ki);
   return el;
 }
@@ -374,8 +383,9 @@ function getTasks() {
       customerName: c ? c.name : '',
       case: r.querySelector('.t-case').value.trim(),
       content: r.querySelector('.t-content').value.trim(),
+      memo: r.querySelector('.t-memo').value.replace(/\s+$/, ''),
     };
-  }).filter(t => t.customer || t.case || t.content);
+  }).filter(t => t.customer || t.case || t.content || t.memo.trim());
 }
 $('addTaskBtn').addEventListener('click', () => {
   const prev = getTasks().slice(-1)[0];
@@ -383,21 +393,6 @@ $('addTaskBtn').addEventListener('click', () => {
   $('tasks').appendChild(row); renumber();
   row.querySelector(prev ? '.t-case' : '.t-cust').focus();
 });
-
-/* ---------- メモへの貼り付け ---------- */
-function pasteToMemo(custText, caseText) {
-  const c = findCustomer(custText);
-  const who = c ? `${c.no} ${c.name}${/様$/.test(c.name) ? '' : '様'}` : (custText || '').trim();
-  const text = [who, (caseText || '').trim()].filter(Boolean).join('／');
-  if (!text) { toast('顧客か案件を選んでください', true); return; }
-  const ta = $('fDetail'), s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
-  const ins = `【${text}】`;
-  ta.value = ta.value.slice(0, s) + ins + ta.value.slice(e);
-  ta.focus(); ta.selectionStart = ta.selectionEnd = s + ins.length;
-}
-$('pCust').addEventListener('change', () => bindCaseList($('pCust'), $('pCase')));
-$('pCust').addEventListener('input', () => { if (findCustomer($('pCust').value)) bindCaseList($('pCust'), $('pCase')); });
-$('pasteBtn').addEventListener('click', () => pasteToMemo($('pCust').value, $('pCase').value));
 
 /* ---------- 場所と地図 ---------- */
 let mapTimer;
@@ -425,40 +420,79 @@ document.addEventListener('keydown', e => {
   if (!el.closest || !el.closest('.layout .panel:first-child')) return;
   if (e.metaKey || e.ctrlKey) { e.preventDefault(); save(); return; }
   if (el.tagName !== 'INPUT') return;
-  const fields = [...document.querySelectorAll('.layout .panel:first-child input')];
+  const fields = [...document.querySelectorAll('.layout .panel:first-child input:not(.time-pick)')];
   const next = fields[fields.indexOf(el) + 1];
   if (next) setTimeout(() => next.focus(), 0);
 });
 
 /* ---------- 入力欄 ---------- */
 function updateDuration() {
-  const min = durationMin($('fStart').value, $('fEnd').value);
+  const min = durationMin(normTime($('fStart').value) || '', normTime($('fEnd').value) || '');
   $('fDuration').textContent = min !== null ? `作業時間 ${fmtDuration(min)}` : '';
 }
-['fStart', 'fEnd'].forEach(id => $(id).addEventListener('input', updateDuration));
+/* 時刻はキーボードで打てる。全角も可。「1300」「13:00」「13時30分」「930」「13」→ HH:MM にそろえる */
+function normTime(v) {
+  let t = String(v || '').trim().replace(/[０-９：]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  if (!t) return '';
+  t = t.replace(/時半/, ':30').replace(/[時.．]/g, ':').replace(/分/g, '').replace(/\s/g, '');
+  let h, m;
+  if (/^\d{1,2}:\d{1,2}$/.test(t)) [h, m] = t.split(':').map(Number);
+  else if (/^\d{1,2}:$/.test(t)) { h = +t.slice(0, -1); m = 0; }
+  else if (/^\d{1,2}$/.test(t)) { h = +t; m = 0; }
+  else if (/^\d{3,4}$/.test(t)) { h = +t.slice(0, -2); m = +t.slice(-2); }
+  else return null;
+  if (h > 24 || m > 59 || (h === 24 && m > 0)) return null;
+  return `${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function fixTime(el) {
+  const n = normTime(el.value);
+  el.classList.toggle('bad', n === null);
+  if (n !== null) el.value = n;
+  updateDuration();
+  return n !== null;
+}
+document.querySelectorAll('.time-in').forEach(el => {
+  el.addEventListener('blur', () => fixTime(el));
+  el.addEventListener('input', () => { el.classList.remove('bad'); updateDuration(); });
+});
+document.querySelectorAll('.clock-btn').forEach(b => b.addEventListener('click', () => {
+  const pick = document.querySelector(`.time-pick[data-for="${b.dataset.for}"]`);
+  pick.value = normTime($(b.dataset.for).value) || '';
+  try { pick.showPicker(); } catch (_) { $(b.dataset.for).focus(); }
+}));
+document.querySelectorAll('.time-pick').forEach(p => p.addEventListener('change', () => {
+  const el = $(p.dataset.for); el.value = p.value; fixTime(el);
+}));
 
 function resetForm() {
   editingId = '';
   $('fDate').value = todayStr();
   $('fStart').value = ''; $('fEnd').value = '';
+  document.querySelectorAll('.time-in').forEach(el => el.classList.remove('bad'));
   $('fPlace').value = items[0] ? items[0].place : '';     // 前回の場所を初期値に
-  $('fDetail').value = ''; $('pCust').value = ''; $('pCase').value = '';
   setTasks([]);
   $('formTitle').textContent = '新しく記録する';
   $('saveBtn').textContent = '登録する';
   $('delBtn').style.display = 'none';
   $('editBanner').classList.remove('on');
+  $('newTopBtn').style.display = 'none';
   updateDuration(); updateMap(); renderList();
 }
 function loadToForm(it) {
   editingId = it.id;
   $('fDate').value = it.date; $('fStart').value = it.start; $('fEnd').value = it.end;
-  $('fPlace').value = it.place; $('fDetail').value = it.detail;
-  setTasks(it.tasks);
+  $('fPlace').value = it.place;
+  // 行ごとのメモができる前の日報は、まとめて書いたメモを1行目に入れる
+  const tasks = (it.tasks || []).map(t => ({ ...t }));
+  if (it.detail && !tasks.some(t => (t.memo || '').trim())) {
+    if (tasks.length) tasks[0].memo = it.detail; else tasks.push({ memo: it.detail });
+  }
+  setTasks(tasks);
   $('formTitle').textContent = '日報を編集';
   $('saveBtn').textContent = '更新する';
   $('delBtn').style.display = '';
   $('editBanner').classList.add('on');
+  $('newTopBtn').style.display = '';
   updateDuration(); updateMap(); renderList();
   if (window.innerWidth <= 920) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -484,7 +518,7 @@ $('chips').addEventListener('click', e => { const c = e.target.closest('.chip');
 /* ---------- 一覧 ---------- */
 function taskText(t) {
   const c = findCustomer(t.customer);
-  return [t.customer, c ? c.name : t.customerName, t.case, t.content].join(' ');
+  return [t.customer, c ? c.name : t.customerName, t.case, t.content, t.memo || ''].join(' ');
 }
 function renderList() {
   const from = $('sFrom').value, to = $('sTo').value;
@@ -508,12 +542,13 @@ function renderList() {
     const tasks = (i.tasks && i.tasks.length ? i.tasks : [{ content: i.title }]).map(t => {
       const c = findCustomer(t.customer);
       const who = [t.customer && `${t.customer} ${c ? c.name : (t.customerName || '')}`.trim(), t.case].filter(Boolean).join('／');
-      return `<div class="item-task">${who ? `<span class="who">${esc(who)}</span>` : ''}${esc(t.content || '')}</div>`;
+      return `<div class="item-task">${who ? `<span class="who">${esc(who)}</span>` : ''}${esc(t.content || '')}</div>`
+           + ((t.memo || '').trim() ? `<div class="item-memo">${esc(t.memo.trim())}</div>` : '');
     }).join('');
     html += `<div class="item${i.id === editingId ? ' active' : ''}" data-id="${i.id}">
       <div class="item-meta">${time ? `<span>🕒 ${time}</span>` : ''}${i.place ? `<span>📍 <a href="${mapUrl(i.place)}" target="_blank" rel="noopener">${esc(i.place)}</a></span>` : ''}</div>
       ${tasks}
-      ${i.detail ? `<div class="item-detail">${esc(i.detail)}</div>` : ''}
+      ${i.detail && !(i.tasks || []).some(t => (t.memo || '').trim()) ? `<div class="item-detail">${esc(i.detail)}</div>` : ''}
     </div>`;
   }
   $('list').innerHTML = html;
@@ -521,6 +556,7 @@ function renderList() {
 $('list').addEventListener('click', e => {
   if (e.target.closest('a')) return;                 // 地図リンクは開くだけ
   const el = e.target.closest('.item'); if (!el) return;
+  if (el.dataset.id === editingId) { resetForm(); return; }      // 選んでいる日報をもう一度押すと新規に戻る
   const it = items.find(i => i.id === el.dataset.id); if (it) loadToForm(it);
 });
 
@@ -547,10 +583,11 @@ let saving = false;
 async function save() {
   if (saving) return;
   const body = {
-    id: editingId, date: $('fDate').value, start: $('fStart').value, end: $('fEnd').value,
-    place: $('fPlace').value.trim(), tasks: getTasks(), detail: $('fDetail').value,
+    id: editingId, date: $('fDate').value, start: normTime($('fStart').value) || '', end: normTime($('fEnd').value) || '',
+    place: $('fPlace').value.trim(), tasks: getTasks(),
   };
   if (!body.date) { toast('作業日を入れてください', true); $('fDate').focus(); return; }
+  for (const id of ['fStart', 'fEnd']) if (!fixTime($(id))) { toast('時刻は「13:00」の形で入れてください', true); $(id).focus(); return; }
   if (!body.tasks.length) { toast('作業を1つ以上入れてください', true); $('tasks').querySelector('input').focus(); return; }
   saving = true; $('saveBtn').disabled = true;
   try {
@@ -580,6 +617,9 @@ async function remove() {
 
 $('saveBtn').addEventListener('click', save);
 $('newBtn').addEventListener('click', resetForm);
+$('newTopBtn').addEventListener('click', resetForm);
+$('newBannerBtn').addEventListener('click', resetForm);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && editingId && !e.isComposing) resetForm(); });
 $('delBtn').addEventListener('click', remove);
 $('reloadBtn').addEventListener('click', load);
 

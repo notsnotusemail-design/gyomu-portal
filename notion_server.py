@@ -1493,17 +1493,21 @@ class Handler(BaseHTTPRequestHandler):
         for t in data.get("tasks") or []:
             if not isinstance(t, dict):
                 continue
+            memo = str(t.get("memo") or "").rstrip()
             t = {k: str(t.get(k) or "").strip() for k in ("customer", "customerName", "case", "content")}
-            if any(t.values()):
+            t["memo"] = memo
+            if any(v.strip() for v in t.values()):
                 tasks.append(t)
-        title = "／".join(nippo_task_label(t) for t in tasks) or (data.get("title") or "").strip()
-        if not title:
+        title = "／".join(x for x in (nippo_task_label(t) for t in tasks) if x) or "メモ"
+        if not tasks:
             self.send_json(400, {"ok": False, "error": "作業を1つ以上入れてください"}); return
         if not date:
             self.send_json(400, {"ok": False, "error": "作業日を入れてください"}); return
         props = {
             "作業内容": {"title": [{"text": {"content": title[:MAIL_TPL_CHUNK]}}]},
-            "詳細":     {"rich_text": mail_rt_chunks(data.get("detail", ""))},
+            "詳細":     {"rich_text": mail_rt_chunks("\n\n".join(
+                            (f"■{nippo_task_label(t)}\n" if nippo_task_label(t) else "") + t["memo"]
+                            for t in tasks if t["memo"].strip()) or data.get("detail", ""))},
             "作業日":   {"date": {"start": date}},
             "開始":     {"rich_text": mail_rt_chunks((data.get("start") or "").strip())},
             "終了":     {"rich_text": mail_rt_chunks((data.get("end") or "").strip())},
