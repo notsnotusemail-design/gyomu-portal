@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>営業ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px;
+}
+.container { max-width: 1240px; margin: 0 auto; }
+.page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.back-btn { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #888; text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+.back-btn:hover { background: #e8e8e5; color: #333; }
+.page-title { font-size: 20px; font-weight: 700; }
+.page-note { font-size: 12px; color: #888; margin: 0 0 14px 4px; line-height: 1.7; }
+.mail-state { margin-left: auto; font-size: 12px; color: #666; background: white; border-radius: 8px; padding: 6px 10px; }
+.mail-state.off { color: #b4261e; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.tab { padding: 8px 14px; border-radius: 8px; border: 0; background: transparent; font: inherit; font-size: 13px; color: #666; cursor: pointer; }
+.tab.on { background: white; color: #1a1a1a; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.tab .cnt { font-size: 11px; color: #999; margin-left: 4px; }
+.view { display: none; }
+.view.on { display: block; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 14px; align-items: start; }
+@media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+.panel { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
+.panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; }
+.panel-title { font-size: 13px; font-weight: 700; }
+.panel-sub { font-size: 12px; color: #999; margin-left: auto; }
+.panel-body { padding: 14px; display: grid; gap: 12px; }
+
+.field > label, .field-label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 5px; }
+.in, .ta, .sel {
+  width: 100%; padding: 8px 10px; border: 1.5px solid #e2e2e2; border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a; min-width: 0;
+}
+.ta { min-height: 110px; resize: vertical; line-height: 1.65; }
+.ta.body { min-height: 260px; }
+.in:focus, .ta:focus, .sel:focus { outline: none; border-color: #4f6ef7; background: white; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hint { font-size: 11px; color: #999; margin-top: 4px; line-height: 1.6; }
+
+.btn { padding: 8px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; font: inherit; font-size: 13px; color: #333; white-space: nowrap; }
+.btn:hover { background: #f5f5f5; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: #4f6ef7; border-color: #4f6ef7; color: white; font-weight: 600; }
+.btn.primary:hover { background: #3f5ee6; }
+.btn.danger { color: #b4261e; }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* 一覧 */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+.filters .in, .filters .sel { width: auto; padding: 6px 9px; font-size: 13px; }
+.filters .in { flex: 1; min-width: 160px; }
+.chip { padding: 5px 10px; border-radius: 999px; border: 1.5px solid #e2e2e2; background: white; font: inherit; font-size: 12px; color: #555; cursor: pointer; }
+.chip.on { border-color: #4f6ef7; color: #4f6ef7; font-weight: 700; }
+.bulk { display: none; gap: 8px; padding: 9px 14px; background: #f5f7ff; border-bottom: 1px solid #e6eaff; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.bulk.on { display: flex; }
+.list { max-height: calc(100vh - 290px); min-height: 300px; overflow: auto; }
+.item { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #f4f4f4; cursor: pointer; align-items: center; }
+.item:hover { background: #fafafa; }
+.item.sel { background: #f2f5ff; }
+.item-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-sub { font-size: 12px; color: #999; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-right { text-align: right; display: grid; gap: 3px; justify-items: end; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #f0f0f0; color: #555; white-space: nowrap; }
+.st-送信済 { background: #e8f0ff; color: #3451c7; }
+.st-返信あり, .st-商談 { background: #e5f6ea; color: #1d7a3a; }
+.st-保留 { background: #fff4dc; color: #8a5a00; }
+.st-送信失敗 { background: #fdeaea; color: #b4261e; }
+.st-営業お断り, .st-対象外 { background: #eee; color: #888; }
+.dup { font-size: 11px; color: #b4261e; }
+.empty { padding: 40px 16px; text-align: center; color: #aaa; font-size: 13px; line-height: 1.8; }
+
+/* 詳細 */
+.note-box { border-left: 3px solid #4f6ef7; padding: 8px 10px; font-size: 12px; color: #444; background: #f7f8ff; line-height: 1.7; }
+.note-box.warn { border-left-color: #e5484d; background: #fff6f6; }
+.sec-title { font-size: 12px; font-weight: 700; color: #333; padding-top: 6px; border-top: 1px solid #f0f0f0; }
+.copy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.copy-grid .btn { padding: 7px 8px; font-size: 12px; }
+.copied { background: #e5f6ea !important; border-color: #9fd6ae !important; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1a1a1a; color: white; padding: 10px 16px; border-radius: 8px; font-size: 13px; display: none; z-index: 50; max-width: 90vw; }
+
+/* 取り込み */
+.drop { border: 2px dashed #d5d5d5; border-radius: 12px; padding: 26px; text-align: center; color: #888; font-size: 13px; cursor: pointer; background: #fcfcfc; line-height: 1.8; }
+.drop.over { border-color: #4f6ef7; background: #f5f7ff; }
+.map-table, .pv-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.map-table td, .pv-table td, .pv-table th { border-bottom: 1px solid #f0f0f0; padding: 6px 8px; text-align: left; vertical-align: top; }
+.pv-table th { color: #666; font-weight: 600; background: #fafafa; position: sticky; top: 0; }
+.pv-wrap { max-height: 340px; overflow: auto; border: 1px solid #f0f0f0; border-radius: 8px; }
+.pv-table tr.skip td { color: #bbb; }
+.map-table .sel { padding: 5px 8px; font-size: 12px; }
+
+/* テンプレート */
+.tpl-item { padding: 10px 14px; border-bottom: 1px solid #f4f4f4; cursor: pointer; }
+.tpl-item:hover { background: #fafafa; }
+.tpl-item.sel { background: #f2f5ff; }
+.tpl-item .off { color: #aaa; font-size: 11px; margin-left: 6px; }
+.vars { display: flex; gap: 5px; flex-wrap: wrap; }
+.vars button { font: inherit; font-size: 11px; padding: 3px 7px; border: 1px solid #e0e0e0; background: white; border-radius: 5px; cursor: pointer; color: #555; }
+
+/* ログイン */
+#auth { position: fixed; inset: 0; background: rgba(242,242,239,.97); display: none; align-items: center; justify-content: center; z-index: 100; }
+#auth .box { background: white; padding: 24px; border-radius: 12px; width: 320px; display: grid; gap: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+#auth .err { color: #b4261e; font-size: 12px; min-height: 16px; }
+
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 60; padding: 16px; }
+.modal-bg.on { display: flex; }
+.modal { background: white; border-radius: 12px; width: 560px; max-width: 100%; max-height: 90vh; overflow: auto; padding: 18px; display: grid; gap: 12px; }
+.modal h3 { font-size: 15px; }
+.mail-pv { white-space: pre-wrap; font-size: 13px; line-height: 1.7; background: #fafafa; border-radius: 8px; padding: 12px; max-height: 340px; overflow: auto; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <a class="back-btn" href="/">← トップ</a>
+    <div class="page-title">営業ツール</div>
+    <div class="mail-state" id="mailState">メール送信：確認中…</div>
+  </div>
+  <div class="page-note">
+    営業先を一覧で管理し、フォーム営業とメール営業をここから行います。左の一覧で会社を選ぶと、右に業種に合った営業文が出ます。<br>
+    フォーム営業は「フォームを開く」で相手のページを開き、右のボタンで項目をコピーして貼り付けます。送ったら「フォームで送った」を押してください。
+    同じ会社が2回入っていても、一覧で「重複」と出て、まとめたり送り直しを止めたりできます。
+  </div>
+
+  <div class="tabs">
+    <button class="tab on" data-v="list">営業先リスト<span class="cnt" id="cntList"></span></button>
+    <button class="tab" data-v="tpl">営業文テンプレート<span class="cnt" id="cntTpl"></span></button>
+    <button class="tab" data-v="imp">CSVで取り込む</button>
+    <button class="tab" data-v="me">送り主の情報</button>
+  </div>
+
+  <!-- ===== 営業先リスト ===== -->
+  <div class="view on" id="v-list">
+    <div class="layout">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">営業先</div>
+          <div class="btns" style="margin-left:auto">
+            <button class="btn small" id="btnMergeAll" style="display:none">重複をすべてまとめる</button>
+            <button class="btn small" onclick="newItem()">＋ 1件追加</button>
+            <button class="btn small" onclick="loadAll()">再読み込み</button>
+          </div>
+        </div>
+        <div class="filters">
+          <input class="in" id="fq" placeholder="会社名・URL・メール・メモで探す">
+          <select class="sel" id="find"><option value="">業種：すべて</option></select>
+          <span id="fstatus"></span>
+        </div>
+        <div class="bulk" id="bulk">
+          <span id="bulkN"></span>
+          <select class="sel" id="bulkSt" style="width:auto;padding:5px 8px;font-size:12px"></select>
+          <button class="btn small" onclick="bulkStatus()">ステータスを変える</button>
+          <button class="btn small" id="btnMergeSel">選んだものを1つにまとめる</button>
+          <button class="btn small danger" onclick="bulkDelete()">削除</button>
+          <button class="btn small" onclick="clearChecks()" style="margin-left:auto">選択を外す</button>
+        </div>
+        <div class="list" id="list"><div class="empty">読み込み中…</div></div>
+      </div>
+
+      <div class="panel" id="detail">
+        <div class="empty">左の一覧から会社を選んでください。<br>「＋ 1件追加」で手入力もできます。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== テンプレート ===== -->
+  <div class="view" id="v-tpl">
+    <div class="layout" style="grid-template-columns: 320px minmax(0,1fr)">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">テンプレート</div>
+          <button class="btn small" style="margin-left:auto" onclick="newTpl()">＋ 新しく作る</button>
+        </div>
+        <div id="tplList"><div class="empty">読み込み中…</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title" id="tplHead">テンプレートを編集</div></div>
+        <div class="panel-body">
+          <div class="note-box">業種ごとに営業文を作っておくと、営業先の「業種」と同じテンプレートが自動で選ばれます。
+            業種を空にしたテンプレートは、どの業種でも候補に出ます。<br>
+            {{会社名}} などは、送るときに相手の情報に置き換わります。</div>
+          <div class="row2">
+            <div class="field"><label>テンプレート名</label><input class="in" id="tName" placeholder="例：映像制作会社向け"></div>
+            <div class="field"><label>業種（営業先の業種と同じ言葉）</label><input class="in" id="tInd" list="indList" placeholder="例：映像制作"></div>
+          </div>
+          <div class="field"><label>件名</label><input class="in" id="tSub"></div>
+          <div class="field"><label>本文</label>
+            <div class="vars" id="vars" style="margin-bottom:6px"></div>
+            <textarea class="ta body" id="tBody"></textarea>
+          </div>
+          <div class="row2">
+            <label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="tOn" checked> 使う（外すと候補に出ません）</label>
+            <div class="field"><label>並び順（小さいほど上）</label><input class="in" id="tOrd" type="number"></div>
+          </div>
+          <div class="btns">
+            <button class="btn primary" onclick="saveTpl()">保存</button>
+            <button class="btn danger" id="tDel" onclick="delTpl()" style="display:none">削除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 取り込み ===== -->
+  <div class="view" id="v-imp">
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">CSVで営業先を取り込む</div></div>
+      <div class="panel-body">
+        <div class="note-box">スプレッドシートを「CSV」で書き出したファイルをそのまま入れられます。見出しの名前がバラバラでも、
+          「会社名」「社名」「企業名」「URL」「HP」「お問い合わせ」などから自動で振り分けます。
+          文字化けするとき・Excel のまま・表が崩れているときは、Claude に「営業リストを取り込める形に整えて」と頼むと、この形に直したCSVを作ります。<br>
+          すでにリストにある会社と、ファイルの中で同じ会社が2回出てくるものは、取り込まずに飛ばします。</div>
+        <div class="drop" id="drop">ここにCSVファイルを落とす、またはクリックして選ぶ<br><span style="font-size:11px">（.csv / .tsv / .txt。Shift_JIS でも UTF-8 でも可）</span></div>
+        <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv" style="display:none">
+        <div id="impArea" style="display:none; gap:12px" class="panel-body" >
+          <div class="field-label" id="impInfo"></div>
+          <div>
+            <div class="field-label">列の振り分け（違っていたら直してください）</div>
+            <table class="map-table" id="mapTable"></table>
+          </div>
+          <div class="row2">
+            <div class="field"><label>業種の列が無いときに入れる業種</label><input class="in" id="impInd" list="indList" placeholder="例：映像制作"></div>
+            <label style="font-size:13px;display:flex;gap:6px;align-items:center;padding-top:18px"><input type="checkbox" id="impDup" checked> 重複する会社は取り込まない</label>
+          </div>
+          <div>
+            <div class="field-label" id="pvInfo">取り込み内容</div>
+            <div class="pv-wrap"><table class="pv-table" id="pvTable"></table></div>
+          </div>
+          <div class="btns"><button class="btn primary" id="btnImport">取り込む</button><span id="impProg" style="font-size:13px;color:#666"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 送り主 ===== -->
+  <div class="view" id="v-me">
+    <div class="panel" style="max-width:620px">
+      <div class="panel-head"><div class="panel-title">送り主の情報（フォームに貼る自分の情報）</div></div>
+      <div class="panel-body">
+        <div class="note-box">フォーム営業で使うコピー用の情報です。このパソコンのブラウザにだけ保存されます。
+          メール営業の送信元は、サーバーに設定した Gmail です。</div>
+        <div class="row2">
+          <div class="field"><label>氏名</label><input class="in me" id="me_name"></div>
+          <div class="field"><label>フリガナ</label><input class="in me" id="me_kana"></div>
+        </div>
+        <div class="field"><label>会社名欄に入れる言葉</label><input class="in me" id="me_company"></div>
+        <div class="row2">
+          <div class="field"><label>メール</label><input class="in me" id="me_email"></div>
+          <div class="field"><label>電話</label><input class="in me" id="me_tel" placeholder="例：080-0000-0000"></div>
+        </div>
+        <div class="field"><label>サイト・実績のURL（任意）</label><input class="in me" id="me_url"></div>
+        <div class="btns"><button class="btn primary" onclick="saveMe()">保存</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="indList"></datalist>
+<div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="mailModal">
+  <div class="modal">
+    <h3>このメールを送りますか？</h3>
+    <div style="font-size:13px;color:#555" id="mmTo"></div>
+    <div class="mail-pv" id="mmBody"></div>
+    <div class="hint">送ると最後に「送り主」と「不要ならご返信ください」の一文が自動で付きます。送った会社は「送信済」になります。</div>
+    <div class="btns" style="justify-content:flex-end">
+      <button class="btn" onclick="closeMail()">やめる</button>
+      <button class="btn primary" id="mmSend">送る</button>
+    </div>
+  </div>
+</div>
+
+<div id="auth"><div class="box">
+  <div style="font-weight:700">管理者ログイン</div>
+  <div style="font-size:12px;color:#888">営業ツールはログインした人だけが使えます。</div>
+  <input class="in" type="password" id="authPw" placeholder="パスワード">
+  <button class="btn primary" onclick="login()">ログイン</button>
+  <div class="err" id="authErr"></div>
+</div></div>
+
+<script>
+const BASE = location.origin;
+const STATUSES = ["未着手","送信済","返信あり","商談","保留","送信失敗","営業お断り","対象外"];
+const SHARED = new Set(["instagram.com","facebook.com","x.com","twitter.com","youtube.com","tiktok.com","note.com","ameblo.jp","line.me","lit.link","linktr.ee","google.com","goo.gl","sites.google.com","peraichi.com","jimdofree.com","fc2.com","hatenablog.com"]);
+let token = '';
+try { token = localStorage.getItem('adminToken') || ''; } catch(e) {}
+let items = [], dupOf = {}, tpls = [], cur = null, curTpl = null, checked = new Set();
+let fStatus = 'すべて';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms); }
+
+async function api(path, body = {}) {
+  const r = await fetch(BASE + '/api/eigyo/' + path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ...body, token }) });
+  const d = await r.json().catch(() => ({ ok: false, error: 'サーバーの応答が読めません' }));
+  if (r.status === 401) { showAuth(); throw new Error(d.error); }
+  return d;
+}
+
+/* ---------- ログイン ---------- */
+function showAuth() { $('auth').style.display = 'flex'; setTimeout(() => $('authPw').focus(), 50); }
+async function login() {
+  $('authErr').textContent = '';
+  const r = await fetch(BASE + '/api/admin/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ password: $('authPw').value }) });
+  const d = await r.json();
+  if (!d.ok) { $('authErr').textContent = d.error || 'パスワードが違います'; return; }
+  token = d.token; try { localStorage.setItem('adminToken', token); } catch(e) {}
+  $('auth').style.display = 'none'; init();
+}
+$('authPw').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) login(); });
+
+/* ---------- タブ ---------- */
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + b.dataset.v));
+});
+
+/* ---------- 重複キー（サーバーと同じ考え方） ---------- */
+function normUrl(u) { u = (u || '').trim(); if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u; return u; }
+function keysOf(x) {
+  const keys = [];
+  const m = normUrl(x.site).toLowerCase().match(/^https?:\/\/(?:www\.)?([^\/?#]+)(\/[^\/?#]*)?/);
+  if (m) {
+    if (SHARED.has(m[1])) { const seg = (m[2] || '').replace(/\//g, ''); if (seg) keys.push('d:' + m[1] + '/' + seg); }
+    else keys.push('d:' + m[1]);
+  }
+  if (x.email) keys.push('m:' + x.email.trim().toLowerCase());
+  const n = (x.company || '').replace(/[\s　]|株式会社|（株）|\(株\)|有限会社|合同会社/g, '').toLowerCase();
+  if (n) keys.push('n:' + n);
+  return keys;
+}
+
+/* ---------- 送り主 ---------- */
+const ME_DEFAULT = { name: '野津 欧', kana: 'のつ おう', company: '個人事業主（動画クリエイター）', email: 'notsnotusemail@gmail.com', tel: '', url: '' };
+function getMe() { let m = {}; try { m = JSON.parse(localStorage.getItem('eigyoSender') || '{}'); } catch(e) {} return { ...ME_DEFAULT, ...m }; }
+function loadMe() { const m = getMe(); for (const k in ME_DEFAULT) $('me_' + k).value = m[k] || ''; }
+function saveMe() {
+  const m = {}; for (const k in ME_DEFAULT) m[k] = $('me_' + k).value.trim();
+  try { localStorage.setItem('eigyoSender', JSON.stringify(m)); toast('保存しました'); } catch(e) { toast('このブラウザでは保存できませんでした'); }
+  if (cur) renderDetail();
+}
+
+/* ---------- 読み込み ---------- */
+async function loadAll() {
+  const [a, b] = await Promise.all([api('list'), api('templates')]);
+  if (!a.ok) { $('list').innerHTML = `<div class="empty">${esc(a.error)}</div>`; return; }
+  items = a.items; tpls = b.ok ? b.templates : [];
+  dupOf = {};
+  (a.dupGroups || []).forEach(g => g.forEach(id => dupOf[id] = g));
+  if (cur) cur = items.find(x => x.id === cur.id) || (cur.id ? null : cur);
+  checked = new Set([...checked].filter(id => items.some(x => x.id === id)));
+  renderFilters(); renderList(); renderTplList(); renderDetail();
+}
+async function loadMailState() {
+  try {
+    const d = await api('mail-status');
+    const el = $('mailState');
+    if (d.configured) { el.textContent = `メール送信：${d.user}（今日 ${d.today}/${d.limit} 通）`; el.classList.remove('off'); }
+    else { el.textContent = 'メール送信：未設定（フォーム営業は使えます）'; el.classList.add('off'); }
+    window._mail = d;
+  } catch(e) {}
+}
+
+function industries() { return [...new Set([...items.map(x => x.industry), ...tpls.map(t => t.industry)].filter(Boolean))].sort(); }
+function renderFilters() {
+  const inds = industries(), sel = $('find'), v = sel.value;
+  sel.innerHTML = '<option value="">業種：すべて</option>' + inds.map(i => `<option${i === v ? ' selected' : ''}>${esc(i)}</option>`).join('') + '<option value="__none">業種なし</option>';
+  $('indList').innerHTML = inds.map(i => `<option value="${esc(i)}">`).join('');
+  const nDup = Object.keys(dupOf).length;
+  const chips = ['すべて', '未着手', '送信済', '返信あり', '商談', '保留', 'お断り・対象外'];
+  if (nDup) chips.push('重複');
+  $('fstatus').innerHTML = chips.map(c => `<button class="chip${c === fStatus ? ' on' : ''}" data-c="${c}">${c}${c === '重複' ? ` ${nDup}` : ''}</button>`).join(' ');
+  $('fstatus').querySelectorAll('.chip').forEach(b => b.onclick = () => { fStatus = b.dataset.c; renderFilters(); renderList(); });
+  $('btnMergeAll').style.display = nDup ? '' : 'none';
+  $('bulkSt').innerHTML = STATUSES.map(s => `<option>${s}</option>`).join('');
+  $('cntList').textContent = items.length;
+  $('cntTpl').textContent = tpls.length;
+}
+function filtered() {
+  const q = $('fq').value.trim().toLowerCase(), ind = $('find').value;
+  return items.filter(x => {
+    if (ind === '__none' ? x.industry : (ind && x.industry !== ind)) return false;
+    if (fStatus === '重複' && !dupOf[x.id]) return false;
+    if (fStatus === 'お断り・対象外' && !['営業お断り', '対象外'].includes(x.status)) return false;
+    if (!['すべて', '重複', 'お断り・対象外'].includes(fStatus) && x.status !== fStatus) return false;
+    if (q && ![x.company, x.site, x.form, x.email, x.memo, x.person, x.industry].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function renderList() {
+  const rows = filtered();
+  if (!items.length) { $('list').innerHTML = '<div class="empty">まだ営業先がありません。<br>「CSVで取り込む」か「＋ 1件追加」から入れてください。</div>'; updateBulk(); return; }
+  if (!rows.length) { $('list').innerHTML = '<div class="empty">条件に合う営業先がありません。</div>'; updateBulk(); return; }
+  $('list').innerHTML = rows.map(x => {
+    const how = x.form && x.email ? 'フォーム・メール' : x.form ? 'フォーム' : x.email ? 'メール' : '連絡先なし';
+    const sent = x.sentAt ? x.sentAt.slice(5, 10).replace('-', '/') + ' ' + (x.method || '') : '';
+    return `<div class="item${cur && cur.id === x.id ? ' sel' : ''}" data-id="${x.id}">
+      <input type="checkbox" ${checked.has(x.id) ? 'checked' : ''} data-ck="${x.id}">
+      <div style="min-width:0"><div class="item-name">${esc(x.company || '（会社名なし）')}</div>
+        <div class="item-sub">${esc([x.industry, how, (x.site || '').replace(/^https?:\/\/(www\.)?/, '')].filter(Boolean).join('　'))}</div></div>
+      <div class="item-right"><span class="badge st-${x.status}">${x.status}</span>
+        ${dupOf[x.id] ? `<span class="dup">重複 ${dupOf[x.id].length}件</span>` : `<span class="item-sub" style="margin:0">${esc(sent)}</span>`}</div>
+    </div>`;
+  }).join('');
+  $('list').querySelectorAll('.item').forEach(el => el.onclick = e => {
+    if (e.target.dataset.ck) { e.target.checked ? checked.add(e.target.dataset.ck) : checked.delete(e.target.dataset.ck); updateBulk(); return; }
+    selectItem(el.dataset.id);
+  });
+  updateBulk();
+}
+function updateBulk() {
+  $('bulk').classList.toggle('on', checked.size > 0);
+  $('bulkN').textContent = `${checked.size}件を選択中`;
+  $('btnMergeSel').style.display = checked.size >= 2 ? '' : 'none';
+}
+function clearChecks() { checked.clear(); renderList(); }
+$('fq').addEventListener('input', renderList);
+$('find').addEventListener('change', renderList);
+
+function selectItem(id) { cur = items.find(x => x.id === id); curTplId = null; renderList(); renderDetail(); }
+function newItem() { cur = { id: '', company: '', industry: $('find').value && $('find').value !== '__none' ? $('find').value : '', site: '', form: '', email: '', person: '', status: '未着手', memo: '' }; renderList(); renderDetail(); setTimeout(() => $('dCompany').focus(), 30); }
+
+/* ---------- 詳細・送信 ---------- */
+let curTplId = null;
+function tplsFor(x) {
+  const on = tpls.filter(t => t.enabled);
+  const exact = on.filter(t => t.industry && x.industry && t.industry === x.industry);
+  const loose = on.filter(t => t.industry && x.industry && t.industry !== x.industry && (x.industry.includes(t.industry) || t.industry.includes(x.industry)));
+  const common = on.filter(t => !t.industry);
+  const rest = on.filter(t => !exact.includes(t) && !loose.includes(t) && !common.includes(t));
+  return { best: [...exact, ...loose, ...common], rest };
+}
+function fill(text, x) {
+  const me = getMe();
+  return (text || '')
+    .replace(/\{\{会社名\}\}/g, x.company || '貴社')
+    .replace(/\{\{担当者\}\}/g, x.person || 'ご担当者')
+    .replace(/\{\{業種\}\}/g, x.industry || '')
+    .replace(/\{\{名前\}\}/g, me.name).replace(/\{\{メール\}\}/g, me.email)
+    .replace(/\{\{電話\}\}/g, me.tel).replace(/\{\{URL\}\}/g, me.url);
+}
+function renderDetail() {
+  const d = $('detail');
+  if (!cur) { d.innerHTML = '<div class="empty">左の一覧から会社を選んでください。<br>「＋ 1件追加」で手入力もできます。</div>'; return; }
+  const x = cur, isNew = !x.id;
+  const { best, rest } = tplsFor(x);
+  if (!curTplId || !tpls.some(t => t.id === curTplId)) curTplId = (best[0] || rest[0] || {}).id || null;
+  const tpl = tpls.find(t => t.id === curTplId);
+  const dup = dupOf[x.id] ? dupOf[x.id].filter(id => id !== x.id).map(id => items.find(y => y.id === id)).filter(Boolean) : [];
+  const blocked = ['営業お断り', '対象外'].includes(x.status) || dup.some(y => ['営業お断り', '対象外'].includes(y.status));
+  const sentBefore = [x, ...dup].find(y => ['送信済', '返信あり', '商談'].includes(y.status));
+  const opt = t => `<option value="${t.id}"${t.id === curTplId ? ' selected' : ''}>${esc(t.name)}${t.industry ? '（' + esc(t.industry) + '）' : ''}</option>`;
+  d.innerHTML = `
+    <div class="panel-head"><div class="panel-title">${isNew ? '営業先を追加' : esc(x.company || '（会社名なし）')}</div>
+      ${isNew ? '' : `<span class="badge st-${x.status}">${x.status}</span>`}
+      ${isNew ? '' : '<button class="btn small" style="margin-left:auto" onclick="nextTodo()">次の未着手へ →</button>'}</div>
+    <div class="panel-body">
+      ${dup.length ? `<div class="note-box warn">同じ会社とみられる行が他に ${dup.length} 件あります：${dup.map(y => `<a href="#" onclick="selectItem('${y.id}');return false">${esc(y.company || y.email || y.site)}（${y.status}）</a>`).join('、')}
+        <div class="btns" style="margin-top:6px"><button class="btn small" onclick="mergeIds(${esc(JSON.stringify(dupOf[x.id]))})">1つにまとめる</button></div></div>` : ''}
+      ${blocked ? '<div class="note-box warn">この会社は「営業お断り」か「対象外」です。送らないでください。</div>' : ''}
+      ${!blocked && sentBefore && !isNew ? `<div class="note-box">${sentBefore.id === x.id ? '' : '同じ会社の別の行で'}${(sentBefore.sentAt || '').slice(0, 10) || '以前'} に${sentBefore.method || ''}で送っています。</div>` : ''}
+      <div class="row2">
+        <div class="field"><label>会社名</label><input class="in" id="dCompany" value="${esc(x.company)}"></div>
+        <div class="field"><label>業種</label><input class="in" id="dInd" list="indList" value="${esc(x.industry)}"></div>
+      </div>
+      <div class="field"><label>サイトURL</label><div class="btns" style="flex-wrap:nowrap"><input class="in" id="dSite" value="${esc(x.site)}">${x.site ? `<a class="btn small" href="${esc(normUrl(x.site))}" target="_blank" rel="noopener">開く</a>` : ''}</div></div>
+      <div class="field"><label>お問い合わせフォームのURL</label><input class="in" id="dForm" value="${esc(x.form)}"></div>
+      <div class="row2">
+        <div class="field"><label>メール</label><input class="in" id="dEmail" value="${esc(x.email)}"></div>
+        <div class="field"><label>担当者</label><input class="in" id="dPerson" value="${esc(x.person)}" placeholder="わかれば"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>ステータス</label><select class="sel" id="dStatus">${STATUSES.map(s => `<option${s === x.status ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="field"><label>送った日時</label><input class="in" value="${esc((x.sentAt || '').replace('T', ' ').slice(0, 16))} ${esc(x.method || '')}" disabled></div>
+      </div>
+      <div class="field"><label>メモ</label><textarea class="ta" id="dMemo" style="min-height:70px">${esc(x.memo)}</textarea></div>
+      <div class="btns">
+        <button class="btn primary" onclick="saveItem()">${isNew ? '追加する' : '保存'}</button>
+        ${isNew ? '' : '<button class="btn danger" onclick="delItem()">削除</button>'}
+      </div>
+      ${isNew ? '' : `
+      <div class="sec-title">営業文</div>
+      ${tpls.length ? `<div class="field"><select class="sel" id="dTpl">
+          ${best.length ? `<optgroup label="この業種に合うもの">${best.map(opt).join('')}</optgroup>` : ''}
+          ${rest.length ? `<optgroup label="ほかの業種">${rest.map(opt).join('')}</optgroup>` : ''}
+        </select></div>
+        <div class="field"><label>件名</label><input class="in" id="dSub" value="${esc(fill(tpl ? tpl.subject : '', x))}"></div>
+        <div class="field"><label>本文（ここで直してから送れます）</label><textarea class="ta body" id="dBody">${esc(fill(tpl ? tpl.body : '', x))}</textarea></div>`
+      : '<div class="note-box">営業文テンプレートがまだありません。「営業文テンプレート」タブで作ってください。</div>'}
+      <div class="sec-title">フォームで送る</div>
+      <div class="btns">
+        ${x.form ? `<a class="btn primary" href="${esc(normUrl(x.form))}" target="_blank" rel="noopener">フォームを開く</a>` : x.site ? `<a class="btn" href="${esc(normUrl(x.site))}" target="_blank" rel="noopener">サイトを開いてフォームを探す</a>` : '<span class="hint">フォームのURLが入っていません</span>'}
+        <button class="btn" onclick="markSent('フォーム')" ${blocked ? 'disabled' : ''}>フォームで送った</button>
+      </div>
+      <div class="copy-grid">
+        ${[['氏名', 'name'], ['フリガナ', 'kana'], ['会社名欄', 'company'], ['メール', 'email'], ['電話', 'tel'], ['URL', 'url']].map(([l, k]) => `<button class="btn" onclick="copyMe('${k}', this)">${l}</button>`).join('')}
+        <button class="btn" onclick="copyField('dSub', this)">件名</button>
+        <button class="btn" onclick="copyField('dBody', this)">本文</button>
+      </div>
+      <div class="hint">ボタンを押すとコピーされます。相手のフォームに貼り付けてください。自分の情報は「送り主の情報」タブで変えられます。</div>
+      <div class="sec-title">メールで送る</div>
+      <div class="btns">
+        <button class="btn primary" onclick="openMail()" ${!x.email || blocked ? 'disabled' : ''}>メールを送る</button>
+        ${!x.email ? '<span class="hint">メールアドレスが入っていません</span>' : ''}
+      </div>
+      <div class="sec-title">返事が来たら</div>
+      <div class="btns">
+        ${['返信あり', '商談', '保留', '営業お断り', '対象外'].map(s => `<button class="btn small" onclick="setStatus('${s}')">${s}</button>`).join('')}
+      </div>`}
+    </div>`;
+  const ts = $('dTpl');
+  if (ts) ts.onchange = () => { curTplId = ts.value; const t = tpls.find(y => y.id === curTplId); $('dSub').value = fill(t.subject, cur); $('dBody').value = fill(t.body, cur); };
+  d.querySelectorAll('input.in:not([disabled])').forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const f = [...d.querySelectorAll('input.in:not([disabled]),select,textarea')]; const i = f.indexOf(el); if (f[i + 1]) f[i + 1].focus(); }
+  }));
+}
+function formItem() {
+  return { ...cur, company: $('dCompany').value.trim(), industry: $('dInd').value.trim(), site: $('dSite').value.trim(), form: $('dForm').value.trim(),
+           email: $('dEmail').value.trim(), person: $('dPerson').value.trim(), status: $('dStatus').value, memo: $('dMemo').value };
+}
+async function saveItem(force = false) {
+  const item = formItem();
+  const d = await api('save', { item, force });
+  if (d.duplicate) {
+    const names = d.matches.map(y => `・${y.company || y.email || y.site}（${y.status}）`).join('\n');
+    if (confirm(`同じ会社とみられる営業先がすでにあります。\n${names}\n\nそれでも別の行として追加しますか？\n（「キャンセル」で既にある方を開きます）`)) return saveItem(true);
+    await loadAll(); selectItem(d.matches[0].id); return;
+  }
+  if (!d.ok) { toast(d.error || '保存できませんでした'); return; }
+  cur = d.item; toast('保存しました'); await loadAll();
+}
+async function delItem() {
+  if (!confirm(`「${cur.company}」を削除しますか？`)) return;
+  await api('delete', { id: cur.id }); cur = null; toast('削除しました'); loadAll();
+}
+async function setStatus(st, extra = {}) {
+  const item = { ...formItem(), status: st, ...extra };
+  const d = await api('save', { item });
+  if (!d.ok) { toast(d.error || '保存できませんでした'); return; }
+  cur = d.item; toast(`「${st}」にしました`); await loadAll();
+}
+function nowJst() { const d = new Date(Date.now() + 9 * 3600e3); return d.toISOString().slice(0, 19) + '+09:00'; }
+function tplName() { const t = tpls.find(y => y.id === curTplId); return t ? t.name : ''; }
+async function markSent(method) {
+  const dup = (dupOf[cur.id] || []).filter(id => id !== cur.id).map(id => items.find(y => y.id === id)).find(y => y && ['送信済', '返信あり', '商談'].includes(y.status));
+  if (dup && !confirm(`同じ会社（${dup.company}）にはもう送っています。送信済にしますか？`)) return;
+  await setStatus('送信済', { method, sentAt: nowJst(), template: tplName() });
+  nextTodo(true);
+}
+function nextTodo(quiet) {
+  const rows = filtered(); const i = rows.findIndex(x => x.id === (cur && cur.id));
+  const nx = rows.slice(i + 1).concat(rows.slice(0, Math.max(i, 0))).find(x => x.status === '未着手' && !(dupOf[x.id] || []).some(id => { const y = items.find(z => z.id === id); return y && y.status !== '未着手'; }));
+  if (nx) selectItem(nx.id); else if (!quiet) toast('未着手の営業先はもうありません');
+}
+async function copyText(t, btn) {
+  try { await navigator.clipboard.writeText(t); }
+  catch(e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  if (btn) { btn.classList.add('copied'); setTimeout(() => btn.classList.remove('copied'), 900); }
+}
+function copyMe(k, btn) { const v = getMe()[k]; if (!v) { toast('「送り主の情報」タブで入れてください'); return; } copyText(v, btn); }
+function copyField(id, btn) { const el = $(id); if (!el || !el.value) { toast('営業文がありません'); return; } copyText(el.value, btn); }
+
+/* メール */
+function openMail() {
+  const x = formItem(), sub = $('dSub') ? $('dSub').value.trim() : '', body = $('dBody') ? $('dBody').value : '';
+  if (!window._mail || !window._mail.configured) { toast('メール送信がまだ設定されていません（Railway に GMAIL_USER と GMAIL_APP_PASSWORD）', 4500); return; }
+  if (!sub || !body.trim()) { toast('件名と本文を入れてください'); return; }
+  if (/\{\{/.test(sub + body)) { toast('差し込み（{{ }}）が残っています'); return; }
+  $('mmTo').innerHTML = `宛先：${esc(x.email)}（${esc(x.company)}）<br>件名：${esc(sub)}`;
+  $('mmBody').textContent = body;
+  $('mailModal').classList.add('on');
+  $('mmSend').onclick = () => sendMail(x, sub, body, false);
+}
+function closeMail() { $('mailModal').classList.remove('on'); }
+async function sendMail(x, subject, body, force) {
+  $('mmSend').disabled = true; $('mmSend').textContent = '送信中…';
+  try {
+    if (x.email !== cur.email) await api('save', { item: x });
+    const d = await api('send-mail', { id: x.id, to: x.email, subject, body, template: tplName(), force });
+    if (d.duplicate && confirm(d.error + '\nそれでも送りますか？')) return sendMail(x, subject, body, true);
+    if (!d.ok) { toast(d.error || '送れませんでした', 4500); return; }
+    closeMail(); toast(`送りました（今日 ${d.today}/${d.limit} 通）`);
+    await loadAll(); loadMailState(); nextTodo(true);
+  } finally { $('mmSend').disabled = false; $('mmSend').textContent = '送る'; }
+}
+
+/* まとめ・一括 */
+async function mergeIds(ids) {
+  const names = ids.map(id => items.find(y => y.id === id)).filter(Boolean).map(y => '・' + (y.company || y.email || y.site) + '（' + y.status + '）').join('\n');
+  if (!confirm(`この ${ids.length} 件を1つにまとめます。空いている項目は埋め、ステータスは進んでいる方（お断りは最優先）を残します。\n${names}`)) return;
+  const d = await api('merge', { ids });
+  if (!d.ok) { toast(d.error); return; }
+  toast('まとめました'); checked.clear(); await loadAll();
+}
+$('btnMergeSel').onclick = () => mergeIds([...checked]);
+$('btnMergeAll').onclick = async () => {
+  const n = new Set(Object.values(dupOf).map(g => g.join())).size;
+  if (!confirm(`重複している ${n} 組をそれぞれ1つにまとめます。よろしいですか？`)) return;
+  const d = await api('merge', {}); toast(`${d.merged} 組をまとめました（${d.removed} 行を整理）`); await loadAll();
+};
+async function bulkStatus() { const st = $('bulkSt').value; await api('status', { ids: [...checked], status: st }); toast(`${checked.size}件を「${st}」にしました`); checked.clear(); loadAll(); }
+async function bulkDelete() { if (!confirm(`${checked.size}件を削除しますか？`)) return; await api('delete', { ids: [...checked] }); if (cur && checked.has(cur.id)) cur = null; checked.clear(); toast('削除しました'); loadAll(); }
+
+/* ---------- テンプレート ---------- */
+const VARS = ['会社名', '担当者', '業種', '名前', 'メール', '電話', 'URL'];
+$('vars').innerHTML = VARS.map(v => `<button data-v="${v}">{{${v}}}</button>`).join('');
+$('vars').querySelectorAll('button').forEach(b => b.onclick = () => { const ta = $('tBody'), s = ta.selectionStart, t = '{{' + b.dataset.v + '}}'; ta.setRangeText(t, s, ta.selectionEnd, 'end'); ta.focus(); });
+function renderTplList() {
+  $('tplList').innerHTML = tpls.length ? tpls.map(t => `<div class="tpl-item${curTpl && curTpl.id === t.id ? ' sel' : ''}" data-id="${t.id}">
+    <div style="font-size:14px;font-weight:600">${esc(t.name)}${t.enabled ? '' : '<span class="off">使わない</span>'}</div>
+    <div class="item-sub">${esc(t.industry || 'どの業種でも')}　${esc(t.subject)}</div></div>`).join('') : '<div class="empty">まだありません</div>';
+  $('tplList').querySelectorAll('.tpl-item').forEach(el => el.onclick = () => editTpl(tpls.find(t => t.id === el.dataset.id)));
+}
+function editTpl(t) {
+  curTpl = t;
+  $('tplHead').textContent = t.id ? 'テンプレートを編集' : '新しいテンプレート';
+  $('tName').value = t.name || ''; $('tInd').value = t.industry || ''; $('tSub').value = t.subject || ''; $('tBody').value = t.body || '';
+  $('tOn').checked = t.enabled !== false; $('tOrd').value = t.order ?? ''; $('tDel').style.display = t.id ? '' : 'none';
+  renderTplList();
+}
+function newTpl() { editTpl({ id: '', name: '', industry: '', subject: '動画編集・YouTube運用の外注パートナーのご提案', body: '', enabled: true, order: null }); $('tName').focus(); }
+async function saveTpl() {
+  const t = { id: curTpl ? curTpl.id : '', name: $('tName').value.trim(), industry: $('tInd').value.trim(), subject: $('tSub').value, body: $('tBody').value,
+              enabled: $('tOn').checked, order: $('tOrd').value === '' ? null : Number($('tOrd').value) };
+  const d = await api('templates/save', { template: t });
+  if (!d.ok) { toast(d.error); return; }
+  curTpl = d.template; toast('保存しました'); await loadAll(); editTpl(tpls.find(x => x.id === curTpl.id) || curTpl);
+}
+async function delTpl() { if (!confirm(`「${curTpl.name}」を削除しますか？`)) return; await api('templates/delete', { id: curTpl.id }); curTpl = null; newTpl(); toast('削除しました'); loadAll(); }
+
+/* ---------- CSV取り込み ---------- */
+const FIELDS = { company: '会社名', industry: '業種', site: 'サイトURL', form: 'フォームURL', email: 'メール', person: '担当者', memo: 'メモ', status: 'ステータス', '': '（使わない）' };
+const SYN = {
+  company: ['会社名', '社名', '企業名', '会社', '法人名', '店舗名', '店名', '屋号', '名称', '団体名', 'company', 'name', 'companyname', 'organization'],
+  industry: ['業種', '業界', 'カテゴリ', 'カテゴリー', '分類', 'ジャンル', '業態', 'industry', 'category'],
+  form: ['フォーム', 'お問い合わせ', '問い合わせ', '問合せ', 'contact', 'form', 'inquiry'],
+  site: ['url', 'hp', 'ホームページ', 'サイト', 'ウェブ', 'web', 'website', 'site', 'homepage', 'リンク'],
+  email: ['メール', 'mail', 'email', 'e-mail', 'アドレス'],
+  person: ['担当', '代表者', '代表', '氏名', '名前', 'person', 'contactname', 'ceo'],
+  memo: ['メモ', '備考', '補足', 'note', 'memo', 'remarks', '住所', '電話', 'tel', '所在地'],
+  status: ['ステータス', '状態', '状況', 'status'],
+};
+let imp = null;
+function guessField(h, colVals) {
+  const n = h.normalize('NFKC').toLowerCase().replace(/[\s　_\-（）()【】\[\]・:：]/g, '');
+  if (!n) return '';
+  if (/(フォーム|問い?合わ?せ|問合|contact|form|inquiry)/i.test(n)) return 'form';
+  for (const f of ['email', 'company', 'industry', 'site', 'person', 'status', 'memo']) if (SYN[f].some(s => n.includes(s.toLowerCase()))) return f;
+  return '';
+}
+function guessByValues(vals) {
+  const v = vals.filter(Boolean); if (!v.length) return '';
+  const r = re => v.filter(x => re.test(x)).length / v.length;
+  if (r(/^[^@\s]+@[^@\s]+\.[^@\s]+$/) > .6) return 'email';
+  if (r(/^(https?:\/\/|www\.)/i) > .6) return v.some(x => /(contact|form|inquiry|toiawase|otoiawase)/i.test(x)) && r(/(contact|form|inquiry|toiawase)/i) > .5 ? 'form' : 'site';
+  return '';
+}
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0];
+  const delim = (first.split('\t').length > first.split(',').length) ? '\t' : ',';
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(c => c));
+}
+function decode(buf) {
+  const u8 = new Uint8Array(buf);
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(u8); }
+  catch(e) { try { return new TextDecoder('shift_jis').decode(u8); } catch(e2) { return new TextDecoder().decode(u8); } }
+}
+async function readFile(f) {
+  if (/\.(xlsx|xls|numbers)$/i.test(f.name)) { toast('Excel・Numbers は CSV で書き出すか、Claude に「営業リストを取り込める形に整えて」と頼んでください', 6000); return; }
+  const rows = parseCSV(decode(await f.arrayBuffer()));
+  if (!rows.length) { toast('中身が読めませんでした'); return; }
+  const width = Math.max(...rows.map(r => r.length));
+  const head = rows[0];
+  const headLooksData = head.some(c => /^(https?:\/\/|www\.)|@.+\./i.test(c));
+  const headers = headLooksData ? head.map((_, i) => `列${i + 1}`) : head;
+  const data = headLooksData ? rows : rows.slice(1);
+  const map = [];
+  for (let i = 0; i < width; i++) {
+    let g = headLooksData ? '' : guessField(headers[i] || '');
+    const byVal = guessByValues(data.slice(0, 50).map(r => r[i] || ''));
+    if (!g || (g === 'site' && byVal === 'form')) g = byVal || g;
+    map.push(g);
+  }
+  // 同じ項目に2列当たったら、2列目以降はメモへ（URLが2列ならフォームを優先で割り当て）
+  const seen = {};
+  map.forEach((m, i) => { if (!m || m === 'memo') return; if (seen[m] !== undefined) { if (m === 'site' && !map.includes('form')) map[i] = 'form'; else map[i] = 'memo'; } else seen[m] = i; });
+  if (!map.includes('company')) { const i = map.findIndex((m, k) => !m && data.slice(0, 20).every(r => !/^https?:|@/.test(r[k] || ''))); if (i >= 0) map[i] = 'company'; }
+  imp = { name: f.name, headers: Array.from({ length: width }, (_, i) => headers[i] || `列${i + 1}`), data, map };
+  renderImport();
+}
+function impRows() {
+  const out = [];
+  for (const r of imp.data) {
+    const x = { company: '', industry: '', site: '', form: '', email: '', person: '', memo: '', status: '未着手' };
+    const memo = [];
+    imp.map.forEach((m, i) => {
+      const v = (r[i] || '').trim(); if (!m || !v) return;
+      if (m === 'memo') memo.push((imp.headers[i] && !/^列\d+$/.test(imp.headers[i]) ? imp.headers[i] + '：' : '') + v);
+      else if (m === 'status') x.status = STATUSES.includes(v) ? v : (/お断り|NG|不要/i.test(v) ? '営業お断り' : /済/.test(v) ? '送信済' : '未着手');
+      else if (m === 'email') x.email = (v.match(/[^\s,;、<>]+@[^\s,;、<>]+\.[^\s,;、<>]+/) || [''])[0];
+      else if (!x[m]) x[m] = v;
+    });
+    if (!x.industry) x.industry = $('impInd').value.trim();
+    x.memo = memo.join('\n');
+    if (x.company || x.site || x.email || x.form) out.push(x);
+  }
+  // 既存・ファイル内の重複に印を付ける
+  const exist = new Set(items.flatMap(keysOf)), inFile = new Set();
+  out.forEach(x => {
+    const k = keysOf(x);
+    x._dup = k.some(y => exist.has(y)) ? 'リストにあり' : k.some(y => inFile.has(y)) ? 'ファイル内で重複' : '';
+    k.forEach(y => inFile.add(y));
+  });
+  return out;
+}
+function renderImport() {
+  $('impArea').style.display = 'grid';
+  $('impInfo').textContent = `${imp.name}：${imp.data.length} 行`;
+  $('mapTable').innerHTML = imp.headers.map((h, i) => `<tr><td style="width:34%">${esc(h)}</td><td style="width:30%"><select class="sel" data-i="${i}">${Object.entries(FIELDS).map(([k, l]) => `<option value="${k}"${imp.map[i] === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td style="color:#999">${esc(imp.data.slice(0, 2).map(r => r[i] || '').filter(Boolean).join(' / ').slice(0, 60))}</td></tr>`).join('');
+  $('mapTable').querySelectorAll('select').forEach(s => s.onchange = () => { imp.map[+s.dataset.i] = s.value; renderPreview(); });
+  renderPreview();
+}
+function renderPreview() {
+  const rows = impRows(), skipDup = $('impDup').checked;
+  const dupN = rows.filter(x => x._dup).length, addN = skipDup ? rows.length - dupN : rows.length;
+  $('pvInfo').textContent = `取り込み内容：${addN} 件を追加${dupN ? `（重複 ${dupN} 件${skipDup ? 'は飛ばします' : 'も入れます'}）` : ''}`;
+  $('pvTable').innerHTML = '<tr><th>会社名</th><th>業種</th><th>サイト</th><th>フォーム</th><th>メール</th><th>メモ</th><th></th></tr>' +
+    rows.slice(0, 200).map(x => `<tr class="${x._dup && skipDup ? 'skip' : ''}"><td>${esc(x.company)}</td><td>${esc(x.industry)}</td><td>${esc(x.site)}</td><td>${esc(x.form)}</td><td>${esc(x.email)}</td><td>${esc(x.memo.slice(0, 40))}</td><td class="dup">${x._dup ? esc(x._dup) : ''}</td></tr>`).join('') +
+    (rows.length > 200 ? `<tr><td colspan="7" style="color:#999">ほか ${rows.length - 200} 件</td></tr>` : '');
+  $('btnImport').disabled = !addN;
+}
+$('impInd').addEventListener('input', () => imp && renderPreview());
+$('impDup').addEventListener('change', () => imp && renderPreview());
+$('btnImport').onclick = async () => {
+  const skipDup = $('impDup').checked;
+  const rows = impRows().filter(x => !(skipDup && x._dup)).map(({ _dup, ...x }) => x);
+  if (!rows.length) return;
+  $('btnImport').disabled = true;
+  let added = 0, skipped = 0, failed = [];
+  for (let i = 0; i < rows.length; i += 20) {
+    $('impProg').textContent = `取り込み中… ${i} / ${rows.length}`;
+    const d = await api('import', { rows: rows.slice(i, i + 20), skipDup });
+    if (!d.ok) { failed.push(d.error); break; }
+    added += d.added; skipped += d.skipped; failed = failed.concat(d.failed || []);
+  }
+  $('impProg').textContent = `${added} 件を追加しました${skipped ? `（重複 ${skipped} 件は飛ばしました）` : ''}${failed.length ? `／失敗 ${failed.length} 件：${failed.slice(0, 3).join('、')}` : ''}`;
+  $('btnImport').disabled = false; imp = null;
+  await loadAll(); $('impArea').style.display = 'none';
+  toast(`${added} 件を取り込みました`);
+};
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = e => { if (e.target.files[0]) readFile(e.target.files[0]); e.target.value = ''; };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMail(); });
+
+async function init() {
+  loadMe();
+  if (!token) { showAuth(); return; }
+  try { await loadAll(); loadMailState(); newTplIfEmpty(); } catch(e) {}
+}
+function newTplIfEmpty() { if (!curTpl) { if (tpls.length) editTpl(tpls[0]); else newTpl(); } }
+init();
+</script>
+</body>
+</html>

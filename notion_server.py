@@ -62,6 +62,16 @@ MAIL_TEMPLATE_DB_ID = os.environ.get("MAIL_TEMPLATE_DB_ID", "3df3288b-84b0-814e-
 # 日報（カフェで作業した日の記録・経費メモ用）データベースID（Notionで管理）
 NIPPO_DB_ID = os.environ.get("NIPPO_DB_ID", "3fc3288b-84b0-81ed-9387-c8f3ac7f1adf")
 
+# 営業ツール（フォーム営業・メール営業）
+EIGYO_LIST_DB_ID = os.environ.get("EIGYO_LIST_DB_ID", "3fd3288b-84b0-8198-a5ad-faa5a26dcb72")
+EIGYO_TPL_DB_ID  = os.environ.get("EIGYO_TPL_DB_ID",  "3fd3288b-84b0-811e-b1e9-ea8cc7700108")
+# メール営業の送信元（Gmail）。アプリパスワードは Railway の環境変数にだけ置く
+GMAIL_USER         = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
+EIGYO_SENDER_NAME  = os.environ.get("EIGYO_SENDER_NAME", "野津 欧")
+EIGYO_DAILY_LIMIT  = int(os.environ.get("EIGYO_DAILY_LIMIT", "40"))   # 1日に送るメールの上限
+EIGYO_STATUSES = ["未着手", "送信済", "返信あり", "商談", "保留", "送信失敗", "営業お断り", "対象外"]
+
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
 
@@ -379,6 +389,162 @@ def parse_nippo_page(page):
     except Exception:
         return None
 
+
+# ========== 営業ツール（Notion DB）==========
+def eigyo_now_jst():
+    return datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9)))
+
+def eigyo_norm_url(u):
+    u = (u or "").strip()
+    if u and not re.match(r"^https?://", u, re.I):
+        u = "https://" + u
+    return u
+
+EIGYO_SHARED_DOMAINS = {"instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com",
+                        "note.com", "ameblo.jp", "line.me", "lit.link", "linktr.ee", "google.com", "goo.gl",
+                        "sites.google.com", "peraichi.com", "jimdofree.com", "fc2.com", "hatenablog.com"}
+
+def eigyo_dup_groups(items):
+    """同じ会社とみなせる行をまとめる（キーが1つでも一致したら同じグループ）"""
+    parent = {x["id"]: x["id"] for x in items}
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]; a = parent[a]
+        return a
+    owner = {}
+    for x in items:
+        for k in eigyo_key(x):
+            if k in owner:
+                parent[find(x["id"])] = find(owner[k])
+            else:
+                owner[k] = x["id"]
+    groups = {}
+    for x in items:
+        groups.setdefault(find(x["id"]), []).append(x["id"])
+    return [g for g in groups.values() if len(g) > 1]
+
+EIGYO_STATUS_RANK = {"営業お断り": 9, "対象外": 8, "商談": 7, "返信あり": 6, "送信済": 5, "保留": 4, "送信失敗": 3, "未着手": 1}
+
+def eigyo_merge(rows):
+    """重複行を1つにまとめる。空欄は埋め、ステータスは進んでいる方（お断りは最優先）を残す"""
+    rows = sorted(rows, key=lambda r: r.get("created", ""))
+    base = dict(rows[0])
+    for r in rows[1:]:
+        for f in ("company", "industry", "site", "form", "email", "person", "method", "sentAt", "template"):
+            if not base.get(f) and r.get(f):
+                base[f] = r[f]
+        if EIGYO_STATUS_RANK.get(r.get("status"), 0) > EIGYO_STATUS_RANK.get(base.get("status"), 0):
+            base["status"] = r["status"]
+            for f in ("method", "sentAt", "template"):
+                if r.get(f):
+                    base[f] = r[f]
+        memo = (r.get("memo") or "").strip()
+        if memo and memo not in (base.get("memo") or ""):
+            base["memo"] = ((base.get("memo") or "").strip() + "\n" + memo).strip()
+    return base
+
+def eigyo_key(x):
+    """重複判定用のキー（サイトのドメイン・メール・会社名）"""
+    keys = []
+    site = eigyo_norm_url(x.get("site")).lower()
+    m = re.search(r"https?://(?:www\.)?([^/?#]+)(/[^/?#]*)?", site)
+    if m:
+        dom = m.group(1)
+        if dom in EIGYO_SHARED_DOMAINS:
+            seg = (m.group(2) or "").strip("/")
+            if seg:
+                keys.append("d:" + dom + "/" + seg)
+        else:
+            keys.append("d:" + dom)
+    if x.get("email"):
+        keys.append("m:" + x["email"].strip().lower())
+    name = re.sub(r"[\s　]|株式会社|（株）|\(株\)|有限会社|合同会社", "", x.get("company") or "")
+    if name:
+        keys.append("n:" + name.lower())
+    return keys
+
+def parse_eigyo_page(page):
+    try:
+        pr = page["properties"]
+        return {
+            "id":       page["id"],
+            "company":  "".join(t.get("plain_text", "") for t in (pr.get("会社名", {}).get("title") or [])).strip(),
+            "industry": mail_rt_plain(pr, "業種").strip(),
+            "site":     pr.get("サイトURL", {}).get("url") or "",
+            "form":     pr.get("フォームURL", {}).get("url") or "",
+            "email":    pr.get("メール", {}).get("email") or "",
+            "person":   mail_rt_plain(pr, "担当者").strip(),
+            "status":   (pr.get("ステータス", {}).get("select") or {}).get("name", "未着手"),
+            "method":   (pr.get("送信方法", {}).get("select") or {}).get("name", ""),
+            "sentAt":   (pr.get("送信日時", {}).get("date") or {}).get("start") or "",
+            "template": mail_rt_plain(pr, "使ったテンプレート").strip(),
+            "memo":     mail_rt_plain(pr, "メモ"),
+            "created":  page.get("created_time", ""),
+        }
+    except Exception:
+        return None
+
+def eigyo_props(x):
+    props = {
+        "会社名":   {"title": [{"text": {"content": (x.get("company") or "（会社名なし）")[:MAIL_TPL_CHUNK]}}]},
+        "業種":     {"rich_text": mail_rt_chunks((x.get("industry") or "").strip())},
+        "サイトURL": {"url": eigyo_norm_url(x.get("site")) or None},
+        "フォームURL": {"url": eigyo_norm_url(x.get("form")) or None},
+        "メール":   {"email": (x.get("email") or "").strip() or None},
+        "担当者":   {"rich_text": mail_rt_chunks((x.get("person") or "").strip())},
+        "メモ":     {"rich_text": mail_rt_chunks(x.get("memo") or "")},
+    }
+    st = (x.get("status") or "").strip()
+    props["ステータス"] = {"select": {"name": st if st in EIGYO_STATUSES else "未着手"}}
+    if "method" in x:
+        props["送信方法"] = {"select": {"name": x["method"]}} if x.get("method") in ("フォーム", "メール") else {"select": None}
+    if "sentAt" in x:
+        props["送信日時"] = {"date": {"start": x["sentAt"]}} if x.get("sentAt") else {"date": None}
+    if "template" in x:
+        props["使ったテンプレート"] = {"rich_text": mail_rt_chunks(x.get("template") or "")}
+    return props
+
+def parse_eigyo_tpl_page(page):
+    try:
+        pr = page["properties"]
+        return {
+            "id":       page["id"],
+            "name":     "".join(t.get("plain_text", "") for t in (pr.get("テンプレート名", {}).get("title") or [])).strip(),
+            "industry": mail_rt_plain(pr, "業種").strip(),
+            "subject":  mail_rt_plain(pr, "件名"),
+            "body":     mail_rt_plain(pr, "本文"),
+            "enabled":  pr.get("有効", {}).get("checkbox", True),
+            "order":    pr.get("並び順", {}).get("number"),
+        }
+    except Exception:
+        return None
+
+def notion_query_all(db_id, body=None):
+    items, cursor = [], None
+    while True:
+        b = dict(body or {}); b["page_size"] = 100
+        if cursor:
+            b["start_cursor"] = cursor
+        result, err = notion_request("POST", f"/databases/{db_id}/query", b)
+        if not result:
+            return None, err
+        items += result.get("results", [])
+        if not result.get("has_more"):
+            return items, None
+        cursor = result.get("next_cursor")
+
+EIGYO_OPTOUT = "今後このようなご案内が不要でしたら、お手数ですがこのメールに「不要」とご返信ください。以後お送りいたしません。"
+
+def eigyo_mail_body(body):
+    """特定電子メール法に沿って、送信者と配信停止の案内を必ず付ける"""
+    body = (body or "").rstrip()
+    tail = []
+    if GMAIL_USER and GMAIL_USER not in body:
+        tail.append(f"{EIGYO_SENDER_NAME}\nメール：{GMAIL_USER}")
+    if "不要" not in body or "ご返信" not in body:
+        tail.append("※" + EIGYO_OPTOUT)
+    return body + ("\n\n――――――――――\n" + "\n".join(tail) if tail else "") + "\n"
+
 def notion_request(method, path, body=None):
     url = NOTION_API + path
     data = jsonlib.dumps(body).encode() if body else None
@@ -682,6 +848,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("メール定型文ツール.html")
         elif path == "/日報ツール.html":
             self.send_html("日報ツール.html")
+        elif path == "/営業ツール.html":
+            self.send_html("営業ツール.html")
         elif path == "/api/invoices":
             invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
@@ -835,6 +1003,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/api/register-worker-from-invoice/"):
             inv_id = path.split("/")[-1]
             self.handle_register_worker_from_invoice(inv_id, data)
+            return
+        if path.startswith("/api/eigyo/"):
+            self.handle_eigyo(path, data)
             return
         if self.path == "/api/register":
             self.handle_register(data)
@@ -1534,6 +1705,188 @@ class Handler(BaseHTTPRequestHandler):
         if result is None:
             self.send_json(400, {"ok": False, "error": err}); return
         self.send_json(200, {"ok": True})
+
+    # ========== 営業ツール ==========
+    def handle_eigyo(self, path, data):
+        """営業ツールの API（すべて管理者ログインが必要）"""
+        if not ADMIN_TOKEN or data.get("token", "") != ADMIN_TOKEN:
+            self.send_json(401, {"ok": False, "error": "ポータルの管理者ログインが必要です"}); return
+        act = path[len("/api/eigyo/"):]
+        if act == "list":
+            pages, err = notion_query_all(EIGYO_LIST_DB_ID, {"sorts": [{"timestamp": "created_time", "direction": "ascending"}]})
+            if pages is None:
+                self.send_json(400, {"ok": False, "error": err}); return
+            items = [x for x in map(parse_eigyo_page, pages) if x]
+            self.send_json(200, {"ok": True, "items": items, "dupGroups": eigyo_dup_groups(items)})
+        elif act == "save":
+            x = data.get("item") or {}
+            if not (x.get("company") or x.get("site") or x.get("email")):
+                self.send_json(400, {"ok": False, "error": "会社名・サイト・メールのどれかは入れてください"}); return
+            if not x.get("id") and not data.get("force"):
+                keys = set(eigyo_key(x))
+                pages, _ = notion_query_all(EIGYO_LIST_DB_ID)
+                dups = [y for y in map(parse_eigyo_page, pages or []) if y and keys & set(eigyo_key(y))]
+                if dups:
+                    self.send_json(200, {"ok": False, "duplicate": True, "matches": dups}); return
+            if x.get("id"):
+                result, err = notion_request("PATCH", f"/pages/{x['id']}", {"properties": eigyo_props(x)})
+            else:
+                result, err = notion_request("POST", "/pages", {"parent": {"database_id": EIGYO_LIST_DB_ID}, "properties": eigyo_props(x)})
+            if not result:
+                self.send_json(400, {"ok": False, "error": err}); return
+            self.send_json(200, {"ok": True, "item": parse_eigyo_page(result)})
+        elif act == "merge":
+            # 重複をまとめる。ids を渡せばそのグループだけ、無ければ全グループ
+            pages, err = notion_query_all(EIGYO_LIST_DB_ID)
+            if pages is None:
+                self.send_json(400, {"ok": False, "error": err}); return
+            items = {x["id"]: x for x in map(parse_eigyo_page, pages) if x}
+            groups = [data["ids"]] if data.get("ids") else eigyo_dup_groups(list(items.values()))
+            merged = removed = 0
+            for g in groups:
+                rows = [items[i] for i in g if i in items]
+                if len(rows) < 2:
+                    continue
+                base = eigyo_merge(rows)
+                notion_request("PATCH", f"/pages/{base['id']}", {"properties": eigyo_props(base)})
+                for r in rows:
+                    if r["id"] != base["id"]:
+                        notion_request("PATCH", f"/pages/{r['id']}", {"archived": True}); removed += 1
+                merged += 1
+            self.send_json(200, {"ok": True, "merged": merged, "removed": removed})
+        elif act == "delete":
+            ids = data.get("ids") or ([data["id"]] if data.get("id") else [])
+            for pid in ids:
+                notion_request("PATCH", f"/pages/{pid}", {"archived": True})
+            self.send_json(200, {"ok": True, "count": len(ids)})
+        elif act == "status":
+            ids, st = data.get("ids") or [], data.get("status", "")
+            if st not in EIGYO_STATUSES:
+                self.send_json(400, {"ok": False, "error": "ステータスが不正です"}); return
+            for pid in ids:
+                notion_request("PATCH", f"/pages/{pid}", {"properties": {"ステータス": {"select": {"name": st}}}})
+            self.send_json(200, {"ok": True, "count": len(ids)})
+        elif act == "import":
+            # 画面側で20件ずつに分けて送ってくる。既存と重複するものは飛ばす
+            rows = data.get("rows") or []
+            existing = set()
+            if data.get("skipDup", True):
+                pages, err = notion_query_all(EIGYO_LIST_DB_ID)
+                for x in (map(parse_eigyo_page, pages or [])):
+                    if x:
+                        existing.update(eigyo_key(x))
+            added, skipped, failed = 0, 0, []
+            for r in rows:
+                keys = eigyo_key(r)
+                if keys and any(k in existing for k in keys):
+                    skipped += 1; continue
+                if not data.get("skipDup", True):
+                    keys = []
+                result, err = notion_request("POST", "/pages", {"parent": {"database_id": EIGYO_LIST_DB_ID}, "properties": eigyo_props(r)})
+                if result:
+                    added += 1; existing.update(keys)
+                else:
+                    failed.append(f"{r.get('company', '')}: {err}")
+                _time.sleep(0.34)          # Notion の流量制限（3件/秒）
+            self.send_json(200, {"ok": True, "added": added, "skipped": skipped, "failed": failed})
+        elif act == "templates":
+            pages, err = notion_query_all(EIGYO_TPL_DB_ID)
+            if pages is None:
+                self.send_json(400, {"ok": False, "error": err}); return
+            items = [x for x in map(parse_eigyo_tpl_page, pages) if x]
+            items.sort(key=lambda x: (x["order"] is None, x["order"] or 0, x["name"]))
+            self.send_json(200, {"ok": True, "templates": items})
+        elif act == "templates/save":
+            t = data.get("template") or {}
+            if not (t.get("name") or "").strip():
+                self.send_json(400, {"ok": False, "error": "テンプレート名を入れてください"}); return
+            props = {
+                "テンプレート名": {"title": [{"text": {"content": t["name"].strip()[:MAIL_TPL_CHUNK]}}]},
+                "業種": {"rich_text": mail_rt_chunks((t.get("industry") or "").strip())},
+                "件名": {"rich_text": mail_rt_chunks(t.get("subject") or "")},
+                "本文": {"rich_text": mail_rt_chunks(t.get("body") or "")},
+                "有効": {"checkbox": bool(t.get("enabled", True))},
+                "並び順": {"number": t.get("order") if isinstance(t.get("order"), (int, float)) else None},
+            }
+            if t.get("id"):
+                result, err = notion_request("PATCH", f"/pages/{t['id']}", {"properties": props})
+            else:
+                result, err = notion_request("POST", "/pages", {"parent": {"database_id": EIGYO_TPL_DB_ID}, "properties": props})
+            if not result:
+                self.send_json(400, {"ok": False, "error": err}); return
+            self.send_json(200, {"ok": True, "template": parse_eigyo_tpl_page(result)})
+        elif act == "templates/delete":
+            notion_request("PATCH", f"/pages/{data.get('id', '')}", {"archived": True})
+            self.send_json(200, {"ok": True})
+        elif act == "mail-status":
+            self.send_json(200, {"ok": True, "configured": bool(GMAIL_USER and GMAIL_APP_PASSWORD),
+                                 "user": GMAIL_USER, "sender": EIGYO_SENDER_NAME,
+                                 "today": self._eigyo_mail_count_today(), "limit": EIGYO_DAILY_LIMIT})
+        elif act == "send-mail":
+            self.handle_eigyo_send_mail(data)
+        else:
+            self.send_json(404, {"ok": False, "error": "not found"})
+
+    def _eigyo_mail_count_today(self):
+        today = eigyo_now_jst().date().isoformat()
+        pages, _ = notion_query_all(EIGYO_LIST_DB_ID, {"filter": {"and": [
+            {"property": "送信方法", "select": {"equals": "メール"}},
+            {"property": "送信日時", "date": {"on_or_after": today}}]}})
+        return len(pages or [])
+
+    def handle_eigyo_send_mail(self, data):
+        """営業メールを1通送り、リストを送信済にする"""
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.header import Header
+        from email.utils import formataddr, make_msgid
+        if not (GMAIL_USER and GMAIL_APP_PASSWORD):
+            self.send_json(400, {"ok": False, "error": "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"}); return
+        to, subject, body, pid = (data.get("to") or "").strip(), (data.get("subject") or "").strip(), data.get("body") or "", data.get("id") or ""
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to):
+            self.send_json(400, {"ok": False, "error": "宛先のメールアドレスが正しくありません"}); return
+        if not subject or not body.strip():
+            self.send_json(400, {"ok": False, "error": "件名と本文を入れてください"}); return
+        if "{{" in subject + body:
+            self.send_json(400, {"ok": False, "error": "差し込み（{{ }}）が残っています"}); return
+        if pid:
+            page, _ = notion_request("GET", f"/pages/{pid}")
+            cur = parse_eigyo_page(page) if page else None
+            if cur and cur["status"] in ("営業お断り", "対象外"):
+                self.send_json(400, {"ok": False, "error": f"この会社は「{cur['status']}」なので送れません"}); return
+        keys = set(eigyo_key({"email": to, **({k: cur[k] for k in ("site", "company")} if pid and cur else {})}))
+        pages, _ = notion_query_all(EIGYO_LIST_DB_ID)
+        for y in map(parse_eigyo_page, pages or []):
+            if not y or y["id"] == pid or not (keys & set(eigyo_key(y))):
+                continue
+            if y["status"] in ("営業お断り", "対象外"):
+                self.send_json(400, {"ok": False, "error": f"同じ会社の別の行（{y['company']}）が「{y['status']}」です"}); return
+            if y["status"] in ("送信済", "返信あり", "商談") and not data.get("force"):
+                when = (y["sentAt"] or "")[:10]
+                self.send_json(400, {"ok": False, "duplicate": True,
+                                     "error": f"同じ会社（{y['company']}）に {when or '以前'} 送信済みです"}); return
+        if self._eigyo_mail_count_today() >= EIGYO_DAILY_LIMIT:
+            self.send_json(400, {"ok": False, "error": f"今日はもう {EIGYO_DAILY_LIMIT} 通送っています（1日の上限）"}); return
+        msg = MIMEText(eigyo_mail_body(body), "plain", "utf-8")
+        msg["Subject"] = Header(subject, "utf-8")
+        msg["From"] = formataddr((str(Header(EIGYO_SENDER_NAME, "utf-8")), GMAIL_USER))
+        msg["To"] = to
+        msg["Message-ID"] = make_msgid(domain=GMAIL_USER.split("@")[-1])
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+                smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                smtp.sendmail(GMAIL_USER, [to], msg.as_string())
+        except smtplib.SMTPAuthenticationError:
+            self.send_json(400, {"ok": False, "error": "Gmail にログインできません。アプリパスワードを確認してください"}); return
+        except Exception as e:
+            self.send_json(502, {"ok": False, "error": f"送信できませんでした（{e.__class__.__name__}）"}); return
+        if pid:
+            notion_request("PATCH", f"/pages/{pid}", {"properties": {
+                "ステータス": {"select": {"name": "送信済"}}, "送信方法": {"select": {"name": "メール"}},
+                "送信日時": {"date": {"start": eigyo_now_jst().isoformat(timespec="seconds")}},
+                "使ったテンプレート": {"rich_text": mail_rt_chunks(data.get("template") or "")}}})
+        print(f"  📧 営業メール送信: {to}")
+        self.send_json(200, {"ok": True, "today": self._eigyo_mail_count_today(), "limit": EIGYO_DAILY_LIMIT})
 
     def handle_handover_add(self, data):
         text = data.get("text","").strip()
