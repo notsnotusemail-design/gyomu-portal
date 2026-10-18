@@ -186,7 +186,7 @@ body {
         <div class="panel-body">
           <div class="note-box">業種ごとに営業文を作っておくと、営業先の「業種」と同じテンプレートが自動で選ばれます。
             業種を空にしたテンプレートは、どの業種でも候補に出ます。<br>
-            {{会社名}} などは、送るときに相手の情報に置き換わります。</div>
+            {{会社名}} などは、送るときに相手の情報に置き換わります。{{個別の一文}} は営業先ごとの一言で、空の会社では {{個別の一文}} を含む段落ごと省きます。</div>
           <div class="row2">
             <div class="field"><label>テンプレート名</label><input class="in" id="tName" placeholder="例：映像制作会社向け"></div>
             <div class="field"><label>業種（営業先の業種と同じ言葉）</label><input class="in" id="tInd" list="indList" placeholder="例：映像制作"></div>
@@ -230,7 +230,10 @@ body {
           </div>
           <div class="row2">
             <div class="field"><label>業種の列が無いときに入れる業種</label><input class="in" id="impInd" list="indList" placeholder="例：映像制作"></div>
-            <label style="font-size:13px;display:flex;gap:6px;align-items:center;padding-top:18px"><input type="checkbox" id="impDup" checked> 重複する会社は取り込まない</label>
+            <div class="field"><label>すでにリストにある会社</label><select class="sel" id="impDup">
+              <option value="skip">取り込まない</option>
+              <option value="fill">空いている項目だけ埋める（個別の一文などを後から足すとき）</option>
+              <option value="add">別の行として入れる</option></select></div>
           </div>
           <div>
             <div class="field-label" id="pvInfo">取り込み内容</div>
@@ -292,7 +295,7 @@ body {
 <script>
 const BASE = location.origin;
 const STATUSES = ["未着手","送信済","返信あり","商談","保留","送信失敗","営業お断り","対象外"];
-const SHARED = new Set(["instagram.com","facebook.com","x.com","twitter.com","youtube.com","tiktok.com","note.com","ameblo.jp","line.me","lit.link","linktr.ee","google.com","goo.gl","sites.google.com","peraichi.com","jimdofree.com","fc2.com","hatenablog.com"]);
+const SHARED = new Set(["instagram.com","facebook.com","x.com","twitter.com","youtube.com","tiktok.com","note.com","ameblo.jp","line.me","lit.link","linktr.ee","google.com","goo.gl","sites.google.com","peraichi.com","jimdofree.com","fc2.com","hatenablog.com","x.gd","bit.ly","t.co","tinyurl.com","lin.ee","forms.gle","youtu.be","amzn.to","is.gd","stand.fm","hatenadiary.com","wixsite.com","studio.site"]);
 let token = '';
 try { token = localStorage.getItem('adminToken') || ''; } catch(e) {}
 let items = [], dupOf = {}, tpls = [], cur = null, curTpl = null, checked = new Set();
@@ -329,15 +332,20 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
 
 /* ---------- 重複キー（サーバーと同じ考え方） ---------- */
 function normUrl(u) { u = (u || '').trim(); if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u; return u; }
+function accountPath(u) {
+  const segs = u.split(/[?#]/)[0].replace(/^https?:\/\/[^\/]+/, '').split('/').filter(Boolean);
+  if (!segs.length) return '';
+  return ['channel', 'c', 'user', 'u', 'p', 'in', 'pages', 'people', 'profile'].includes(segs[0]) && segs[1] ? segs[0] + '/' + segs[1] : segs[0];
+}
 function keysOf(x) {
   const keys = [];
-  const m = normUrl(x.site).toLowerCase().match(/^https?:\/\/(?:www\.)?([^\/?#]+)(\/[^\/?#]*)?/);
+  const u = normUrl(x.site).toLowerCase(), m = u.match(/^https?:\/\/(?:www\.)?([^\/?#]+)/);
   if (m) {
-    if (SHARED.has(m[1])) { const seg = (m[2] || '').replace(/\//g, ''); if (seg) keys.push('d:' + m[1] + '/' + seg); }
+    if (SHARED.has(m[1])) { const seg = accountPath(u); if (seg) keys.push('d:' + m[1] + '/' + seg); }
     else keys.push('d:' + m[1]);
   }
   if (x.email) keys.push('m:' + x.email.trim().toLowerCase());
-  const n = (x.company || '').replace(/[\s　]|株式会社|（株）|\(株\)|有限会社|合同会社/g, '').toLowerCase();
+  const n = (x.company || '').replace(/[\s　・]|株式会社|（株）|\(株\)|㈱|有限会社|（有）|\(有\)|㈲|合同会社|合資会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|学校法人|社会福祉法人|医療法人社団|医療法人財団|医療法人/g, '').toLowerCase();
   if (n) keys.push('n:' + n);
   return keys;
 }
@@ -395,7 +403,7 @@ function filtered() {
     if (fStatus === '重複' && !dupOf[x.id]) return false;
     if (fStatus === 'お断り・対象外' && !['営業お断り', '対象外'].includes(x.status)) return false;
     if (!['すべて', '重複', 'お断り・対象外'].includes(fStatus) && x.status !== fStatus) return false;
-    if (q && ![x.company, x.site, x.form, x.email, x.memo, x.person, x.industry].join(' ').toLowerCase().includes(q)) return false;
+    if (q && ![x.company, x.site, x.form, x.email, x.memo, x.person, x.industry, x.line].join(' ').toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -443,8 +451,12 @@ function tplsFor(x) {
   return { best: [...exact, ...loose, ...common], rest };
 }
 function fill(text, x) {
-  const me = getMe();
-  return (text || '')
+  const me = getMe(), line = (x.line || '').trim();
+  text = (text || '').split(/\n{2,}/).map(p => {
+    if (!p.includes('{{個別の一文}}')) return p;
+    return line ? p.replace(/\{\{個別の一文\}\}/g, line) : null;
+  }).filter(p => p !== null).join('\n\n');
+  return text
     .replace(/\{\{会社名\}\}/g, x.company || '貴社')
     .replace(/\{\{担当者\}\}/g, x.person || 'ご担当者')
     .replace(/\{\{業種\}\}/g, x.industry || '')
@@ -485,6 +497,8 @@ function renderDetail() {
         <div class="field"><label>ステータス</label><select class="sel" id="dStatus">${STATUSES.map(s => `<option${s === x.status ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
         <div class="field"><label>送った日時</label><input class="in" value="${esc((x.sentAt || '').replace('T', ' ').slice(0, 16))} ${esc(x.method || '')}" disabled></div>
       </div>
+      <div class="field"><label>個別の一文（この会社だけに入る一言）</label><textarea class="ta" id="dLine" style="min-height:60px" placeholder="例：対談形式の教育コラムを#74まで続けておられる点が印象的でした。">${esc(x.line)}</textarea>
+        <div class="hint">営業文の {{個別の一文}} の所に入ります。空なら、その段落ごと省きます。</div></div>
       <div class="field"><label>メモ</label><textarea class="ta" id="dMemo" style="min-height:70px">${esc(x.memo)}</textarea></div>
       <div class="btns">
         <button class="btn primary" onclick="saveItem()">${isNew ? '追加する' : '保存'}</button>
@@ -497,6 +511,7 @@ function renderDetail() {
           ${rest.length ? `<optgroup label="ほかの業種">${rest.map(opt).join('')}</optgroup>` : ''}
         </select></div>
         <div class="field"><label>件名</label><input class="in" id="dSub" value="${esc(fill(tpl ? tpl.subject : '', x))}"></div>
+        <div class="note-box warn" id="lineHint" style="display:none">このテンプレートには {{個別の一文}} が入っていないので、個別の一文は本文に入りません。「営業文テンプレート」タブで入れたい所に {{個別の一文}} を足してください。</div>
         <div class="field"><label>本文（ここで直してから送れます）</label><textarea class="ta body" id="dBody">${esc(fill(tpl ? tpl.body : '', x))}</textarea></div>`
       : '<div class="note-box">営業文テンプレートがまだありません。「営業文テンプレート」タブで作ってください。</div>'}
       <div class="sec-title">フォームで送る</div>
@@ -521,14 +536,23 @@ function renderDetail() {
       </div>`}
     </div>`;
   const ts = $('dTpl');
-  if (ts) ts.onchange = () => { curTplId = ts.value; const t = tpls.find(y => y.id === curTplId); $('dSub').value = fill(t.subject, cur); $('dBody').value = fill(t.body, cur); };
+  const refill = () => { const t = tpls.find(y => y.id === curTplId); if (!t || !$('dBody')) return; const it = formItem(); $('dSub').value = fill(t.subject, it); $('dBody').value = fill(t.body, it); $('dBody').dataset.dirty = ''; lineHint(); };
+  if (ts) ts.onchange = () => { curTplId = ts.value; refill(); };
+  if ($('dBody')) $('dBody').addEventListener('input', () => $('dBody').dataset.dirty = '1');
+  $('dLine').addEventListener('input', () => { if ($('dBody') && $('dBody').dataset.dirty && !confirm('本文を手で直しています。個別の一文を入れ直すと、直した分は消えます。よろしいですか？')) return; refill(); });
+  lineHint();
   d.querySelectorAll('input.in:not([disabled])').forEach(el => el.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const f = [...d.querySelectorAll('input.in:not([disabled]),select,textarea')]; const i = f.indexOf(el); if (f[i + 1]) f[i + 1].focus(); }
   }));
 }
+function lineHint() {
+  const el = $('lineHint'); if (!el) return;
+  const t = tpls.find(y => y.id === curTplId), line = $('dLine') ? $('dLine').value.trim() : '';
+  el.style.display = t && line && !(t.body + t.subject).includes('{{個別の一文}}') ? '' : 'none';
+}
 function formItem() {
   return { ...cur, company: $('dCompany').value.trim(), industry: $('dInd').value.trim(), site: $('dSite').value.trim(), form: $('dForm').value.trim(),
-           email: $('dEmail').value.trim(), person: $('dPerson').value.trim(), status: $('dStatus').value, memo: $('dMemo').value };
+           email: $('dEmail').value.trim(), person: $('dPerson').value.trim(), status: $('dStatus').value, memo: $('dMemo').value, line: $('dLine').value.trim() };
 }
 async function saveItem(force = false) {
   const item = formItem();
@@ -614,7 +638,7 @@ async function bulkStatus() { const st = $('bulkSt').value; await api('status', 
 async function bulkDelete() { if (!confirm(`${checked.size}件を削除しますか？`)) return; await api('delete', { ids: [...checked] }); if (cur && checked.has(cur.id)) cur = null; checked.clear(); toast('削除しました'); loadAll(); }
 
 /* ---------- テンプレート ---------- */
-const VARS = ['会社名', '担当者', '業種', '名前', 'メール', '電話', 'URL'];
+const VARS = ['会社名', '担当者', '個別の一文', '業種', '名前', 'メール', '電話', 'URL'];
 $('vars').innerHTML = VARS.map(v => `<button data-v="${v}">{{${v}}}</button>`).join('');
 $('vars').querySelectorAll('button').forEach(b => b.onclick = () => { const ta = $('tBody'), s = ta.selectionStart, t = '{{' + b.dataset.v + '}}'; ta.setRangeText(t, s, ta.selectionEnd, 'end'); ta.focus(); });
 function renderTplList() {
@@ -641,7 +665,7 @@ async function saveTpl() {
 async function delTpl() { if (!confirm(`「${curTpl.name}」を削除しますか？`)) return; await api('templates/delete', { id: curTpl.id }); curTpl = null; newTpl(); toast('削除しました'); loadAll(); }
 
 /* ---------- CSV取り込み ---------- */
-const FIELDS = { company: '会社名', industry: '業種', site: 'サイトURL', form: 'フォームURL', email: 'メール', person: '担当者', memo: 'メモ', status: 'ステータス', '': '（使わない）' };
+const FIELDS = { company: '会社名', industry: '業種', site: 'サイトURL', form: 'フォームURL', email: 'メール', person: '担当者', line: '個別の一文', memo: 'メモ', status: 'ステータス', '': '（使わない）' };
 const SYN = {
   company: ['会社名', '社名', '企業名', '会社', '法人名', '店舗名', '店名', '屋号', '名称', '団体名', 'company', 'name', 'companyname', 'organization'],
   industry: ['業種', '業界', 'カテゴリ', 'カテゴリー', '分類', 'ジャンル', '業態', 'industry', 'category'],
@@ -649,6 +673,7 @@ const SYN = {
   site: ['url', 'hp', 'ホームページ', 'サイト', 'ウェブ', 'web', 'website', 'site', 'homepage', 'リンク'],
   email: ['メール', 'mail', 'email', 'e-mail', 'アドレス'],
   person: ['担当', '代表者', '代表', '氏名', '名前', 'person', 'contactname', 'ceo'],
+  line: ['個別の一文', '個別', '一文', '一言', 'パーソナライズ', 'カスタム', '冒頭文', '書き出し', 'アレンジ', 'ひとこと'],
   memo: ['メモ', '備考', '補足', 'note', 'memo', 'remarks', '住所', '電話', 'tel', '所在地'],
   status: ['ステータス', '状態', '状況', 'status'],
 };
@@ -657,7 +682,7 @@ function guessField(h, colVals) {
   const n = h.normalize('NFKC').toLowerCase().replace(/[\s　_\-（）()【】\[\]・:：]/g, '');
   if (!n) return '';
   if (/(フォーム|問い?合わ?せ|問合|contact|form|inquiry)/i.test(n)) return 'form';
-  for (const f of ['email', 'company', 'industry', 'site', 'person', 'status', 'memo']) if (SYN[f].some(s => n.includes(s.toLowerCase()))) return f;
+  for (const f of ['email', 'line', 'company', 'industry', 'site', 'person', 'status', 'memo']) if (SYN[f].some(s => n.includes(s.toLowerCase()))) return f;
   return '';
 }
 function guessByValues(vals) {
@@ -759,17 +784,19 @@ $('impSheet').onchange = () => { const s = imp.sheets.find(x => x.name === $('im
 function impRows() {
   const out = [];
   for (const r of imp.data) {
-    const x = { company: '', industry: '', site: '', form: '', email: '', person: '', memo: '', status: '未着手' };
+    const x = { company: '', industry: '', site: '', form: '', email: '', person: '', line: '', memo: '', status: '未着手' };
     const memo = [];
     imp.map.forEach((m, i) => {
       const v = (r[i] || '').trim(); if (!m || !v) return;
-      if (m === 'memo') memo.push((imp.headers[i] && !/^列\d+$/.test(imp.headers[i]) ? imp.headers[i] + '：' : '') + v);
+      if (m === 'memo') memo.push((imp.headers[i] && !/^(列\d+|メモ|備考|memo|note)$/i.test(imp.headers[i]) ? imp.headers[i] + '：' : '') + v);
       else if (m === 'status') x.status = STATUSES.includes(v) ? v : (/お断り|NG|不要/i.test(v) ? '営業お断り' : /済/.test(v) ? '送信済' : '未着手');
       else if (m === 'email') x.email = (v.match(/[^\s,;、<>]+@[^\s,;、<>]+\.[^\s,;、<>]+/) || [''])[0];
       else if (!x[m]) x[m] = v;
     });
     if (!x.industry) x.industry = $('impInd').value.trim();
     x.memo = memo.join('\n');
+    const lm = x.memo.match(/^(?:個別の一文|一言|ひとこと)[：:]\s*(.+)$/m);   // メモに入っている「個別の一文：…」も拾う
+    if (lm) { if (!x.line) x.line = lm[1].trim(); x.memo = (x.memo.slice(0, lm.index) + x.memo.slice(lm.index + lm[0].length).replace(/^\n/, '')).replace(/\n+$/, ''); }
     if (x.company || x.site || x.email || x.form) out.push(x);
   }
   // 既存・ファイル内の重複に印を付ける
@@ -793,32 +820,46 @@ function renderImport() {
   renderPreview();
 }
 function renderPreview() {
-  const rows = impRows(), skipDup = $('impDup').checked;
-  const dupN = rows.filter(x => x._dup).length, addN = skipDup ? rows.length - dupN : rows.length;
-  $('pvInfo').textContent = `取り込み内容：${addN} 件を追加${dupN ? `（重複 ${dupN} 件${skipDup ? 'は飛ばします' : 'も入れます'}）` : ''}`;
-  $('pvTable').innerHTML = '<tr><th>会社名</th><th>業種</th><th>サイト</th><th>フォーム</th><th>メール</th><th>メモ</th><th></th></tr>' +
-    rows.slice(0, 200).map(x => `<tr class="${x._dup && skipDup ? 'skip' : ''}"><td>${esc(x.company)}</td><td>${esc(x.industry)}</td><td>${esc(x.site)}</td><td>${esc(x.form)}</td><td>${esc(x.email)}</td><td>${esc(x.memo.slice(0, 40))}</td><td class="dup">${x._dup ? esc(x._dup) : ''}</td></tr>`).join('') +
-    (rows.length > 200 ? `<tr><td colspan="7" style="color:#999">ほか ${rows.length - 200} 件</td></tr>` : '');
-  $('btnImport').disabled = !addN;
+  const rows = impRows(), mode = $('impDup').value;
+  const exist = rows.filter(x => x._dup === 'リストにあり').length, inFile = rows.filter(x => x._dup === 'ファイル内で重複').length;
+  const addN = mode === 'add' ? rows.length : rows.length - exist - inFile;
+  const parts = [`${addN} 件を追加`];
+  if (exist) parts.push(mode === 'skip' ? `リストにある ${exist} 件は飛ばします` : mode === 'fill' ? `リストにある ${exist} 件は空いている項目だけ埋めます` : `リストにある ${exist} 件も別の行で入れます`);
+  if (inFile && mode !== 'add') parts.push(`ファイル内の重複 ${inFile} 件は飛ばします`);
+  $('pvInfo').textContent = '取り込み内容：' + parts.join('／');
+  const dim = x => (x._dup === 'ファイル内で重複' && mode !== 'add') || (x._dup === 'リストにあり' && mode === 'skip');
+  $('pvTable').innerHTML = '<tr><th>会社名</th><th>業種</th><th>サイト</th><th>フォーム</th><th>メール</th><th>個別の一文</th><th>メモ</th><th></th></tr>' +
+    rows.slice(0, 200).map(x => `<tr class="${dim(x) ? 'skip' : ''}"><td>${esc(x.company)}</td><td>${esc(x.industry)}</td><td>${esc(x.site)}</td><td>${esc(x.form)}</td><td>${esc(x.email)}</td><td>${esc(x.line.slice(0, 30))}</td><td>${esc(x.memo.slice(0, 40))}</td><td class="dup">${x._dup ? esc(x._dup) : ''}</td></tr>`).join('') +
+    (rows.length > 200 ? `<tr><td colspan="8" style="color:#999">ほか ${rows.length - 200} 件</td></tr>` : '');
+  $('btnImport').disabled = !(addN || (exist && mode === 'fill'));
 }
 $('impInd').addEventListener('input', () => imp && renderPreview());
 $('impDup').addEventListener('change', () => imp && renderPreview());
 $('btnImport').onclick = async () => {
-  const skipDup = $('impDup').checked;
-  const rows = impRows().filter(x => !(skipDup && x._dup)).map(({ _dup, ...x }) => x);
+  const mode = $('impDup').value;
+  const rows = impRows().filter(x => mode === 'add' || x._dup !== 'ファイル内で重複').filter(x => !(mode === 'skip' && x._dup)).map(({ _dup, ...x }) => x);
   if (!rows.length) return;
   $('btnImport').disabled = true;
-  let added = 0, skipped = 0, failed = [];
-  for (let i = 0; i < rows.length; i += 20) {
-    $('impProg').textContent = `取り込み中… ${i} / ${rows.length}`;
-    const d = await api('import', { rows: rows.slice(i, i + 20), skipDup });
-    if (!d.ok) { failed.push(d.error); break; }
-    added += d.added; skipped += d.skipped; failed = failed.concat(d.failed || []);
+  let added = 0, skipped = 0, filled = 0, failed = [], stopped = '';
+  const STEP = 10;
+  for (let i = 0; i < rows.length; i += STEP) {
+    $('impProg').textContent = `取り込み中… ${i} / ${rows.length}（終わるまでこの画面を閉じないでください）`;
+    let d = null;
+    for (let t = 0; t < 3 && !d; t++) {            // 通信が切れても3回までやり直す（重複は飛ばすので二重には入らない）
+      try { d = await api('import', { rows: rows.slice(i, i + STEP), dupMode: mode === 'add' ? 'add' : mode }); if (!d.ok) { stopped = d.error; d = null; break; } }
+      catch(e) { stopped = e.message || '通信エラー'; d = null; await new Promise(r => setTimeout(r, 2000 * (t + 1))); }
+    }
+    if (!d) { stopped = `${i} 件目のあたりで止まりました（${stopped}）。もう一度「取り込む」を押すと、入った分は飛ばして続きから入ります`; break; }
+    stopped = '';
+    added += d.added; skipped += d.skipped; filled += d.filled || 0; failed = failed.concat(d.failed || []);
   }
-  $('impProg').textContent = `${added} 件を追加しました${skipped ? `（重複 ${skipped} 件は飛ばしました）` : ''}${failed.length ? `／失敗 ${failed.length} 件：${failed.slice(0, 3).join('、')}` : ''}`;
-  $('btnImport').disabled = false; imp = null;
-  await loadAll(); $('impArea').style.display = 'none';
-  toast(`${added} 件を取り込みました`);
+  $('impProg').textContent = `${added} 件を追加${filled ? `・${filled} 件の空欄を埋めました` : ''}${skipped ? `（重複 ${skipped} 件は飛ばしました）` : ''}${failed.length ? `／失敗 ${failed.length} 件：${failed.slice(0, 3).join('、')}` : ''}${stopped ? '／' + stopped : ''}`;
+  $('btnImport').disabled = false;
+  await new Promise(r => setTimeout(r, 3000));   // Notion の検索に新しい行が出るまで少し待つ
+  await loadAll();
+  if (!stopped) { imp = null; $('impArea').style.display = 'none'; }
+  else renderPreview();
+  toast(stopped ? '途中で止まりました。もう一度押すと続きから入ります' : `${added} 件を追加${filled ? `、${filled} 件を更新` : ''}しました`, 5000);
 };
 const drop = $('drop');
 drop.onclick = () => $('file').click();

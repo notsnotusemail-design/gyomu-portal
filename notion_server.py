@@ -402,7 +402,8 @@ def eigyo_norm_url(u):
 
 EIGYO_SHARED_DOMAINS = {"instagram.com", "facebook.com", "x.com", "twitter.com", "youtube.com", "tiktok.com",
                         "note.com", "ameblo.jp", "line.me", "lit.link", "linktr.ee", "google.com", "goo.gl",
-                        "sites.google.com", "peraichi.com", "jimdofree.com", "fc2.com", "hatenablog.com"}
+                        "sites.google.com", "peraichi.com", "jimdofree.com", "fc2.com", "hatenablog.com",
+    "x.gd", "bit.ly", "t.co", "tinyurl.com", "lin.ee", "forms.gle", "youtu.be", "amzn.to", "is.gd", "stand.fm", "hatenadiary.com", "wixsite.com", "studio.site"}
 
 def eigyo_dup_groups(items):
     """同じ会社とみなせる行をまとめる（キーが1つでも一致したら同じグループ）"""
@@ -430,7 +431,7 @@ def eigyo_merge(rows):
     rows = sorted(rows, key=lambda r: r.get("created", ""))
     base = dict(rows[0])
     for r in rows[1:]:
-        for f in ("company", "industry", "site", "form", "email", "person", "method", "sentAt", "template"):
+        for f in ("company", "industry", "site", "form", "email", "person", "line", "method", "sentAt", "template"):
             if not base.get(f) and r.get(f):
                 base[f] = r[f]
         if EIGYO_STATUS_RANK.get(r.get("status"), 0) > EIGYO_STATUS_RANK.get(base.get("status"), 0):
@@ -443,30 +444,50 @@ def eigyo_merge(rows):
             base["memo"] = ((base.get("memo") or "").strip() + "\n" + memo).strip()
     return base
 
+def eigyo_account_path(url):
+    """SNS・ブログ等の共用ドメインはアカウント部分まで見る（youtube.com/channel/UCxx・instagram.com/aaa）"""
+    segs = [x for x in re.sub(r"^https?://[^/]+", "", url.split("?")[0].split("#")[0]).split("/") if x]
+    if not segs:
+        return ""
+    if segs[0] in ("channel", "c", "user", "u", "p", "in", "pages", "people", "profile") and len(segs) > 1:
+        return segs[0] + "/" + segs[1]
+    return segs[0]
+
 def eigyo_key(x):
     """重複判定用のキー（サイトのドメイン・メール・会社名）"""
     keys = []
     site = eigyo_norm_url(x.get("site")).lower()
-    m = re.search(r"https?://(?:www\.)?([^/?#]+)(/[^/?#]*)?", site)
+    m = re.search(r"https?://(?:www\.)?([^/?#]+)", site)
     if m:
         dom = m.group(1)
         if dom in EIGYO_SHARED_DOMAINS:
-            seg = (m.group(2) or "").strip("/")
+            seg = eigyo_account_path(site)
             if seg:
                 keys.append("d:" + dom + "/" + seg)
         else:
             keys.append("d:" + dom)
     if x.get("email"):
         keys.append("m:" + x["email"].strip().lower())
-    name = re.sub(r"[\s　]|株式会社|（株）|\(株\)|有限会社|合同会社", "", x.get("company") or "")
+    name = re.sub(r"[\s　・]|株式会社|（株）|\(株\)|㈱|有限会社|（有）|\(有\)|㈲|合同会社|合資会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|学校法人|社会福祉法人|医療法人社団|医療法人財団|医療法人", "", x.get("company") or "")
     if name:
         keys.append("n:" + name.lower())
     return keys
 
+EIGYO_LINE_IN_MEMO = re.compile(r"^(?:個別の一文|一言|ひとこと)[：:]\s*(.+)$", re.M)
+
+def eigyo_split_line(memo, line=""):
+    """メモの中の「個別の一文：…」を取り出す。戻り値 (一文, 残りのメモ)"""
+    memo = memo or ""
+    m = EIGYO_LINE_IN_MEMO.search(memo)
+    if not m:
+        return (line or "").strip(), memo
+    rest = (memo[:m.start()] + memo[m.end():].lstrip("\n")).strip("\n")
+    return ((line or "").strip() or m.group(1).strip()), rest
+
 def parse_eigyo_page(page):
     try:
         pr = page["properties"]
-        return {
+        d = {
             "id":       page["id"],
             "company":  "".join(t.get("plain_text", "") for t in (pr.get("会社名", {}).get("title") or [])).strip(),
             "industry": mail_rt_plain(pr, "業種").strip(),
@@ -479,12 +500,17 @@ def parse_eigyo_page(page):
             "sentAt":   (pr.get("送信日時", {}).get("date") or {}).get("start") or "",
             "template": mail_rt_plain(pr, "使ったテンプレート").strip(),
             "memo":     mail_rt_plain(pr, "メモ"),
+            "line":     mail_rt_plain(pr, "個別の一文").strip(),
             "created":  page.get("created_time", ""),
         }
+        d["line"], d["memo"] = eigyo_split_line(d["memo"], d["line"])
+        return d
     except Exception:
         return None
 
 def eigyo_props(x):
+    x = dict(x)
+    x["line"], x["memo"] = eigyo_split_line(x.get("memo"), x.get("line"))
     props = {
         "会社名":   {"title": [{"text": {"content": (x.get("company") or "（会社名なし）")[:MAIL_TPL_CHUNK]}}]},
         "業種":     {"rich_text": mail_rt_chunks((x.get("industry") or "").strip())},
@@ -493,6 +519,7 @@ def eigyo_props(x):
         "メール":   {"email": (x.get("email") or "").strip() or None},
         "担当者":   {"rich_text": mail_rt_chunks((x.get("person") or "").strip())},
         "メモ":     {"rich_text": mail_rt_chunks(x.get("memo") or "")},
+        "個別の一文": {"rich_text": mail_rt_chunks((x.get("line") or "").strip())},
     }
     st = (x.get("status") or "").strip()
     props["ステータス"] = {"select": {"name": st if st in EIGYO_STATUSES else "未着手"}}
@@ -1767,28 +1794,56 @@ class Handler(BaseHTTPRequestHandler):
                 notion_request("PATCH", f"/pages/{pid}", {"properties": {"ステータス": {"select": {"name": st}}}})
             self.send_json(200, {"ok": True, "count": len(ids)})
         elif act == "import":
-            # 画面側で20件ずつに分けて送ってくる。既存と重複するものは飛ばす
+            # 画面側で少しずつ分けて送ってくる。dupMode: skip=既存は飛ばす / fill=既存の空欄だけ埋める / add=別の行として入れる
             rows = data.get("rows") or []
-            existing = set()
-            if data.get("skipDup", True):
+            mode = data.get("dupMode") or ("skip" if data.get("skipDup", True) else "add")
+            owner = {}
+            if mode != "add":
                 pages, err = notion_query_all(EIGYO_LIST_DB_ID)
-                for x in (map(parse_eigyo_page, pages or [])):
+                if pages is None:
+                    self.send_json(400, {"ok": False, "error": err}); return
+                for x in map(parse_eigyo_page, pages):
                     if x:
-                        existing.update(eigyo_key(x))
-            added, skipped, failed = 0, 0, []
+                        for k in eigyo_key(x):
+                            owner.setdefault(k, x)
+            added, skipped, filled, failed = 0, 0, 0, []
             for r in rows:
+                r["line"], r["memo"] = eigyo_split_line(r.get("memo"), r.get("line"))
                 keys = eigyo_key(r)
-                if keys and any(k in existing for k in keys):
-                    skipped += 1; continue
-                if not data.get("skipDup", True):
-                    keys = []
+                hit = next((owner[k] for k in keys if k in owner), None) if mode != "add" else None
+                if hit:
+                    if mode == "fill":
+                        patch = {}
+                        for f in ("industry", "site", "form", "email", "person", "line", "memo"):
+                            if not (hit.get(f) or "").strip() and (r.get(f) or "").strip():
+                                hit[f] = r[f]; patch[f] = True
+                        if EIGYO_STATUS_RANK.get(r.get("status"), 0) > EIGYO_STATUS_RANK.get(hit.get("status"), 0):
+                            hit["status"] = r["status"]; patch["status"] = True
+                        if patch:
+                            props = {k: v for k, v in eigyo_props(hit).items()
+                                     if k in ("業種", "サイトURL", "フォームURL", "メール", "担当者", "個別の一文", "メモ", "ステータス")}
+                            result, err = notion_request("PATCH", f"/pages/{hit['id']}", {"properties": props})
+                            if result:
+                                filled += 1
+                            else:
+                                failed.append(f"{r.get('company', '')}: {err}")
+                            _time.sleep(0.34)
+                        else:
+                            skipped += 1
+                    else:
+                        skipped += 1
+                    continue
                 result, err = notion_request("POST", "/pages", {"parent": {"database_id": EIGYO_LIST_DB_ID}, "properties": eigyo_props(r)})
                 if result:
-                    added += 1; existing.update(keys)
+                    added += 1
+                    x = parse_eigyo_page(result)
+                    if x and mode != "add":
+                        for k in keys:
+                            owner.setdefault(k, x)
                 else:
                     failed.append(f"{r.get('company', '')}: {err}")
                 _time.sleep(0.34)          # Notion の流量制限（3件/秒）
-            self.send_json(200, {"ok": True, "added": added, "skipped": skipped, "failed": failed})
+            self.send_json(200, {"ok": True, "added": added, "skipped": skipped, "filled": filled, "failed": failed})
         elif act == "templates":
             pages, err = notion_query_all(EIGYO_TPL_DB_ID)
             if pages is None:
