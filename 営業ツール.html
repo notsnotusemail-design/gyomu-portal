@@ -216,12 +216,14 @@ body {
       <div class="panel-body">
         <div class="note-box">スプレッドシートを「CSV」で書き出したファイルをそのまま入れられます。見出しの名前がバラバラでも、
           「会社名」「社名」「企業名」「URL」「HP」「お問い合わせ」などから自動で振り分けます。
-          文字化けするとき・Excel のまま・表が崩れているときは、Claude に「営業リストを取り込める形に整えて」と頼むと、この形に直したCSVを作ります。<br>
+          Excel（.xlsx / .xls）もそのまま入れられます。シートが複数あるときは選べます。
+          表が崩れていてうまく振り分けられないときは、Claude に「営業リストを取り込める形に整えて」と頼むと、この形に直したCSVを作ります。<br>
           すでにリストにある会社と、ファイルの中で同じ会社が2回出てくるものは、取り込まずに飛ばします。</div>
-        <div class="drop" id="drop">ここにCSVファイルを落とす、またはクリックして選ぶ<br><span style="font-size:11px">（.csv / .tsv / .txt。Shift_JIS でも UTF-8 でも可）</span></div>
-        <input type="file" id="file" accept=".csv,.tsv,.txt,text/csv" style="display:none">
+        <div class="drop" id="drop">ここにCSVファイルを落とす、またはクリックして選ぶ<br><span style="font-size:11px">（Excel .xlsx / .xls、CSV .csv / .tsv / .txt。Shift_JIS でも UTF-8 でも可）</span></div>
+        <input type="file" id="file" accept=".xlsx,.xlsm,.xls,.numbers,.csv,.tsv,.txt,text/csv" style="display:none">
         <div id="impArea" style="display:none; gap:12px" class="panel-body" >
-          <div class="field-label" id="impInfo"></div>
+          <div class="btns"><span class="field-label" id="impInfo" style="margin:0"></span>
+            <select class="sel" id="impSheet" style="width:auto;display:none;padding:5px 8px;font-size:12px"></select></div>
           <div>
             <div class="field-label">列の振り分け（違っていたら直してください）</div>
             <table class="map-table" id="mapTable"></table>
@@ -686,15 +688,59 @@ function decode(buf) {
   try { return new TextDecoder('utf-8', { fatal: true }).decode(u8); }
   catch(e) { try { return new TextDecoder('shift_jis').decode(u8); } catch(e2) { return new TextDecoder().decode(u8); } }
 }
+let xlsxLib = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (xlsxLib) return xlsxLib;
+  xlsxLib = new Promise((ok, ng) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => ok(window.XLSX);
+    sc.onerror = () => { xlsxLib = null; ng(new Error('Excel を読む部品を読み込めませんでした（ネット接続を確認してください）')); };
+    document.head.appendChild(sc);
+  });
+  return xlsxLib;
+}
+function sheetRows(X, ws) {
+  if (!ws || !ws['!ref']) return [];
+  const rg = X.utils.decode_range(ws['!ref']);
+  const rows = X.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true });
+  // 表示が「HP」「こちら」でも、セルに付いたリンク先の URL を使う
+  for (const addr in ws) {
+    if (addr[0] === '!') continue;
+    const c = ws[addr];
+    if (c && c.l && c.l.Target && !/^#/.test(c.l.Target)) {
+      const p = X.utils.decode_cell(addr), r = p.r - rg.s.r, k = p.c - rg.s.c;
+      if (rows[r]) rows[r][k] = c.l.Target.replace(/^mailto:/i, '');
+    }
+  }
+  return rows.map(r => r.map(c => String(c ?? '').trim())).filter(r => r.some(c => c));
+}
 async function readFile(f) {
-  if (/\.(xlsx|xls|numbers)$/i.test(f.name)) { toast('Excel・Numbers は CSV で書き出すか、Claude に「営業リストを取り込める形に整えて」と頼んでください', 6000); return; }
-  const rows = parseCSV(decode(await f.arrayBuffer()));
+  let rows, sheets = null, sheet = '';
+  if (/\.(xlsx|xlsm|xls|numbers)$/i.test(f.name)) {
+    let X, wb;
+    try { X = await loadXlsx(); wb = X.read(await f.arrayBuffer(), { type: 'array', cellDates: true }); }
+    catch(e) { toast(e.message.includes('部品') ? e.message : 'この Excel ファイルは読めませんでした。CSV で書き出して入れてください', 6000); return; }
+    sheets = wb.SheetNames.map(n => ({ name: n, rows: sheetRows(X, wb.Sheets[n]) })).filter(x => x.rows.length);
+    if (!sheets.length) { toast('シートに中身がありません'); return; }
+    // いちばん行が多いシートを最初に開く
+    sheet = sheets.reduce((a, b) => b.rows.length > a.rows.length ? b : a).name;
+    rows = sheets.find(x => x.name === sheet).rows;
+  } else {
+    rows = parseCSV(decode(await f.arrayBuffer()));
+  }
   if (!rows.length) { toast('中身が読めませんでした'); return; }
+  buildImport(f.name, rows, sheets, sheet);
+}
+function buildImport(name, rows, sheets, sheet) {
   const width = Math.max(...rows.map(r => r.length));
-  const head = rows[0];
-  const headLooksData = head.some(c => /^(https?:\/\/|www\.)|@.+\./i.test(c));
-  const headers = headLooksData ? head.map((_, i) => `列${i + 1}`) : head;
-  const data = headLooksData ? rows : rows.slice(1);
+  // 上にタイトル行や空行があっても、見出しらしい行（項目名が2つ以上当たる行）を探す
+  let hi = rows.slice(0, 15).findIndex(r => r.filter(c => c.length <= 20 && !/https?:|www\.|@/.test(c) && guessField(c)).length >= 2);
+  if (hi < 0) hi = rows[0].some(c => /^(https?:\/\/|www\.)|@.+\./i.test(c)) ? -1 : 0;
+  const headLooksData = hi < 0;
+  const headers = headLooksData ? [] : rows[hi];
+  const data = rows.slice(hi + 1);
   const map = [];
   for (let i = 0; i < width; i++) {
     let g = headLooksData ? '' : guessField(headers[i] || '');
@@ -705,10 +751,11 @@ async function readFile(f) {
   // 同じ項目に2列当たったら、2列目以降はメモへ（URLが2列ならフォームを優先で割り当て）
   const seen = {};
   map.forEach((m, i) => { if (!m || m === 'memo') return; if (seen[m] !== undefined) { if (m === 'site' && !map.includes('form')) map[i] = 'form'; else map[i] = 'memo'; } else seen[m] = i; });
-  if (!map.includes('company')) { const i = map.findIndex((m, k) => !m && data.slice(0, 20).every(r => !/^https?:|@/.test(r[k] || ''))); if (i >= 0) map[i] = 'company'; }
-  imp = { name: f.name, headers: Array.from({ length: width }, (_, i) => headers[i] || `列${i + 1}`), data, map };
+  if (!map.includes('company')) { const i = map.findIndex((m, k) => !m && data.slice(0, 20).some(r => r[k]) && data.slice(0, 20).every(r => !/^https?:|@/.test(r[k] || ''))); if (i >= 0) map[i] = 'company'; }
+  imp = { name, sheets, sheet, headers: Array.from({ length: width }, (_, i) => headers[i] || `列${i + 1}`), data, map };
   renderImport();
 }
+$('impSheet').onchange = () => { const s = imp.sheets.find(x => x.name === $('impSheet').value); buildImport(imp.name, s.rows, imp.sheets, s.name); };
 function impRows() {
   const out = [];
   for (const r of imp.data) {
@@ -736,7 +783,10 @@ function impRows() {
 }
 function renderImport() {
   $('impArea').style.display = 'grid';
-  $('impInfo').textContent = `${imp.name}：${imp.data.length} 行`;
+  $('impInfo').textContent = `${imp.name}${imp.sheet ? '（シート：' + imp.sheet + '）' : ''}：${imp.data.length} 行`;
+  const ss = $('impSheet');
+  ss.style.display = imp.sheets && imp.sheets.length > 1 ? '' : 'none';
+  if (imp.sheets) ss.innerHTML = imp.sheets.map(x => `<option${x.name === imp.sheet ? ' selected' : ''}>${esc(x.name)}</option>`).join('');
   $('mapTable').innerHTML = imp.headers.map((h, i) => `<tr><td style="width:34%">${esc(h)}</td><td style="width:30%"><select class="sel" data-i="${i}">${Object.entries(FIELDS).map(([k, l]) => `<option value="${k}"${imp.map[i] === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
     <td style="color:#999">${esc(imp.data.slice(0, 2).map(r => r[i] || '').filter(Boolean).join(' / ').slice(0, 60))}</td></tr>`).join('');
   $('mapTable').querySelectorAll('select').forEach(s => s.onchange = () => { imp.map[+s.dataset.i] = s.value; renderPreview(); });
