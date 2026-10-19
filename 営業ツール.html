@@ -122,10 +122,9 @@ body {
   <div class="page-header">
     <a class="back-btn" href="/">← トップ</a>
     <div class="page-title">営業ツール</div>
-    <div class="mail-state" id="mailState">メール送信：確認中…</div>
   </div>
   <div class="page-note">
-    営業先を一覧で管理し、フォーム営業とメール営業をここから行います。左の一覧で会社を選ぶと、右に業種に合った営業文が出ます。<br>
+    営業先を一覧で管理し、フォーム営業とメール営業をここから行います（メールは Gmail の作成画面を開きます）。左の一覧で会社を選ぶと、右に業種に合った営業文が出ます。<br>
     フォーム営業は「フォームを開く」で相手のページを開き、右のボタンで項目をコピーして貼り付けます。送ったら「フォームで送った」を押してください。
     同じ会社が2回入っていても、一覧で「重複」と出て、まとめたり送り直しを止めたりできます。
   </div>
@@ -251,7 +250,7 @@ body {
       <div class="panel-head"><div class="panel-title">送り主の情報（フォームに貼る自分の情報）</div></div>
       <div class="panel-body">
         <div class="note-box">フォーム営業で使うコピー用の情報です。このパソコンのブラウザにだけ保存されます。
-          メール営業の送信元は、サーバーに設定した Gmail です。</div>
+</div>
         <div class="row2">
           <div class="field"><label>氏名</label><input class="in me" id="me_name"></div>
           <div class="field"><label>フリガナ</label><input class="in me" id="me_kana"></div>
@@ -271,18 +270,6 @@ body {
 <datalist id="indList"></datalist>
 <div class="toast" id="toast"></div>
 
-<div class="modal-bg" id="mailModal">
-  <div class="modal">
-    <h3>このメールを送りますか？</h3>
-    <div style="font-size:13px;color:#555" id="mmTo"></div>
-    <div class="mail-pv" id="mmBody"></div>
-    <div class="hint">送ると最後に「送り主」と「不要ならご返信ください」の一文が自動で付きます。送った会社は「送信済」になります。</div>
-    <div class="btns" style="justify-content:flex-end">
-      <button class="btn" onclick="closeMail()">やめる</button>
-      <button class="btn primary" id="mmSend">送る</button>
-    </div>
-  </div>
-</div>
 
 <div id="auth"><div class="box">
   <div style="font-weight:700">管理者ログイン</div>
@@ -370,15 +357,6 @@ async function loadAll() {
   if (cur) cur = items.find(x => x.id === cur.id) || (cur.id ? null : cur);
   checked = new Set([...checked].filter(id => items.some(x => x.id === id)));
   renderFilters(); renderList(); renderTplList(); renderDetail();
-}
-async function loadMailState() {
-  try {
-    const d = await api('mail-status');
-    const el = $('mailState');
-    if (d.configured) { el.textContent = `メール送信：${d.user}（今日 ${d.today}/${d.limit} 通）`; el.classList.remove('off'); }
-    else { el.textContent = 'メール送信：未設定（フォーム営業は使えます）'; el.classList.add('off'); }
-    window._mail = d;
-  } catch(e) {}
 }
 
 function industries() { return [...new Set([...items.map(x => x.industry), ...tpls.map(t => t.industry)].filter(Boolean))].sort(); }
@@ -520,16 +498,19 @@ function renderDetail() {
         <button class="btn" onclick="markSent('フォーム')" ${blocked ? 'disabled' : ''}>フォームで送った</button>
       </div>
       <div class="copy-grid">
-        ${[['氏名', 'name'], ['フリガナ', 'kana'], ['会社名欄', 'company'], ['メール', 'email'], ['電話', 'tel'], ['URL', 'url']].map(([l, k]) => `<button class="btn" onclick="copyMe('${k}', this)">${l}</button>`).join('')}
+        ${[['会社名欄', 'company'], ['メール', 'email'], ['電話', 'tel']].map(([l, k]) => `<button class="btn" onclick="copyMe('${k}', this)">${l}</button>`).join('')}
         <button class="btn" onclick="copyField('dSub', this)">件名</button>
         <button class="btn" onclick="copyField('dBody', this)">本文</button>
       </div>
       <div class="hint">ボタンを押すとコピーされます。相手のフォームに貼り付けてください。自分の情報は「送り主の情報」タブで変えられます。</div>
       <div class="sec-title">メールで送る</div>
       <div class="btns">
-        <button class="btn primary" onclick="openMail()" ${!x.email || blocked ? 'disabled' : ''}>メールを送る</button>
+        <button class="btn primary" onclick="openMail('gmail')" ${!x.email || blocked ? 'disabled' : ''}>メール画面を開く（Gmail）</button>
+        <button class="btn small" onclick="openMail('app')" ${!x.email || blocked ? 'disabled' : ''}>メールアプリで開く</button>
+        <button class="btn" onclick="markSent('メール')" ${blocked ? 'disabled' : ''}>メールで送った</button>
         ${!x.email ? '<span class="hint">メールアドレスが入っていません</span>' : ''}
       </div>
+      <div class="hint">宛先・件名・本文が入った状態で Gmail の作成画面が開きます（最後に配信停止の一文が自動で付きます）。送ったら「メールで送った」を押してください。</div>
       <div class="sec-title">返事が来たら</div>
       <div class="btns">
         ${['返信あり', '商談', '保留', '営業お断り', '対象外'].map(s => `<button class="btn small" onclick="setStatus('${s}')">${s}</button>`).join('')}
@@ -596,28 +577,28 @@ async function copyText(t, btn) {
 function copyMe(k, btn) { const v = getMe()[k]; if (!v) { toast('「送り主の情報」タブで入れてください'); return; } copyText(v, btn); }
 function copyField(id, btn) { const el = $(id); if (!el || !el.value) { toast('営業文がありません'); return; } copyText(el.value, btn); }
 
-/* メール */
-function openMail() {
-  const x = formItem(), sub = $('dSub') ? $('dSub').value.trim() : '', body = $('dBody') ? $('dBody').value : '';
-  if (!window._mail || !window._mail.configured) { toast('メール送信がまだ設定されていません（Railway に GMAIL_USER と GMAIL_APP_PASSWORD）', 4500); return; }
-  if (!sub || !body.trim()) { toast('件名と本文を入れてください'); return; }
-  if (/\{\{/.test(sub + body)) { toast('差し込み（{{ }}）が残っています'); return; }
-  $('mmTo').innerHTML = `宛先：${esc(x.email)}（${esc(x.company)}）<br>件名：${esc(sub)}`;
-  $('mmBody').textContent = body;
-  $('mailModal').classList.add('on');
-  $('mmSend').onclick = () => sendMail(x, sub, body, false);
+/* メール：Gmail（またはメールアプリ）の作成画面を、宛先・件名・本文を入れた状態で開く */
+const OPTOUT = '※今後このようなご案内が不要でしたら、お手数ですがこのメールに「不要」とご返信ください。以後お送りいたしません。';
+function mailParts() {
+  const x = formItem(), sub = $('dSub') ? $('dSub').value.trim() : '', body = $('dBody') ? $('dBody').value.replace(/\s+$/, '') : '';
+  if (!x.email) { toast('メールアドレスが入っていません'); return null; }
+  if (!sub || !body) { toast('件名と本文を入れてください'); return null; }
+  if (/\{\{/.test(sub + body)) { toast('差し込み（{{ }}）が残っています'); return null; }
+  const dup = (dupOf[x.id] || []).filter(id => id !== x.id).map(id => items.find(y => y.id === id)).find(y => y && ['送信済', '返信あり', '商談'].includes(y.status));
+  if (dup && !confirm(`同じ会社（${dup.company}）にはもう送っています。それでもメール画面を開きますか？`)) return null;
+  // 営業メールには配信停止の案内を必ず付ける（特定電子メール法）
+  return { to: x.email, sub, body: /不要.*ご返信|配信停止/.test(body) ? body : body + '\n\n' + OPTOUT };
 }
-function closeMail() { $('mailModal').classList.remove('on'); }
-async function sendMail(x, subject, body, force) {
-  $('mmSend').disabled = true; $('mmSend').textContent = '送信中…';
-  try {
-    if (x.email !== cur.email) await api('save', { item: x });
-    const d = await api('send-mail', { id: x.id, to: x.email, subject, body, template: tplName(), force });
-    if (d.duplicate && confirm(d.error + '\nそれでも送りますか？')) return sendMail(x, subject, body, true);
-    if (!d.ok) { toast(d.error || '送れませんでした', 4500); return; }
-    closeMail(); toast(`送りました（今日 ${d.today}/${d.limit} 通）`);
-    await loadAll(); loadMailState(); nextTodo(true);
-  } finally { $('mmSend').disabled = false; $('mmSend').textContent = '送る'; }
+function openMail(kind) {
+  const m = mailParts(); if (!m) return;
+  const e = encodeURIComponent;
+  if (kind === 'app') { location.href = `mailto:${m.to}?subject=${e(m.sub)}&body=${e(m.body)}`; return; }
+  let url = `https://mail.google.com/mail/?view=cm&fs=1&to=${e(m.to)}&su=${e(m.sub)}&body=${e(m.body)}`;
+  if (url.length > 7500) {      // 長すぎると Gmail が開けないので、本文はコピーして貼ってもらう
+    url = `https://mail.google.com/mail/?view=cm&fs=1&to=${e(m.to)}&su=${e(m.sub)}`;
+    copyText(m.body); toast('本文が長いのでコピーしました。Gmail の本文欄に貼り付けてください', 6000);
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 /* まとめ・一括 */
@@ -868,12 +849,11 @@ drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMail(); });
 
 async function init() {
   loadMe();
   if (!token) { showAuth(); return; }
-  try { await loadAll(); loadMailState(); newTplIfEmpty(); } catch(e) {}
+  try { await loadAll(); newTplIfEmpty(); } catch(e) {}
 }
 function newTplIfEmpty() { if (!curTpl) { if (tpls.length) editTpl(tpls[0]); else newTpl(); } }
 init();
