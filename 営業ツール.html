@@ -134,6 +134,7 @@ body {
     <button class="tab" data-v="tpl">営業文テンプレート<span class="cnt" id="cntTpl"></span></button>
     <button class="tab" data-v="imp">CSVで取り込む</button>
     <button class="tab" data-v="me">送り主の情報</button>
+    <button class="tab" data-v="auto">自動送信<span class="cnt" id="cntAuto"></span></button>
   </div>
 
   <!-- ===== 営業先リスト ===== -->
@@ -266,6 +267,30 @@ body {
     </div>
   </div>
 </div>
+
+  <!-- ===== 自動送信 ===== -->
+  <div class="view" id="v-auto">
+    <div class="layout" style="grid-template-columns: 380px minmax(0,1fr)">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">メールの自動送信</div><span class="badge" id="autoBadge" style="margin-left:auto">—</span></div>
+        <div class="panel-body">
+          <div class="note-box">ONにすると、サーバーが営業先リストの「未着手」でメールのある会社に、業種に合うテンプレートで順番にメールを送ります。
+            送った会社は「送信済」になり、同じ会社に二度は送りません。「営業お断り」「対象外」には送りません。</div>
+          <div class="btns">
+            <button class="btn primary" id="autoOn" onclick="autoSet('on')">自動送信をONにする</button>
+            <button class="btn danger" id="autoOff" onclick="autoSet('off')">OFFにする</button>
+            <button class="btn small" onclick="autoRunOne()">今すぐ1通送る</button>
+          </div>
+          <div class="field" style="margin-top:12px"><label>いまの状態</label><div id="autoInfo" style="font-size:13px;line-height:1.9">読み込み中…</div></div>
+          <div class="hint">時間帯・上限・送り主の住所などは Railway の環境変数（EIGYO_AUTO_HOURS / EIGYO_AUTO_DAYS / EIGYO_AUTO_PER_DAY / EIGYO_AUTO_GAP_SEC / EIGYO_SENDER_ADDRESS）で変えられます。</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">送信の記録（新しい順）</div><button class="btn small" style="margin-left:auto" onclick="autoLoad()">更新</button></div>
+        <div id="autoLog" class="list"><div class="empty">読み込み中…</div></div>
+      </div>
+    </div>
+  </div>
 
 <datalist id="indList"></datalist>
 <div class="toast" id="toast"></div>
@@ -849,6 +874,45 @@ drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); };
 
+
+/* ---------- 自動送信 ---------- */
+let autoTimer = null;
+function autoFmt(t) { return t ? t.replace('T', ' ').slice(5, 16) : '—'; }
+function autoRender(st) {
+  const days = ['', '月', '火', '水', '木', '金', '土', '日'];
+  $('autoBadge').textContent = st.enabled ? (st.dry ? 'ON（テスト）' : 'ON') : 'OFF';
+  $('autoBadge').className = 'badge ' + (st.enabled ? 'st-送信済' : 'st-保留');
+  $('autoOn').disabled = st.enabled; $('autoOff').disabled = !st.enabled;
+  $('cntAuto').textContent = st.enabled ? 'ON' : '';
+  $('autoInfo').innerHTML = [
+    `送り主：${esc(st.sender)}${st.user ? '〈' + esc(st.user) + '〉' : '<span style="color:#b4261e">（Gmailが未設定）</span>'}`,
+    `送る時間：${days[st.window.days[0]]}〜${days[st.window.days[1]]}曜の ${st.window.hours[0]}時〜${st.window.hours[1]}時（${st.inWindow ? 'いま送れる時間です' : 'いまは時間外'}）`,
+    `ペース：1日 ${Math.min(st.perDay, st.limit)} 通まで・${Math.round(st.gapSec / 60)} 分おきに1通`,
+    `残りの候補（未着手でメールあり）：<b>${st.remaining == null ? '—' : st.remaining}</b> 件${st.remaining != null && st.remaining < st.lowWater ? ' <span style="color:#b4261e">← 少なくなっています。リストを補充してください</span>' : ''}`,
+    `最後に送った：${autoFmt(st.lastSentAt)}　／　最後の確認：${autoFmt(st.lastCheck)}`,
+    st.dry ? '<span style="color:#b4261e">テストモード（EIGYO_AUTO_DRY=1）：送ったことにして実際には送りません</span>' : ''
+  ].filter(Boolean).join('<br>');
+  const log = st.log || [];
+  $('autoLog').innerHTML = log.length ? log.map(l => `<div class="item" style="cursor:default;grid-template-columns:120px 56px minmax(0,1fr)"><span style="color:#888;font-size:12px">${esc(autoFmt(l.at))}</span><span class="badge ${l.kind === '送信' ? 'st-送信済' : (l.kind === 'エラー' || l.kind === '失敗') ? 'st-送信失敗' : 'st-保留'}">${esc(l.kind)}</span><span style="font-size:13px">${esc(l.text)}</span></div>`).join('') : '<div class="empty">まだ記録がありません</div>';
+}
+async function autoLoad(op = 'refresh') {
+  const d = await api('auto', { op });
+  if (!d.ok && !d.status) { toast(d.error || '読み込めませんでした'); return; }
+  autoRender(d.status);
+}
+async function autoSet(op) {
+  if (op === 'on' && !confirm('自動送信をONにします。営業先リストの「未着手」に順番にメールが送られます。よろしいですか？')) return;
+  const d = await api('auto', { op });
+  if (!d.ok) { toast(d.error || '変えられませんでした'); return; }
+  autoRender(d.status); toast(op === 'on' ? '自動送信をONにしました' : '自動送信をOFFにしました');
+}
+async function autoRunOne() {
+  if (!confirm('いま1通送ります。よろしいですか？')) return;
+  const d = await api('auto', { op: 'run-one' });
+  toast(d.message || (d.ok ? '送りました' : '送れませんでした'), 5000);
+  if (d.status) autoRender(d.status); loadAll();
+}
+document.querySelector('.tab[data-v="auto"]').addEventListener('click', () => { autoLoad(); clearInterval(autoTimer); autoTimer = setInterval(() => { if ($('v-auto').classList.contains('on')) autoLoad('status'); }, 30000); });
 
 async function init() {
   loadMe();

@@ -71,6 +71,19 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
 EIGYO_SENDER_NAME  = os.environ.get("EIGYO_SENDER_NAME", "野津 欧")
 EIGYO_DAILY_LIMIT  = int(os.environ.get("EIGYO_DAILY_LIMIT", "40"))   # 1日に送るメールの上限
 EIGYO_STATUSES = ["未着手", "送信済", "返信あり", "商談", "保留", "送信失敗", "営業お断り", "対象外"]
+# 送り主の情報（メール本文の末尾に付く。特定電子メール法：氏名・住所・配信停止の案内が必要）
+EIGYO_SENDER_TEL     = os.environ.get("EIGYO_SENDER_TEL", "")
+EIGYO_SENDER_URL     = os.environ.get("EIGYO_SENDER_URL", "")
+EIGYO_SENDER_ADDRESS = os.environ.get("EIGYO_SENDER_ADDRESS", "")
+# 自動送信（サーバーが営業リストの「未着手」を順に送る）
+EIGYO_AUTO_DEFAULT = os.environ.get("EIGYO_AUTO", "0") == "1"          # 起動時にONにするか
+EIGYO_AUTO_HOURS   = os.environ.get("EIGYO_AUTO_HOURS", "10-18")       # 送る時間帯（JST・開始-終了）
+EIGYO_AUTO_DAYS    = os.environ.get("EIGYO_AUTO_DAYS", "1-5")          # 送る曜日（1=月 … 7=日）
+EIGYO_AUTO_PER_DAY = int(os.environ.get("EIGYO_AUTO_PER_DAY", str(EIGYO_DAILY_LIMIT)))  # 自動で送る1日の上限
+EIGYO_AUTO_GAP_SEC = int(os.environ.get("EIGYO_AUTO_GAP_SEC", "480"))  # 送信と送信の間隔（秒）
+EIGYO_AUTO_DRY     = os.environ.get("EIGYO_AUTO_DRY", "0") == "1"      # 1なら送ったことにして実際は送らない（テスト用）
+EIGYO_LOW_WATER    = int(os.environ.get("EIGYO_LOW_WATER", "20"))      # 残りがこれを切ったら「リスト補充」を引き継ぎに書く
+EIGYO_AUTO_STATE_FILE = os.path.join(SCRIPT_DIR, "eigyo_auto.json")
 
 # 日次スケジュール保存ファイル（ローカルJSON）
 DAILY_SCHEDULE_FILE = os.path.join(SCRIPT_DIR, "daily_schedules.json")
@@ -566,11 +579,262 @@ def eigyo_mail_body(body):
     """特定電子メール法に沿って、送信者と配信停止の案内を必ず付ける"""
     body = (body or "").rstrip()
     tail = []
-    if GMAIL_USER and GMAIL_USER not in body:
-        tail.append(f"{EIGYO_SENDER_NAME}\nメール：{GMAIL_USER}")
+    # 本文（テンプレート）に無い送り主の情報だけを足す。住所は特定電子メール法で必須
+    sig = []
+    if EIGYO_SENDER_NAME and EIGYO_SENDER_NAME not in body: sig.append(EIGYO_SENDER_NAME)
+    if EIGYO_SENDER_ADDRESS and EIGYO_SENDER_ADDRESS not in body: sig.append(f"所在地：{EIGYO_SENDER_ADDRESS}")
+    if GMAIL_USER and GMAIL_USER not in body: sig.append(f"メール：{GMAIL_USER}")
+    if EIGYO_SENDER_TEL and EIGYO_SENDER_TEL not in body: sig.append(f"電話：{EIGYO_SENDER_TEL}")
+    if EIGYO_SENDER_URL and EIGYO_SENDER_URL not in body: sig.append(f"URL：{EIGYO_SENDER_URL}")
+    if sig:
+        tail.append("\n".join(sig))
     if "不要" not in body or "ご返信" not in body:
         tail.append("※" + EIGYO_OPTOUT)
     return body + ("\n\n――――――――――\n" + "\n".join(tail) if tail else "") + "\n"
+
+
+# ---------- 営業メール：差し込み・テンプレ選択・送信の共通部分 ----------
+def eigyo_fill(text, x):
+    """画面の fill() と同じ差し込み。{{個別の一文}} が空なら、その段落ごと省く"""
+    line = (x.get("line") or "").strip()
+    paras = []
+    for p in re.split(r"\n{2,}", text or ""):
+        if "{{個別の一文}}" in p:
+            if not line:
+                continue
+            p = p.replace("{{個別の一文}}", line)
+        paras.append(p)
+    text = "\n\n".join(paras)
+    return (text.replace("{{会社名}}", x.get("company") or "貴社")
+                .replace("{{担当者}}", x.get("person") or "ご担当者")
+                .replace("{{業種}}", x.get("industry") or "")
+                .replace("{{名前}}", EIGYO_SENDER_NAME).replace("{{メール}}", GMAIL_USER)
+                .replace("{{電話}}", EIGYO_SENDER_TEL).replace("{{URL}}", EIGYO_SENDER_URL))
+
+def eigyo_pick_template(tpls, x):
+    """画面の tplsFor() と同じ優先順位：業種が一致 ＞ 部分一致 ＞ 業種なし（共通）"""
+    on = [t for t in tpls if t.get("enabled")]
+    ind = (x.get("industry") or "").strip()
+    exact = [t for t in on if t["industry"] and ind and t["industry"] == ind]
+    loose = [t for t in on if t["industry"] and ind and t["industry"] != ind and (t["industry"] in ind or ind in t["industry"])]
+    common = [t for t in on if not t["industry"]]
+    cand = exact + loose + common
+    return cand[0] if cand else None
+
+def _eigyo_count_today():
+    today = eigyo_now_jst().date().isoformat()
+    pages, _ = notion_query_all(EIGYO_LIST_DB_ID, {"filter": {"and": [
+        {"property": "送信方法", "select": {"equals": "メール"}},
+        {"property": "送信日時", "date": {"on_or_after": today}}]}})
+    return len(pages or [])
+
+def eigyo_send_core(to, subject, body, pid="", template_name="", force=False, dry=False, cur=None, all_items=None):
+    """営業メールを1通送り、リストを送信済にする。戻り値 (ok, 結果dict または エラー文)"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.header import Header
+    from email.utils import formataddr, make_msgid
+    if not dry and not (GMAIL_USER and GMAIL_APP_PASSWORD):
+        return False, "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"
+    to = (to or "").strip(); subject = (subject or "").strip(); body = body or ""
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to):
+        return False, "宛先のメールアドレスが正しくありません"
+    if not subject or not body.strip():
+        return False, "件名と本文を入れてください"
+    if "{{" in subject + body:
+        return False, "差し込み（{{ }}）が残っています"
+    if pid and cur is None:
+        page, _ = notion_request("GET", f"/pages/{pid}")
+        cur = parse_eigyo_page(page) if page else None
+    if cur and cur["status"] in ("営業お断り", "対象外"):
+        return False, f"この会社は「{cur['status']}」なので送れません"
+    keys = set(eigyo_key({"email": to, **({k: cur[k] for k in ("site", "company")} if cur else {})}))
+    if all_items is None:
+        pages, _ = notion_query_all(EIGYO_LIST_DB_ID)
+        all_items = [y for y in map(parse_eigyo_page, pages or []) if y]
+    for y in all_items:
+        if y["id"] == pid or not (keys & set(eigyo_key(y))):
+            continue
+        if y["status"] in ("営業お断り", "対象外"):
+            return False, f"同じ会社の別の行（{y['company']}）が「{y['status']}」です"
+        if y["status"] in ("送信済", "返信あり", "商談") and not force:
+            when = (y["sentAt"] or "")[:10]
+            return False, f"同じ会社（{y['company']}）に {when or '以前'} 送信済みです"
+    if _eigyo_count_today() >= EIGYO_DAILY_LIMIT:
+        return False, f"今日はもう {EIGYO_DAILY_LIMIT} 通送っています（1日の上限）"
+    if not dry:
+        msg = MIMEText(eigyo_mail_body(body), "plain", "utf-8")
+        msg["Subject"] = Header(subject, "utf-8")
+        msg["From"] = formataddr((str(Header(EIGYO_SENDER_NAME, "utf-8")), GMAIL_USER))
+        msg["To"] = to
+        msg["Message-ID"] = make_msgid(domain=GMAIL_USER.split("@")[-1])
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+                smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                smtp.sendmail(GMAIL_USER, [to], msg.as_string())
+        except smtplib.SMTPAuthenticationError:
+            return False, "AUTH:Gmail にログインできません。アプリパスワードを確認してください"
+        except Exception as e:
+            return False, f"送信できませんでした（{e.__class__.__name__}）"
+    if pid and not dry:          # テスト送信ではリストを書き換えない
+        notion_request("PATCH", f"/pages/{pid}", {"properties": {
+            "ステータス": {"select": {"name": "送信済"}}, "送信方法": {"select": {"name": "メール"}},
+            "送信日時": {"date": {"start": eigyo_now_jst().isoformat(timespec="seconds")}},
+            "使ったテンプレート": {"rich_text": mail_rt_chunks(template_name or "")}}})
+    print(f"  📧 営業メール送信{'（テスト・未送信）' if dry else ''}: {to}")
+    return True, {"to": to, "subject": subject, "body": eigyo_mail_body(body), "dry": dry}
+
+# ---------- 自動送信（バックグラウンドのスレッドが営業リストを順に送る） ----------
+import threading as _threading
+EIGYO_AUTO = {"enabled": EIGYO_AUTO_DEFAULT, "log": [], "last_sent_at": None, "last_check": None,
+              "skipped": {}, "low_notified": "", "lock": _threading.Lock(), "remaining": None}
+
+def _eigyo_auto_load():
+    try:
+        with open(EIGYO_AUTO_STATE_FILE, encoding="utf-8") as f:
+            d = jsonlib.load(f)
+        EIGYO_AUTO["enabled"] = bool(d.get("enabled", EIGYO_AUTO["enabled"]))
+        EIGYO_AUTO["log"] = d.get("log", [])[-50:]
+        EIGYO_AUTO["last_sent_at"] = d.get("last_sent_at")
+        EIGYO_AUTO["low_notified"] = d.get("low_notified", "")
+    except Exception:
+        pass
+
+def _eigyo_auto_save():
+    try:
+        with open(EIGYO_AUTO_STATE_FILE, "w", encoding="utf-8") as f:
+            jsonlib.dump({"enabled": EIGYO_AUTO["enabled"], "log": EIGYO_AUTO["log"][-50:],
+                          "last_sent_at": EIGYO_AUTO["last_sent_at"], "low_notified": EIGYO_AUTO["low_notified"]}, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+def _eigyo_auto_log(kind, text):
+    EIGYO_AUTO["log"].append({"at": eigyo_now_jst().isoformat(timespec="seconds"), "kind": kind, "text": text})
+    EIGYO_AUTO["log"] = EIGYO_AUTO["log"][-50:]
+    print(f"  🤖 自動送信[{kind}] {text}")
+    _eigyo_auto_save()
+
+def _eigyo_parse_range(txt, lo, hi):
+    try:
+        a, b = [int(v) for v in str(txt).split("-")]
+        return max(lo, a), min(hi, b)
+    except Exception:
+        return lo, hi
+
+def eigyo_auto_in_window(now=None):
+    """送ってよい時間帯か（曜日と時刻）"""
+    now = now or eigyo_now_jst()
+    d1, d2 = _eigyo_parse_range(EIGYO_AUTO_DAYS, 1, 7)
+    h1, h2 = _eigyo_parse_range(EIGYO_AUTO_HOURS, 0, 24)
+    return d1 <= now.isoweekday() <= d2 and h1 <= now.hour < h2
+
+def eigyo_auto_candidates(all_items):
+    """未着手でメールがあり、同じ会社に送信済・お断りが無いものを古い順に"""
+    owner = {}
+    for x in all_items:
+        for k in eigyo_key(x):
+            owner.setdefault(k, []).append(x)
+    out = []
+    for x in sorted(all_items, key=lambda y: y.get("created", "")):
+        if x["status"] != "未着手" or not (x.get("email") or "").strip():
+            continue
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", x["email"].strip()):
+            continue
+        blocked = False
+        for k in eigyo_key(x):
+            for y in owner.get(k, []):
+                if y["id"] != x["id"] and y["status"] in ("送信済", "返信あり", "商談", "営業お断り", "対象外"):
+                    blocked = True
+        if not blocked and x["id"] not in EIGYO_AUTO["skipped"]:
+            out.append(x)
+    return out
+
+def eigyo_auto_send_one(reason="auto"):
+    """候補の先頭に1通送る。戻り値 (ok, メッセージ)"""
+    with EIGYO_AUTO["lock"]:
+        pages, err = notion_query_all(EIGYO_LIST_DB_ID)
+        if pages is None:
+            _eigyo_auto_log("エラー", f"リストが読めません: {err}"); return False, err
+        all_items = [y for y in map(parse_eigyo_page, pages) if y]
+        cands = eigyo_auto_candidates(all_items)
+        EIGYO_AUTO["remaining"] = len(cands)
+        tpages, _ = notion_query_all(EIGYO_TPL_DB_ID)
+        tpls = [t for t in map(parse_eigyo_tpl_page, tpages or []) if t]
+        if not cands:
+            return False, "送れる未着手（メールあり）がありません"
+        for x in cands:
+            t = eigyo_pick_template(tpls, x)
+            if not t:
+                EIGYO_AUTO["skipped"][x["id"]] = "テンプレなし"
+                _eigyo_auto_log("見送り", f"{x['company'] or x['email']}: 業種「{x['industry']}」に当たるテンプレートがありません"); continue
+            sub, body = eigyo_fill(t["subject"], x), eigyo_fill(t["body"], x)
+            ok, res = eigyo_send_core(x["email"], sub, body, pid=x["id"], template_name=t["name"],
+                                      dry=EIGYO_AUTO_DRY, cur=x, all_items=all_items)
+            if ok:
+                EIGYO_AUTO["last_sent_at"] = eigyo_now_jst().isoformat(timespec="seconds")
+                EIGYO_AUTO["remaining"] = len(cands) - 1
+                EIGYO_AUTO["last_mail"] = res
+                if EIGYO_AUTO_DRY:
+                    EIGYO_AUTO["skipped"][x["id"]] = "テスト済"      # テストでは同じ会社を繰り返さない
+                _eigyo_auto_log("送信" if not EIGYO_AUTO_DRY else "テスト", f"{x['company'] or ''} <{x['email']}> テンプレ「{t['name']}」（{reason}）")
+                eigyo_auto_check_low(len(cands) - 1)
+                return True, f"{x['company'] or x['email']} に{'送ったことにしました（テスト）' if EIGYO_AUTO_DRY else '送りました'}"
+            msg = str(res)
+            if msg.startswith("AUTH:"):
+                _eigyo_auto_log("エラー", msg[5:] + "。自動送信を止めました"); EIGYO_AUTO["enabled"] = False; _eigyo_auto_save()
+                return False, msg[5:]
+            if "上限" in msg:
+                return False, msg
+            # この会社は送れない → 送信失敗にして理由をメモに残し、次へ
+            memo = (x.get("memo") or "").rstrip()
+            notion_request("PATCH", f"/pages/{x['id']}", {"properties": {
+                "ステータス": {"select": {"name": "送信失敗"}},
+                "メモ": {"rich_text": mail_rt_chunks((f"自動送信エラー（{eigyo_now_jst().date().isoformat()}）：{msg}\n" + memo).strip())}}})
+            _eigyo_auto_log("失敗", f"{x['company'] or x['email']}: {msg}")
+            _time.sleep(0.4)
+        return False, "送れる候補がありませんでした"
+
+def eigyo_auto_check_low(remaining):
+    """残りが少なくなったら引き継ぎ（やること）に「営業リストの補充」を1日1回だけ書く"""
+    today = eigyo_now_jst().date().isoformat()
+    if remaining is None or remaining >= EIGYO_LOW_WATER or EIGYO_AUTO["low_notified"] == today:
+        return
+    props = {"内容": {"title": [{"text": {"content": f"営業リストの補充（メール営業の未着手が残り {remaining} 件）"}}]},
+             "種別": {"select": {"name": "todo"}}, "ステータス": {"select": {"name": "active"}},
+             "作成日": {"date": {"start": today}}, "日付": {"date": {"start": today}}}
+    r, _ = notion_request("POST", "/pages", {"parent": {"database_id": HANDOVER_DB_ID}, "properties": props})
+    if r:
+        EIGYO_AUTO["low_notified"] = today
+        _eigyo_auto_log("補充", f"残り {remaining} 件。引き継ぎに「営業リストの補充」を書きました")
+
+def eigyo_auto_status():
+    d1, d2 = _eigyo_parse_range(EIGYO_AUTO_DAYS, 1, 7); h1, h2 = _eigyo_parse_range(EIGYO_AUTO_HOURS, 0, 24)
+    return {"enabled": EIGYO_AUTO["enabled"], "dry": EIGYO_AUTO_DRY, "configured": bool(GMAIL_USER and GMAIL_APP_PASSWORD),
+            "user": GMAIL_USER, "sender": EIGYO_SENDER_NAME, "address": EIGYO_SENDER_ADDRESS,
+            "window": {"days": [d1, d2], "hours": [h1, h2]}, "inWindow": eigyo_auto_in_window(),
+            "perDay": EIGYO_AUTO_PER_DAY, "limit": EIGYO_DAILY_LIMIT, "gapSec": EIGYO_AUTO_GAP_SEC, "lowWater": EIGYO_LOW_WATER,
+            "lastSentAt": EIGYO_AUTO["last_sent_at"], "lastCheck": EIGYO_AUTO["last_check"],
+            "remaining": EIGYO_AUTO["remaining"], "log": EIGYO_AUTO["log"][-30:][::-1]}
+
+def eigyo_auto_loop():
+    _eigyo_auto_load()
+    _time.sleep(20)
+    while True:
+        try:
+            EIGYO_AUTO["last_check"] = eigyo_now_jst().isoformat(timespec="seconds")
+            if EIGYO_AUTO["enabled"] and eigyo_auto_in_window():
+                last = EIGYO_AUTO["last_sent_at"]
+                due = True
+                if last:
+                    try:
+                        due = (eigyo_now_jst() - datetime.datetime.fromisoformat(last)).total_seconds() >= EIGYO_AUTO_GAP_SEC
+                    except Exception:
+                        due = True
+                if due and _eigyo_count_today() < min(EIGYO_AUTO_PER_DAY, EIGYO_DAILY_LIMIT):
+                    eigyo_auto_send_one("自動")
+        except Exception as e:
+            _eigyo_auto_log("エラー", f"{e.__class__.__name__}: {e}")
+        _time.sleep(60)
 
 def notion_request(method, path, body=None):
     url = NOTION_API + path
@@ -1879,68 +2143,35 @@ class Handler(BaseHTTPRequestHandler):
                                  "today": self._eigyo_mail_count_today(), "limit": EIGYO_DAILY_LIMIT})
         elif act == "send-mail":
             self.handle_eigyo_send_mail(data)
+        elif act == "auto":
+            op = data.get("op") or "status"
+            if op == "on":
+                if not (GMAIL_USER and GMAIL_APP_PASSWORD) and not EIGYO_AUTO_DRY:
+                    self.send_json(400, {"ok": False, "error": "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"}); return
+                EIGYO_AUTO["enabled"] = True; _eigyo_auto_save(); _eigyo_auto_log("設定", "自動送信をONにしました")
+            elif op == "off":
+                EIGYO_AUTO["enabled"] = False; _eigyo_auto_save(); _eigyo_auto_log("設定", "自動送信をOFFにしました")
+            elif op == "run-one":
+                ok, msg = eigyo_auto_send_one("手動")
+                self.send_json(200, {"ok": ok, "message": msg, "status": eigyo_auto_status(),
+                                     "preview": EIGYO_AUTO.get("last_mail") if ok and EIGYO_AUTO_DRY else None}); return
+            elif op == "refresh":
+                pages, _ = notion_query_all(EIGYO_LIST_DB_ID)
+                EIGYO_AUTO["remaining"] = len(eigyo_auto_candidates([y for y in map(parse_eigyo_page, pages or []) if y]))
+            self.send_json(200, {"ok": True, "status": eigyo_auto_status()})
         else:
             self.send_json(404, {"ok": False, "error": "not found"})
 
     def _eigyo_mail_count_today(self):
-        today = eigyo_now_jst().date().isoformat()
-        pages, _ = notion_query_all(EIGYO_LIST_DB_ID, {"filter": {"and": [
-            {"property": "送信方法", "select": {"equals": "メール"}},
-            {"property": "送信日時", "date": {"on_or_after": today}}]}})
-        return len(pages or [])
+        return _eigyo_count_today()
 
     def handle_eigyo_send_mail(self, data):
-        """営業メールを1通送り、リストを送信済にする"""
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.header import Header
-        from email.utils import formataddr, make_msgid
-        if not (GMAIL_USER and GMAIL_APP_PASSWORD):
-            self.send_json(400, {"ok": False, "error": "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"}); return
-        to, subject, body, pid = (data.get("to") or "").strip(), (data.get("subject") or "").strip(), data.get("body") or "", data.get("id") or ""
-        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to):
-            self.send_json(400, {"ok": False, "error": "宛先のメールアドレスが正しくありません"}); return
-        if not subject or not body.strip():
-            self.send_json(400, {"ok": False, "error": "件名と本文を入れてください"}); return
-        if "{{" in subject + body:
-            self.send_json(400, {"ok": False, "error": "差し込み（{{ }}）が残っています"}); return
-        if pid:
-            page, _ = notion_request("GET", f"/pages/{pid}")
-            cur = parse_eigyo_page(page) if page else None
-            if cur and cur["status"] in ("営業お断り", "対象外"):
-                self.send_json(400, {"ok": False, "error": f"この会社は「{cur['status']}」なので送れません"}); return
-        keys = set(eigyo_key({"email": to, **({k: cur[k] for k in ("site", "company")} if pid and cur else {})}))
-        pages, _ = notion_query_all(EIGYO_LIST_DB_ID)
-        for y in map(parse_eigyo_page, pages or []):
-            if not y or y["id"] == pid or not (keys & set(eigyo_key(y))):
-                continue
-            if y["status"] in ("営業お断り", "対象外"):
-                self.send_json(400, {"ok": False, "error": f"同じ会社の別の行（{y['company']}）が「{y['status']}」です"}); return
-            if y["status"] in ("送信済", "返信あり", "商談") and not data.get("force"):
-                when = (y["sentAt"] or "")[:10]
-                self.send_json(400, {"ok": False, "duplicate": True,
-                                     "error": f"同じ会社（{y['company']}）に {when or '以前'} 送信済みです"}); return
-        if self._eigyo_mail_count_today() >= EIGYO_DAILY_LIMIT:
-            self.send_json(400, {"ok": False, "error": f"今日はもう {EIGYO_DAILY_LIMIT} 通送っています（1日の上限）"}); return
-        msg = MIMEText(eigyo_mail_body(body), "plain", "utf-8")
-        msg["Subject"] = Header(subject, "utf-8")
-        msg["From"] = formataddr((str(Header(EIGYO_SENDER_NAME, "utf-8")), GMAIL_USER))
-        msg["To"] = to
-        msg["Message-ID"] = make_msgid(domain=GMAIL_USER.split("@")[-1])
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
-                smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                smtp.sendmail(GMAIL_USER, [to], msg.as_string())
-        except smtplib.SMTPAuthenticationError:
-            self.send_json(400, {"ok": False, "error": "Gmail にログインできません。アプリパスワードを確認してください"}); return
-        except Exception as e:
-            self.send_json(502, {"ok": False, "error": f"送信できませんでした（{e.__class__.__name__}）"}); return
-        if pid:
-            notion_request("PATCH", f"/pages/{pid}", {"properties": {
-                "ステータス": {"select": {"name": "送信済"}}, "送信方法": {"select": {"name": "メール"}},
-                "送信日時": {"date": {"start": eigyo_now_jst().isoformat(timespec="seconds")}},
-                "使ったテンプレート": {"rich_text": mail_rt_chunks(data.get("template") or "")}}})
-        print(f"  📧 営業メール送信: {to}")
+        """営業メールを1通送り、リストを送信済にする（画面の「送る」ボタン用）"""
+        ok, res = eigyo_send_core(data.get("to"), data.get("subject"), data.get("body"), pid=data.get("id") or "",
+                                  template_name=data.get("template") or "", force=bool(data.get("force")))
+        if not ok:
+            msg = str(res).replace("AUTH:", "")
+            self.send_json(400, {"ok": False, "duplicate": "送信済みです" in msg, "error": msg}); return
         self.send_json(200, {"ok": True, "today": self._eigyo_mail_count_today(), "limit": EIGYO_DAILY_LIMIT})
 
     def handle_handover_add(self, data):
@@ -3288,6 +3519,8 @@ if __name__ == "__main__":
     print("   停止: Ctrl+C")
     print("=" * 55)
 
+    _threading.Thread(target=eigyo_auto_loop, daemon=True, name="eigyo-auto").start()
+    print(f"   🤖 営業メール自動送信: {'ON' if EIGYO_AUTO_DEFAULT else 'OFF'}（{EIGYO_AUTO_DAYS}曜 {EIGYO_AUTO_HOURS}時・1日{min(EIGYO_AUTO_PER_DAY, EIGYO_DAILY_LIMIT)}通まで・{EIGYO_AUTO_GAP_SEC}秒間隔{'・テスト送信' if EIGYO_AUTO_DRY else ''}）")
     server = HTTPServer(("0.0.0.0", PORT), Handler)
     try:
         server.serve_forever()
