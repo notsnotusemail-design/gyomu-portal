@@ -762,6 +762,8 @@ def eigyo_auto_send_one(reason="auto"):
         tpls = [t for t in map(parse_eigyo_tpl_page, tpages or []) if t]
         if not cands:
             return False, "送れる未着手（メールあり）がありません"
+        if not EIGYO_AUTO_DRY and not (GMAIL_USER and GMAIL_APP_PASSWORD):
+            return False, "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"
         for x in cands:
             t = eigyo_pick_template(tpls, x)
             if not t:
@@ -783,9 +785,11 @@ def eigyo_auto_send_one(reason="auto"):
             if msg.startswith("AUTH:"):
                 _eigyo_auto_log("エラー", msg[5:] + "。自動送信を止めました"); EIGYO_AUTO["enabled"] = False; _eigyo_auto_save()
                 return False, msg[5:]
-            if "上限" in msg:
+            # 会社のせいではない失敗（設定不足・1日の上限・送信エラー）は、会社に印を付けずにここで止める
+            if "GMAIL_USER" in msg or "上限" in msg or msg.startswith("送信できませんでした"):
+                _eigyo_auto_log("エラー", msg + "（この会社は未着手のまま。次回に再挑戦）")
                 return False, msg
-            # この会社は送れない → 送信失敗にして理由をメモに残し、次へ
+            # この会社は送れない（宛先が不正・同じ会社に送信済み など）→ 送信失敗にして理由をメモに残し、次へ
             memo = (x.get("memo") or "").rstrip()
             notion_request("PATCH", f"/pages/{x['id']}", {"properties": {
                 "ステータス": {"select": {"name": "送信失敗"}},
