@@ -68,6 +68,13 @@ EIGYO_TPL_DB_ID  = os.environ.get("EIGYO_TPL_DB_ID",  "3fd3288b-84b0-811e-b1e9-e
 # メール営業の送信元（Gmail）。アプリパスワードは Railway の環境変数にだけ置く
 GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
+# Gmail API（HTTPS）で送る設定。Railway は SMTP（465/587）への接続を止めるので、本番はこちらを使う
+GMAIL_OAUTH_CLIENT_ID     = os.environ.get("GMAIL_OAUTH_CLIENT_ID", "")
+GMAIL_OAUTH_CLIENT_SECRET = os.environ.get("GMAIL_OAUTH_CLIENT_SECRET", "")
+GMAIL_OAUTH_REFRESH_TOKEN = os.environ.get("GMAIL_OAUTH_REFRESH_TOKEN", "")
+def gmail_configured():
+    """メールを送れる設定が揃っているか（Gmail API か SMTP のどちらか）"""
+    return bool(GMAIL_USER and ((GMAIL_OAUTH_CLIENT_ID and GMAIL_OAUTH_CLIENT_SECRET and GMAIL_OAUTH_REFRESH_TOKEN) or GMAIL_APP_PASSWORD))
 EIGYO_SENDER_NAME  = os.environ.get("EIGYO_SENDER_NAME", "野津 欧")
 EIGYO_DAILY_LIMIT  = int(os.environ.get("EIGYO_DAILY_LIMIT", "40"))   # 1日に送るメールの上限
 EIGYO_STATUSES = ["未着手", "送信済", "返信あり", "商談", "保留", "送信失敗", "営業お断り", "対象外"]
@@ -628,14 +635,56 @@ def _eigyo_count_today():
         {"property": "送信日時", "date": {"on_or_after": today}}]}})
     return len(pages or [])
 
+_GMAIL_TOKEN = {"token": "", "exp": 0}
+
+def gmail_api_access_token():
+    """リフレッシュトークンからアクセストークンを得る（1時間キャッシュ）"""
+    import time as _t
+    if _GMAIL_TOKEN["token"] and _GMAIL_TOKEN["exp"] - 60 > _t.time():
+        return _GMAIL_TOKEN["token"]
+    from urllib.parse import urlencode
+    body = urlencode({"client_id": GMAIL_OAUTH_CLIENT_ID, "client_secret": GMAIL_OAUTH_CLIENT_SECRET,
+                      "refresh_token": GMAIL_OAUTH_REFRESH_TOKEN, "grant_type": "refresh_token"}).encode()
+    req = Request("https://oauth2.googleapis.com/token", data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    with urlopen(req, timeout=20) as res:
+        d = jsonlib.loads(res.read())
+    _GMAIL_TOKEN["token"] = d["access_token"]; _GMAIL_TOKEN["exp"] = _t.time() + int(d.get("expires_in", 3600))
+    return _GMAIL_TOKEN["token"]
+
+def gmail_api_send(msg):
+    """Gmail API（HTTPS）で MIME メッセージを送る。戻り値 (ok, エラー文)"""
+    import base64
+    try:
+        token = gmail_api_access_token()
+    except HTTPError as e:
+        err = e.read().decode(errors="replace")[:200]
+        return False, ("AUTH:Gmail API の認証に失敗しました（リフレッシュトークンが無効か期限切れ）。gmail_oauth_setup.py で取り直してください: " + err)
+    except Exception as e:
+        return False, f"送信できませんでした（トークン取得 {e.__class__.__name__}: {e}）"
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    req = Request("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                  data=jsonlib.dumps({"raw": raw}).encode(),
+                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(req, timeout=30) as res:
+            jsonlib.loads(res.read())
+        return True, ""
+    except HTTPError as e:
+        err = e.read().decode(errors="replace")[:200]
+        if e.code in (401, 403):
+            return False, "AUTH:Gmail API に拒否されました: " + err
+        return False, f"送信できませんでした（Gmail API {e.code}: {err}）"
+    except Exception as e:
+        return False, f"送信できませんでした（{e.__class__.__name__}: {e}）"
+
 def eigyo_send_core(to, subject, body, pid="", template_name="", force=False, dry=False, cur=None, all_items=None):
     """営業メールを1通送り、リストを送信済にする。戻り値 (ok, 結果dict または エラー文)"""
     import smtplib
     from email.mime.text import MIMEText
     from email.header import Header
     from email.utils import formataddr, make_msgid
-    if not dry and not (GMAIL_USER and GMAIL_APP_PASSWORD):
-        return False, "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"
+    if not dry and not gmail_configured():
+        return False, "Railway に GMAIL_USER と Gmail API の設定（GMAIL_OAUTH_CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN）を入れてください"
     to = (to or "").strip(); subject = (subject or "").strip(); body = body or ""
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to):
         return False, "宛先のメールアドレスが正しくありません"
@@ -668,14 +717,19 @@ def eigyo_send_core(to, subject, body, pid="", template_name="", force=False, dr
         msg["From"] = formataddr((str(Header(EIGYO_SENDER_NAME, "utf-8")), GMAIL_USER))
         msg["To"] = to
         msg["Message-ID"] = make_msgid(domain=GMAIL_USER.split("@")[-1])
-        try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
-                smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-                smtp.sendmail(GMAIL_USER, [to], msg.as_string())
-        except smtplib.SMTPAuthenticationError:
-            return False, "AUTH:Gmail にログインできません。アプリパスワードを確認してください"
-        except Exception as e:
-            return False, f"送信できませんでした（{e.__class__.__name__}）"
+        if GMAIL_OAUTH_REFRESH_TOKEN:
+            ok, err = gmail_api_send(msg)          # 本番（Railway）はこちら。SMTP は外向きに塞がれている
+            if not ok:
+                return False, err
+        else:
+            try:
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+                    smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                    smtp.sendmail(GMAIL_USER, [to], msg.as_string())
+            except smtplib.SMTPAuthenticationError:
+                return False, "AUTH:Gmail にログインできません。アプリパスワードを確認してください"
+            except Exception as e:
+                return False, f"送信できませんでした（SMTP {e.__class__.__name__}: {e}。Railway では SMTP が使えないので Gmail API の設定を入れてください）"
     if pid and not dry:          # テスト送信ではリストを書き換えない
         notion_request("PATCH", f"/pages/{pid}", {"properties": {
             "ステータス": {"select": {"name": "送信済"}}, "送信方法": {"select": {"name": "メール"}},
@@ -762,8 +816,8 @@ def eigyo_auto_send_one(reason="auto"):
         tpls = [t for t in map(parse_eigyo_tpl_page, tpages or []) if t]
         if not cands:
             return False, "送れる未着手（メールあり）がありません"
-        if not EIGYO_AUTO_DRY and not (GMAIL_USER and GMAIL_APP_PASSWORD):
-            return False, "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"
+        if not EIGYO_AUTO_DRY and not gmail_configured():
+            return False, "Railway に GMAIL_USER と Gmail API の設定（GMAIL_OAUTH_CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN）を入れてください"
         for x in cands:
             t = eigyo_pick_template(tpls, x)
             if not t:
@@ -786,7 +840,7 @@ def eigyo_auto_send_one(reason="auto"):
                 _eigyo_auto_log("エラー", msg[5:] + "。自動送信を止めました"); EIGYO_AUTO["enabled"] = False; _eigyo_auto_save()
                 return False, msg[5:]
             # 会社のせいではない失敗（設定不足・1日の上限・送信エラー）は、会社に印を付けずにここで止める
-            if "GMAIL_USER" in msg or "上限" in msg or msg.startswith("送信できませんでした"):
+            if "GMAIL_USER" in msg or "Gmail API の設定" in msg or "上限" in msg or msg.startswith("送信できませんでした"):
                 _eigyo_auto_log("エラー", msg + "（この会社は未着手のまま。次回に再挑戦）")
                 return False, msg
             # この会社は送れない（宛先が不正・同じ会社に送信済み など）→ 送信失敗にして理由をメモに残し、次へ
@@ -813,7 +867,8 @@ def eigyo_auto_check_low(remaining):
 
 def eigyo_auto_status():
     d1, d2 = _eigyo_parse_range(EIGYO_AUTO_DAYS, 1, 7); h1, h2 = _eigyo_parse_range(EIGYO_AUTO_HOURS, 0, 24)
-    return {"enabled": EIGYO_AUTO["enabled"], "dry": EIGYO_AUTO_DRY, "configured": bool(GMAIL_USER and GMAIL_APP_PASSWORD),
+    return {"enabled": EIGYO_AUTO["enabled"], "dry": EIGYO_AUTO_DRY, "configured": gmail_configured(),
+            "via": "Gmail API" if GMAIL_OAUTH_REFRESH_TOKEN else ("SMTP" if GMAIL_APP_PASSWORD else ""),
             "user": GMAIL_USER, "sender": EIGYO_SENDER_NAME, "address": EIGYO_SENDER_ADDRESS,
             "window": {"days": [d1, d2], "hours": [h1, h2]}, "inWindow": eigyo_auto_in_window(),
             "perDay": EIGYO_AUTO_PER_DAY, "limit": EIGYO_DAILY_LIMIT, "gapSec": EIGYO_AUTO_GAP_SEC, "lowWater": EIGYO_LOW_WATER,
@@ -2142,7 +2197,7 @@ class Handler(BaseHTTPRequestHandler):
             notion_request("PATCH", f"/pages/{data.get('id', '')}", {"archived": True})
             self.send_json(200, {"ok": True})
         elif act == "mail-status":
-            self.send_json(200, {"ok": True, "configured": bool(GMAIL_USER and GMAIL_APP_PASSWORD),
+            self.send_json(200, {"ok": True, "configured": gmail_configured(),
                                  "user": GMAIL_USER, "sender": EIGYO_SENDER_NAME,
                                  "today": self._eigyo_mail_count_today(), "limit": EIGYO_DAILY_LIMIT})
         elif act == "send-mail":
@@ -2150,8 +2205,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "auto":
             op = data.get("op") or "status"
             if op == "on":
-                if not (GMAIL_USER and GMAIL_APP_PASSWORD) and not EIGYO_AUTO_DRY:
-                    self.send_json(400, {"ok": False, "error": "Railway に GMAIL_USER と GMAIL_APP_PASSWORD を設定してください"}); return
+                if not gmail_configured() and not EIGYO_AUTO_DRY:
+                    self.send_json(400, {"ok": False, "error": "Railway に GMAIL_USER と Gmail API の設定を入れてください"}); return
                 EIGYO_AUTO["enabled"] = True; _eigyo_auto_save(); _eigyo_auto_log("設定", "自動送信をONにしました")
             elif op == "off":
                 EIGYO_AUTO["enabled"] = False; _eigyo_auto_save(); _eigyo_auto_log("設定", "自動送信をOFFにしました")
