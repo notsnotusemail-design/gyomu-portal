@@ -111,7 +111,9 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
 .summary-bar .val { font-weight: 700; font-size: 16px; color: #1a1a1a; }
 
 /* 請求日 */
-.inv-date-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.btn-date-reset { margin-left:8px; padding:5px 10px; font-size:12px; border:1.5px solid #e2e2e2; background:#fff; border-radius:7px; cursor:pointer; font-family:inherit; color:#555; }
+.btn-date-reset:hover { border-color:#bbb; color:#111; }
+.inv-date-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .inv-date-wrap label { font-size: 13px; font-weight: 500; color: #444; white-space: nowrap; }
 .inv-date-wrap input[type=date] {
   padding: 8px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px;
@@ -222,7 +224,11 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
     <div class="inv-date-wrap">
       <label>請求日</label>
       <input type="date" id="invoiceDate">
+      <label style="margin-left:10px">振込期日</label>
+      <input type="date" id="dueDate">
+      <button type="button" class="btn-date-reset" onclick="resetDates()" title="請求日＝今日、振込期日＝翌月末に戻す">今日・翌月末に戻す</button>
     </div>
+    <div style="font-size:12px;color:#888;margin:-6px 0 10px">はじめは「請求日＝今日」「振込期日＝翌月末」が入っています。どちらも自由に変えられ、請求書（xlsx）とNotionの記録にそのまま使われます。</div>
     <div class="action-row">
       <button class="btn-copy" id="btnCopy" onclick="copyForSheets()">
         📋 Googleスプレッドシート用にコピー
@@ -230,6 +236,7 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
       <button class="btn-notion" id="btnNotion" onclick="recordToNotion()">
         ✅ Notionの顧客情報に記録
       </button>
+      <a class="btn-copy" href="/請求書格納ツール.html" style="text-decoration:none;display:inline-block">📁 作った請求書を格納庫に入れる</a>
     </div>
     <div class="msg-box" id="msgBox"></div>
   </div>
@@ -293,11 +300,27 @@ function onPickerChange() {
   document.getElementById('pickM').value = d.getMonth() + 1;
 })();
 
-// 請求日: 当月末日
-(function initInvDate() {
-  // 請求日は発行した当日。以前は当月末日を既定にしていたため実際の発行日とずれていた。
+// 請求日＝今日、振込期日＝翌月末 を既定にする。どちらも画面で変えられる（2026-11-13）。
+function nextMonthEndStr(base) {
+  const d = base ? new Date(base + 'T00:00:00') : new Date();
+  return todayStr(new Date(d.getFullYear(), d.getMonth() + 2, 0));   // 翌月の0日 = 翌月末
+}
+function resetDates() {
   document.getElementById('invoiceDate').value = todayStr();
-})();
+  document.getElementById('dueDate').value = nextMonthEndStr();
+}
+function getDates() {
+  const inv = document.getElementById('invoiceDate').value || todayStr();
+  const due = document.getElementById('dueDate').value || nextMonthEndStr(inv);
+  return { inv, due };
+}
+resetDates();
+// 請求日を変えたら、振込期日をまだ触っていなければその翌月末に追従させる
+document.getElementById('invoiceDate').addEventListener('change', () => {
+  const due = document.getElementById('dueDate');
+  if (!due.dataset.touched) due.value = nextMonthEndStr(document.getElementById('invoiceDate').value);
+});
+document.getElementById('dueDate').addEventListener('input', () => { document.getElementById('dueDate').dataset.touched = '1'; });
 
 // ========== サーバー確認 ==========
 async function checkServer() {
@@ -539,10 +562,8 @@ function copyForSheets() {
 // ========== Notionに記録 ==========
 async function recordToNotion() {
   if (!invoiceData) return;
-  // 請求日は必ずボタンを押したその日にする。
-  // 画面を開いたまま日付をまたいでも、発行日とずれないようにここで押し直す。
-  const invDate = todayStr();
-  document.getElementById('invoiceDate').value = invDate;
+  // 請求日・振込期日は画面の値を使う（はじめは今日／翌月末。2026-11-13 変更）
+  const { inv: invDate, due: dueDate } = getDates();
 
   const inputs    = document.querySelectorAll('.amount-input');
   const amountMap = {};
@@ -563,7 +584,7 @@ async function recordToNotion() {
     const r = await fetch(SERVER + '/api/record-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records, invoiceDate: invDate }),
+      body: JSON.stringify({ records, invoiceDate: invDate, dueDate }),
     });
     const d = await r.json();
     const ok    = d.results.filter(x => x.ok);
@@ -582,10 +603,8 @@ async function recordToNotion() {
 // ========== 請求書xlsx生成 ==========
 async function generateInvoice(customerNo, customerName) {
   if (!invoiceData) return;
-  // 請求日は必ずボタンを押したその日にする。
-  // 画面を開いたまま日付をまたいでも、発行日とずれないようにここで押し直す。
-  const invDate = todayStr();
-  document.getElementById('invoiceDate').value = invDate;
+  // 請求日・振込期日は画面の値を使う（はじめは今日／翌月末。2026-11-13 変更）
+  const { inv: invDate, due: dueDate } = getDates();
 
   // 対象顧客のデータを取得
   const cust = invoiceData.customers.find(c => c.customer === customerNo);
@@ -607,6 +626,7 @@ async function generateInvoice(customerNo, customerName) {
         customerNo,
         customerName: customerName || '',
         invoiceDate:  invDate,
+        dueDate,
         month:        invoiceData.month,
         amount,
         cases:        cust.cases,

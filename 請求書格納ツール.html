@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求書格納ツール</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f2f2ef; color: #1a1a1a; min-height: 100vh; padding: 20px 16px 60px; }
+.container { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+.card { background: white; border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.card-title { font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px; }
+label.lbl { display: block; font-size: 12px; color: #666; margin-bottom: 6px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+select, input[type=number] { padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa; }
+select:focus, input:focus { outline: none; border-color: #4f6ef7; background: white; }
+select { min-width: 260px; }
+.month-picker { display: flex; align-items: center; gap: 4px; background: #fff; border: 1.5px solid #d1d5db; border-radius: 10px; padding: 4px 10px; }
+.month-picker input { border: none; background: transparent; font-size: 15px; font-weight: 700; text-align: center; padding: 4px 0; }
+.month-picker span { font-size: 13px; color: #6b7280; }
+.drop { border: 2px dashed #d1d5db; border-radius: 12px; padding: 26px 16px; text-align: center; color: #6b7280; font-size: 14px; cursor: pointer; transition: all .15s; background: #fafafa; }
+.drop.over { border-color: #4f6ef7; background: #eef2ff; color: #3730a3; }
+.drop input { display: none; }
+.files { margin-top: 10px; font-size: 13px; }
+.files li { list-style: none; padding: 6px 10px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.files .st { color: #6b7280; white-space: nowrap; }
+.files .ok { color: #15803d; font-weight: 600; }
+.files .ng { color: #b91c1c; font-weight: 600; }
+.btn { padding: 10px 22px; background: #1a1a1a; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn:hover:not(:disabled) { background: #333; }
+.btn:disabled { background: #aaa; cursor: default; }
+.btn.sub { background: white; color: #1a1a1a; border: 1.5px solid #e2e2e2; }
+.msg-box { display: none; padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; line-height: 1.6; white-space: pre-wrap; }
+.msg-box.show { display: block; }
+.msg-success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.msg-error   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.msg-info    { background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd; }
+.months { font-size: 13px; }
+.months .m { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+.months .m b { display: inline-block; min-width: 100px; }
+.months .m .f { color: #555; }
+.months .m.cur { background: #fffbeb; }
+.hint { font-size: 12px; color: #888; line-height: 1.6; margin-top: 8px; }
+a.link { color: #4f46e5; text-decoration: none; }
+#serverBar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; border: 1.5px solid #fde047; background: #fef9c3; margin-bottom: 14px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📁 請求書格納ツール</h1>
+<p class="subtitle">お客様と「何年何月分」を選んで、請求書（PDF・Excel・Word）を上げると、Notionの顧客情報 → 補足資料ページの「請求書格納庫」に、その月のトグルを自動で作って中に入れます。同じ月のトグルが既にあればその中に追加します。</p>
+
+<div id="serverBar">
+  <span id="serverDot" style="width:9px;height:9px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>
+  <span id="serverTxt">サーバー確認中...</span>
+</div>
+
+<div class="card">
+  <div class="card-title">格納先</div>
+  <div class="row">
+    <div>
+      <label class="lbl">お客様</label>
+      <select id="customer" onchange="loadOverview()"><option value="">読み込み中...</option></select>
+    </div>
+    <div>
+      <label class="lbl">何年何月分（はじめは今月）</label>
+      <div class="month-picker">
+        <input id="pickY" type="number" min="2020" max="2035" step="1" style="width:62px" onchange="normMonth();loadOverview()">
+        <span>年</span>
+        <input id="pickM" type="number" min="0" max="13" step="1" style="width:44px" onchange="normMonth();loadOverview()">
+        <span>月分</span>
+      </div>
+    </div>
+  </div>
+
+  <label class="lbl">請求書ファイル（PDF / Excel / Word。複数まとめても可・1つ20MBまで）</label>
+  <label class="drop" id="drop">
+    ここにファイルを置くか、クリックして選ぶ
+    <input type="file" id="file" multiple accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="pickFiles(this.files)">
+  </label>
+  <ul class="files" id="fileList"></ul>
+
+  <div class="row" style="margin-top:14px;margin-bottom:0">
+    <button class="btn" id="btnUp" onclick="upload()" disabled>📁 格納庫に入れる</button>
+    <button class="btn sub" onclick="clearFiles()">選び直す</button>
+  </div>
+  <div class="msg-box" id="msgBox"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">このお客様の格納庫 <span id="ovState" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+  <div id="overview" class="months"><div class="hint">お客様を選ぶと、今ある月ごとの中身が出ます。</div></div>
+</div>
+
+<div style="margin-top:14px;text-align:center;font-size:12px;color:#bbb"><a class="link" href="/">← ポータルへ戻る</a>　<a class="link" href="/請求書ツール.html">請求書発行ツール →</a></div>
+</div>
+
+<script>
+const SERVER = window.location.origin;
+let picked = [];   // File[]
+let customers = [];
+
+(function initMonth() {
+  const now = new Date();
+  document.getElementById('pickY').value = now.getFullYear();
+  document.getElementById('pickM').value = now.getMonth() + 1;
+})();
+function normMonth() {
+  const yEl = document.getElementById('pickY'), mEl = document.getElementById('pickM');
+  let y = parseInt(yEl.value) || new Date().getFullYear(), m = parseInt(mEl.value) || (new Date().getMonth() + 1);
+  if (m > 12) { m = 1; y = Math.min(2035, y + 1); }
+  if (m < 1)  { m = 12; y = Math.max(2020, y - 1); }
+  yEl.value = y; mEl.value = m;
+}
+function ym() { normMonth(); return { y: parseInt(document.getElementById('pickY').value), m: parseInt(document.getElementById('pickM').value) }; }
+
+async function checkServer() {
+  const bar = document.getElementById('serverBar'), dot = document.getElementById('serverDot'), txt = document.getElementById('serverTxt');
+  try {
+    const r = await fetch(SERVER + '/api/health', { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) throw new Error();
+    bar.style.background = '#f0fdf4'; bar.style.borderColor = '#86efac'; dot.style.background = '#22c55e'; txt.textContent = 'サーバー接続OK';
+    setTimeout(() => bar.style.display = 'none', 1500);
+  } catch (e) {
+    bar.style.background = '#fef2f2'; bar.style.borderColor = '#fca5a5'; dot.style.background = '#ef4444'; txt.textContent = 'サーバーに接続できません';
+  }
+}
+
+async function loadCustomers() {
+  const sel = document.getElementById('customer');
+  try {
+    const r = await fetch(SERVER + '/api/customers');
+    const d = await r.json();
+    customers = Array.isArray(d) ? d : (d.customers || []);
+    customers.sort((a, b) => String(a.no).localeCompare(String(b.no), 'ja', { numeric: true }));
+    sel.innerHTML = '<option value="">お客様を選ぶ</option>' + customers.map(c => `<option value="${c.no}">${c.no}　${c.name}</option>`).join('');
+    const last = localStorage.getItem('invstore.customer');
+    if (last && customers.some(c => c.no === last)) { sel.value = last; loadOverview(); }
+  } catch (e) {
+    sel.innerHTML = '<option value="">お客様一覧を取得できません</option>';
+  }
+}
+
+function pickFiles(fl) {
+  for (const f of fl) {
+    if (!/\.(pdf|xlsx|xls|docx|doc)$/i.test(f.name)) { showMsg('⚠️ ' + f.name + ' は PDF / Excel / Word ではないので外しました', 'info'); continue; }
+    if (f.size > 20 * 1024 * 1024) { showMsg('⚠️ ' + f.name + ' は20MBを超えるので外しました', 'info'); continue; }
+    if (!picked.some(p => p.name === f.name && p.size === f.size)) picked.push(f);
+  }
+  renderFiles();
+}
+function clearFiles() { picked = []; document.getElementById('file').value = ''; renderFiles(); hideMsg(); }
+function renderFiles(status) {
+  const ul = document.getElementById('fileList');
+  ul.innerHTML = picked.map((f, i) => {
+    const st = status && status[i] ? status[i] : { cls: 'st', text: (f.size / 1024).toFixed(0) + ' KB' };
+    return `<li><span>${f.name}</span><span class="${st.cls}">${st.text}</span></li>`;
+  }).join('');
+  document.getElementById('btnUp').disabled = picked.length === 0;
+}
+
+async function upload() {
+  const cno = document.getElementById('customer').value;
+  if (!cno) { showMsg('お客様を選んでください', 'error'); return; }
+  if (!picked.length) return;
+  const { y, m } = ym();
+  const cust = customers.find(c => c.no === cno) || {};
+  const btn = document.getElementById('btnUp');
+  btn.disabled = true; btn.textContent = '⏳ 格納中...';
+  const status = picked.map(() => ({ cls: 'st', text: '待機' }));
+  let okN = 0, pageUrl = '', pageCreated = false, toggleCreated = false;
+  for (let i = 0; i < picked.length; i++) {
+    status[i] = { cls: 'st', text: '⏳ 送信中' }; renderFiles(status);
+    const fd = new FormData();
+    fd.append('customerNo', cno); fd.append('customerName', cust.name || '');
+    fd.append('year', y); fd.append('month', m); fd.append('file', picked[i], picked[i].name);
+    try {
+      const r = await fetch(SERVER + '/api/invoice-store', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.ok) { okN++; status[i] = { cls: 'ok', text: '✅ ' + d.toggle + ' に格納' }; pageUrl = d.pageUrl || pageUrl; pageCreated = pageCreated || d.pageCreated; toggleCreated = toggleCreated || d.toggleCreated; }
+      else status[i] = { cls: 'ng', text: '❌ ' + (d.error || '失敗') };
+    } catch (e) { status[i] = { cls: 'ng', text: '❌ ' + e.message }; }
+    renderFiles(status);
+  }
+  btn.textContent = '📁 格納庫に入れる'; btn.disabled = picked.length === 0;
+  let msg = `${okN} / ${picked.length} 件を ${cno} ${cust.name || ''} の ${y}年${m}月 に格納しました。`;
+  if (pageCreated) msg += '\n（請求書格納庫ページが無かったので新しく作りました）';
+  else if (toggleCreated) msg += '\n（この月のトグルを新しく作りました）';
+  if (pageUrl) msg += `\nNotionで開く: ${pageUrl}`;
+  showMsg(msg, okN === picked.length ? 'success' : 'error');
+  if (okN) { picked = picked.filter((_, i) => status[i].cls !== 'ok'); setTimeout(() => { renderFiles(); }, 2500); }
+  loadOverview();
+}
+
+async function loadOverview() {
+  const cno = document.getElementById('customer').value;
+  const box = document.getElementById('overview'), st = document.getElementById('ovState');
+  if (cno) localStorage.setItem('invstore.customer', cno);
+  if (!cno) { box.innerHTML = '<div class="hint">お客様を選ぶと、今ある月ごとの中身が出ます。</div>'; st.textContent = ''; return; }
+  st.textContent = '読み込み中...';
+  try {
+    const r = await fetch(SERVER + '/api/invoice-store/list?customerNo=' + encodeURIComponent(cno));
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || '取得失敗');
+    st.textContent = '';
+    if (!d.found) { box.innerHTML = '<div class="hint">まだ請求書格納庫ページがありません。最初の格納のときに自動で作ります。</div>'; return; }
+    const { y, m } = ym();
+    const rows = d.months.slice().sort((a, b) => ((b.ym ? b.ym[0]*100+b.ym[1] : 0) - (a.ym ? a.ym[0]*100+a.ym[1] : 0)));
+    box.innerHTML = (d.pageUrl ? `<div class="hint" style="margin:0 0 8px"><a class="link" href="${d.pageUrl}" target="_blank">Notionで格納庫を開く ↗</a></div>` : '') +
+      (rows.length ? rows.map(r => `<div class="m ${r.ym && r.ym[0]===y && r.ym[1]===m ? 'cur' : ''}"><b>${r.title}</b> <span class="f">${r.files.length ? r.files.join('　/　') : '（空）'}</span></div>`).join('')
+                   : '<div class="hint">まだ月のトグルがありません。</div>');
+  } catch (e) { st.textContent = ''; box.innerHTML = '<div class="hint">取得できませんでした: ' + e.message + '</div>'; }
+}
+
+function showMsg(t, cls) { const b = document.getElementById('msgBox'); b.textContent = t; b.className = 'msg-box show msg-' + cls; }
+function hideMsg() { document.getElementById('msgBox').className = 'msg-box'; }
+
+(function initDrop() {
+  const d = document.getElementById('drop');
+  ['dragenter', 'dragover'].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove('over'); }));
+  d.addEventListener('drop', e => pickFiles(e.dataTransfer.files));
+})();
+checkServer(); loadCustomers();
+</script>
+</body>
+</html>

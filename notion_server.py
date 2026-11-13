@@ -913,6 +913,163 @@ def notion_request(method, path, body=None):
         print(f"  ❌ Notion例外: {e}")
         return None, f"例外: {e}"
 
+
+def jp_date_text(text):
+    """'2026-11-30' / '2026/11/30' / '2026年11月30日' → '2026年11月30日'。読めなければ ''"""
+    m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', str(text or ''))
+    return f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日" if m else ""
+
+# ========== 請求書格納庫（お客様ごとの子ページ・月トグル・ファイル）==========
+# 格納庫ページ = 顧客DBの行ページの子ページ「<No>_<名>様請求書格納庫」
+# 月トグル = 「2026年11月」（手で作られた「2026年_11月」「202611」も同じ月として扱う）
+# 中身 = pdf / file ブロック（Notion の File Upload API で上げる・20MBまで）
+
+def month_toggle_title(y, m):
+    return f"{int(y)}年{int(m)}月"
+
+def parse_month_title(text):
+    """トグル名から (年, 月) を取り出す。'2026年11月'/'2026年_11月'/'202611'/'2026/11'/'2026-11' に対応"""
+    t = (text or "").strip()
+    m = re.match(r'^(\d{4})\s*[年/\-_]\s*_?\s*(\d{1,2})\s*月?', t)
+    if m: return int(m.group(1)), int(m.group(2))
+    m = re.match(r'^(\d{4})(\d{2})$', t)
+    if m: return int(m.group(1)), int(m.group(2))
+    return None
+
+def notion_children_all(block_id):
+    out = []; cursor = None
+    while True:
+        q = f"/blocks/{block_id}/children?page_size=100" + (f"&start_cursor={cursor}" if cursor else "")
+        res, err = notion_request("GET", q)
+        if not res: return out, err
+        out.extend(res.get("results", []))
+        if not res.get("has_more"): return out, None
+        cursor = res.get("next_cursor")
+
+def find_customer_page_id(customer_no):
+    body = {"filter": {"property": "お客様No.", "rich_text": {"equals": customer_no}}, "page_size": 1}
+    res, _ = notion_request("POST", f"/databases/{CUSTOMER_DB_ID}/query", body)
+    if res and res.get("results"):
+        pg = res["results"][0]
+        props = pg.get("properties", {})
+        name = "".join(t.get("plain_text", "") for t in (props.get("クライアント名", {}).get("rich_text") or [])).strip()
+        return pg["id"], name
+    return None, ""
+
+def find_storage_page(customer_no):
+    """お客様Noの請求書格納庫ページ（検索）。見つからなければ None"""
+    key = f"invoice_{customer_no}"
+    if key in CUSTOMER_PAGES: return CUSTOMER_PAGES[key]
+    res, _ = notion_request("POST", "/search", {"query": f"{customer_no}_", "filter": {"value": "page", "property": "object"}, "page_size": 20})
+    for page in (res or {}).get("results", []):
+        rt = (page.get("properties", {}).get("title", {}).get("title") or [])
+        title = rt[0].get("plain_text", "") if rt else ""
+        if title.startswith(f"{customer_no}_") and "請求書格納庫" in title:
+            CUSTOMER_PAGES[key] = page["id"]; return page["id"]
+    return None
+
+def ensure_storage_page(customer_no, customer_name=""):
+    """格納庫ページを探し、無ければ顧客ページの子として作る。(page_id, url, created, err)"""
+    pid = find_storage_page(customer_no)
+    if pid:
+        pg, _ = notion_request("GET", f"/pages/{pid}")
+        return pid, (pg or {}).get("url", ""), False, None
+    cust_pid, name = find_customer_page_id(customer_no)
+    if not cust_pid:
+        return None, "", False, f"お客様No. {customer_no} が顧客DBに見つかりません"
+    title = f"{customer_no}_{customer_name or name}様請求書格納庫"
+    res, err = notion_request("POST", "/pages", {"parent": {"page_id": cust_pid},
+                                                 "properties": {"title": {"title": [{"text": {"content": title}}]}}})
+    if not res: return None, "", False, err
+    CUSTOMER_PAGES[f"invoice_{customer_no}"] = res["id"]
+    print(f"  ✅ 格納庫ページ作成: {title}")
+    return res["id"], res.get("url", ""), True, None
+
+def ensure_month_toggle(page_id, y, m):
+    """格納庫ページの中の「YYYY年M月」トグルを返す。無ければ作る。(block_id, created, err)"""
+    blocks, err = notion_children_all(page_id)
+    if err: return None, False, err
+    for b in blocks:
+        if b.get("type") != "toggle": continue
+        title = "".join(t.get("plain_text", "") for t in b["toggle"].get("rich_text", []))
+        if parse_month_title(title) == (int(y), int(m)):
+            return b["id"], False, None
+    res, err = notion_request("PATCH", f"/blocks/{page_id}/children", {"children": [
+        {"object": "block", "type": "toggle",
+         "toggle": {"rich_text": [{"type": "text", "text": {"content": month_toggle_title(y, m)}}]}}]})
+    if not res: return None, False, err
+    return res["results"][0]["id"], True, None
+
+FILE_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".csv": "text/csv", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+}
+
+def notion_upload_file(filename, data):
+    """Notion File Upload API（single_part・20MBまで）。(file_upload_id, err)"""
+    ext = os.path.splitext(filename)[1].lower()
+    ctype = FILE_CONTENT_TYPES.get(ext)
+    if not ctype: return None, f"この種類のファイルは格納できません: {ext or '拡張子なし'}"
+    if len(data) > 20 * 1024 * 1024: return None, "20MBを超えるファイルは格納できません"
+    res, err = notion_request("POST", "/file_uploads", {"mode": "single_part", "filename": filename, "content_type": ctype})
+    if not res: return None, err
+    fid = res["id"]
+    boundary = "----NotionUpload" + uuid.uuid4().hex
+    safe_name = filename.replace('"', "'")
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\r\n"
+            f"Content-Type: {ctype}\r\n\r\n").encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode()
+    req = Request(f"{NOTION_API}/file_uploads/{fid}/send", data=body, method="POST", headers={
+        "Authorization": f"Bearer {NOTION_TOKEN}", "Notion-Version": HEADERS["Notion-Version"],
+        "Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        with urlopen(req, timeout=120) as r:
+            up = jsonlib.loads(r.read())
+    except HTTPError as e:
+        return None, f"Notion upload {e.code}: {e.read().decode(errors='replace')[:200]}"
+    except Exception as e:
+        return None, f"アップロード例外: {e}"
+    if up.get("status") != "uploaded": return None, f"アップロード未完了: {up.get('status')}"
+    return fid, None
+
+def file_block_for_upload(filename, upload_id):
+    if filename.lower().endswith(".pdf"):
+        return {"object": "block", "type": "pdf", "pdf": {"type": "file_upload", "file_upload": {"id": upload_id}}}
+    return {"object": "block", "type": "file", "file": {"type": "file_upload", "file_upload": {"id": upload_id}, "name": filename}}
+
+def storage_overview(customer_no):
+    """格納庫の月トグルと中のファイル名を一覧で返す（画面表示用）"""
+    pid = find_storage_page(customer_no)
+    if not pid: return {"ok": True, "found": False, "months": []}
+    pg, _ = notion_request("GET", f"/pages/{pid}")
+    blocks, err = notion_children_all(pid)
+    months = []
+    for b in blocks:
+        if b.get("type") != "toggle": continue
+        title = "".join(t.get("plain_text", "") for t in b["toggle"].get("rich_text", []))
+        files = []
+        if b.get("has_children"):
+            kids, _ = notion_children_all(b["id"])
+            for k in kids:
+                t = k.get("type")
+                if t in ("pdf", "file", "image"):
+                    body = k[t]; name = body.get("name") or ""
+                    if not name:
+                        url = (body.get("file") or body.get("external") or {}).get("url", "")
+                        name = unquote(url.split("?")[0].rsplit("/", 1)[-1]) if url else t
+                    files.append(name)
+                elif t == "paragraph":
+                    txt = "".join(x.get("plain_text", "") for x in body_rt(k)).strip()
+                    if txt: files.append("📝 " + txt[:60])
+        months.append({"title": title, "ym": parse_month_title(title), "files": files, "blockId": b["id"]})
+    return {"ok": True, "found": True, "pageUrl": (pg or {}).get("url", ""), "months": months}
+
+def body_rt(block):
+    return block.get(block.get("type"), {}).get("rich_text", [])
+
 # ========== 請求書 Notion ヘルパー ==========
 
 def parse_notion_invoice_page(page):
@@ -1192,6 +1349,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("案件履歴ツール.html")
         elif path == "/請求書管理ツール.html":
             self.send_html("請求書管理ツール.html")
+        elif path == "/請求書格納ツール.html":
+            self.send_html("請求書格納ツール.html")
         elif path == "/ワーカー請求書.html":
             self.send_html("ワーカー請求書.html")
         elif path == "/メール定型文ツール.html":
@@ -1203,6 +1362,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/invoices":
             invoices = get_invoices_from_notion()
             self.send_json(200, invoices)
+        elif path == "/api/invoice-store/list":
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            cno = (qs.get("customerNo") or [""])[0].strip()
+            if not cno: self.send_json(400, {"ok": False, "error": "customerNo がありません"}); return
+            self.send_json(200, storage_overview(cno))
         elif path.startswith("/api/invoice-pdf/"):
             inv_id = path.split("/")[-1]
             pdf_path = os.path.join(INVOICE_PDF_DIR, inv_id + ".pdf")
@@ -1320,6 +1485,8 @@ class Handler(BaseHTTPRequestHandler):
         if "multipart/form-data" in content_type:
             if path == "/api/submit-invoice":
                 self.handle_submit_invoice(raw, content_type)
+            elif path == "/api/invoice-store":
+                self.handle_invoice_store(raw, content_type)
             else:
                 self.send_json(404, {"error": "Not found"})
             return
@@ -1670,6 +1837,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             invoice_str = invoice_date
             due_str = ''
+        # 振込期日は画面で変えられる（2026-11-13）。空なら上の「翌月末」のまま
+        dmy = parse_date(data.get('dueDate', ''))
+        if dmy:
+            due_str = f'{dmy[0]}/{dmy[1]}/{dmy[2]}'
 
         # ---- 雛形を読み込む ----
         tpl = os.path.join(SCRIPT_DIR, self.INV_TEMPLATE)
@@ -2745,6 +2916,7 @@ class Handler(BaseHTTPRequestHandler):
             nm = mo + 1 if mo < 12 else 1
             ny = y if mo < 12 else y + 1
             due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
+        due_date = jp_date_text(data.get("dueDate", "")) or due_date   # 画面で変えた振込期日を優先（2026-11-13）
 
         content_parts = [case_label(c) for c in cases if case_label(c)]
         content_str = "、".join(content_parts) or "動画編集案件の件"
@@ -2862,6 +3034,7 @@ end timeout
             nm = mo + 1 if mo < 12 else 1
             ny = y if mo < 12 else y + 1
             due_date = f"{ny}年{nm}月{calendar.monthrange(ny, nm)[1]}日"
+        due_date = jp_date_text(data.get("dueDate", "")) or due_date   # 画面で変えた振込期日を優先（2026-11-13）
 
         content_parts = [case_label(c) for c in cases if case_label(c)]
         content_str = "、".join(content_parts) or "動画編集案件の件"
@@ -3501,6 +3674,37 @@ end timeout
                     return pid
         return None
 
+    # ── 請求書の格納（PDF/Excel/Word → 格納庫の月トグルへ）──────────────
+    def handle_invoice_store(self, raw_body, content_type):
+        try:
+            fields, files = parse_multipart(raw_body, content_type)
+        except Exception as e:
+            self.send_json(400, {"ok": False, "error": f"パースエラー: {e}"}); return
+        cno   = (fields.get("customerNo") or "").strip()
+        cname = (fields.get("customerName") or "").strip()
+        try:
+            y = int(fields.get("year") or 0); m = int(fields.get("month") or 0)
+        except ValueError:
+            y = m = 0
+        if not cno:            self.send_json(400, {"ok": False, "error": "お客様Noがありません"}); return
+        if not (2000 <= y <= 2100 and 1 <= m <= 12): self.send_json(400, {"ok": False, "error": "年月が正しくありません"}); return
+        if "file" not in files: self.send_json(400, {"ok": False, "error": "ファイルがありません"}); return
+        filename, data = files["file"]
+        filename = os.path.basename(filename or "").strip() or "請求書"
+        if not data:            self.send_json(400, {"ok": False, "error": "ファイルが空です"}); return
+
+        page_id, page_url, page_created, err = ensure_storage_page(cno, cname)
+        if not page_id: self.send_json(400, {"ok": False, "error": err}); return
+        toggle_id, toggle_created, err = ensure_month_toggle(page_id, y, m)
+        if not toggle_id: self.send_json(400, {"ok": False, "error": f"月トグルを用意できません: {err}"}); return
+        upload_id, err = notion_upload_file(filename, data)
+        if not upload_id: self.send_json(400, {"ok": False, "error": err}); return
+        res, err = notion_request("PATCH", f"/blocks/{toggle_id}/children", {"children": [file_block_for_upload(filename, upload_id)]})
+        if not res: self.send_json(400, {"ok": False, "error": f"トグルへの追加に失敗: {err}"}); return
+        print(f"  📁 格納: {cno} {month_toggle_title(y, m)} ← {filename} ({len(data)//1024}KB)")
+        self.send_json(200, {"ok": True, "customerNo": cno, "toggle": month_toggle_title(y, m), "filename": filename,
+                             "pageUrl": page_url, "pageCreated": page_created, "toggleCreated": toggle_created})
+
     def handle_record_invoice(self, data):
         """請求記録をお客様の請求書格納庫ページにトグルで追記"""
         records  = data.get("records", [])
@@ -3512,37 +3716,30 @@ end timeout
             month   = rec.get("month", "")   # 例: "2026年3月"
             numbers = rec.get("caseNumbers", [])
 
-            # "2026年3月" → "2026年_3月" (格納庫の命名規則に合わせる)
-            toggle_title = month.replace("年", "年_") if "年" in month else month
+            # トグル名は格納ツールと同じ「2026年3月」。同じ月のトグルが既にあればその中に追記する（2026-11-13）
+            ym = parse_month_title(month)
+            toggle_title = month_toggle_title(*ym) if ym else month
 
-            page_id = self.find_invoice_storage_page(cno)
+            page_id, _url, _c, perr = ensure_storage_page(cno)
             if not page_id:
-                print(f"  ⚠️  請求書格納庫未発見: {cno}様")
+                print(f"  ⚠️  請求書格納庫未発見: {cno}様 {perr}")
                 results.append({"customerNo": cno, "ok": False,
-                                 "error": f"{cno}様_請求書格納庫 ページが見つかりません"})
+                                 "error": f"{cno}様の請求書格納庫を用意できません: {perr}"})
                 continue
 
             detail_text = (f"請求日: {inv_date}　"
                            f"金額: ¥{int(amount):,}　"
                            f"案件 {len(numbers)}件: {', '.join(numbers)}")
-            block = {
-                "children": [{
-                    "object": "block",
-                    "type": "toggle",
-                    "toggle": {
-                        "rich_text": [{"type": "text", "text": {"content": toggle_title}}],
-                        "children": [{
-                            "object": "block",
-                            "type": "paragraph",
-                            "paragraph": {
-                                "rich_text": [{"type": "text",
-                                               "text": {"content": detail_text}}]
-                            }
-                        }]
-                    }
-                }]
-            }
-            res, err = notion_request("PATCH", f"/blocks/{page_id}/children", block)
+            if ym:
+                toggle_id, _tc, terr = ensure_month_toggle(page_id, *ym)
+            else:
+                toggle_id, terr = None, "請求月が読めません"
+            if toggle_id:
+                res, err = notion_request("PATCH", f"/blocks/{toggle_id}/children", {"children": [{
+                    "object": "block", "type": "paragraph",
+                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": detail_text}}]}}]})
+            else:
+                res, err = None, terr
             if res:
                 print(f"  ✅ 格納庫に追記: {cno} → {toggle_title} {detail_text[:50]}")
                 results.append({"customerNo": cno, "ok": True, "page": page_id})
