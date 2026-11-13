@@ -148,6 +148,57 @@ input[type=checkbox] {
   transition: all 0.15s; color: #555;
 }
 .refresh-btn:hover { background: #f5f5f5; }
+
+/* ===== 顧客登録モーダル（顧客登録ツールを統合・2026-11-13） ===== */
+.rg-overlay { display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); align-items: flex-start; justify-content: center; padding: 20px 12px 40px; overflow-y: auto; }
+.rg-overlay.open { display: flex; }
+.rg-modal { background: #f2f2ef; border-radius: 16px; width: 100%; max-width: 660px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: rg-in 0.18s ease; }
+@keyframes rg-in { from { opacity:0; transform: scale(0.96) translateY(-8px); } to { opacity:1; transform: none; } }
+.rg-hdr { display: flex; align-items: center; padding: 16px 20px 14px; border-bottom: 1px solid #e0e0e0; }
+.rg-title { font-size: 16px; font-weight: 800; flex: 1; color: #1a1a1a; }
+.rg-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: #e5e7eb; cursor: pointer; font-size: 16px; color: #374151; }
+.rg-close:hover { background: #d1d5db; }
+.rg-body { padding: 16px 20px 24px; }
+.rg-card { background: white; border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
+.rg-card-title { font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
+.rg-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.rg-group:last-child { margin-bottom: 0; }
+.rg-label { font-size: 13px; font-weight: 500; color: #444; }
+.rg-label .req { color: #e53; } .rg-label .sub { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 4px; }
+.rg-body input[type=text], .rg-body textarea { padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa; width: 100%; }
+.rg-body input[type=text]:focus, .rg-body textarea:focus { outline: none; border-color: #4f6ef7; background: white; }
+.rg-body textarea { resize: vertical; min-height: 70px; }
+.rg-no-area { background: #f8f8ff; border: 1.5px solid #e0e4ff; border-radius: 10px; padding: 14px 16px; }
+.rg-no-label { font-size: 12px; color: #666; margin-bottom: 8px; }
+.rg-no-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.rg-no-tab { padding: 5px 12px; border: 1.5px solid #e2e2e2; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #666; text-align: center; }
+.rg-no-tab:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.rg-no-tab.active { border-color: #4f6ef7; background: #4f6ef7; color: white; }
+.rg-no-display { display: flex; align-items: center; gap: 10px; }
+.rg-no-big { font-size: 36px; font-weight: 800; color: #4f6ef7; font-family: 'SF Mono', 'Courier New', monospace; min-width: 80px; }
+.rg-no-hint { font-size: 12px; color: #aaa; line-height: 1.5; white-space: pre-line; }
+.rg-no-custom { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.rg-no-custom input { flex: 1; }
+.rg-apply { padding: 8px 14px; background: #4f6ef7; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+.rg-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; }
+.rg-chip { padding: 6px 13px; border: 1.5px solid #e2e2e2; border-radius: 20px; font-size: 13px; cursor: pointer; background: white; color: #555; }
+.rg-chip:hover { border-color: #4f6ef7; color: #4f6ef7; }
+.rg-chip.on { border-color: #4f6ef7; background: #4f6ef7; color: white; font-weight: 600; }
+.rg-chip.status-end { border-color: #fca5a5; color: #991b1b; }
+.rg-chip.status-end.on { background: #ef4444; border-color: #ef4444; color: white; }
+.rg-ch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.rg-ch-row { display: flex; gap: 8px; align-items: center; }
+.rg-ch-lbl { font-size: 13px; font-weight: 700; color: #4f6ef7; min-width: 36px; flex-shrink: 0; }
+.rg-del { width: 28px; height: 28px; border: 1.5px solid #fca5a5; border-radius: 7px; background: white; color: #ef4444; font-size: 16px; cursor: pointer; flex-shrink: 0; line-height: 1; }
+.rg-add-ch { margin-top: 6px; padding: 7px 12px; border: 1.5px dashed #c7d2fd; border-radius: 8px; background: white; color: #4f6ef7; font-size: 13px; cursor: pointer; width: 100%; text-align: left; }
+.rg-divider { height: 1px; background: #eee; margin: 12px 0; }
+.rg-register { width: 100%; padding: 14px; background: #1a1a1a; color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.rg-register:hover:not(:disabled) { background: #333; } .rg-register:disabled { background: #aaa; cursor: default; }
+.rg-msg { display: none; padding: 14px 16px; border-radius: 10px; font-size: 14px; margin-top: 12px; line-height: 1.6; }
+.rg-msg.show { display: block; }
+.rg-msg.success { background: #f0fdf4; color: #14532d; border: 1px solid #86efac; }
+.rg-msg.error { background: #fef2f2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.rg-msg code { background: rgba(0,0,0,0.07); padding: 1px 6px; border-radius: 3px; font-family: 'SF Mono','Courier New',monospace; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -158,6 +209,7 @@ input[type=checkbox] {
     <div class="page-title">👱 顧客情報</div>
     <div class="page-count" id="pageCount"></div>
     <button class="refresh-btn" onclick="loadCustomers()">🔄 更新</button>
+    <button class="refresh-btn" style="background:#4f46e5;color:#fff;border-color:#4f46e5;font-weight:700" onclick="openRegModal()">＋ 顧客登録</button>
   </div>
 
   <!-- コントロールバー -->
@@ -219,6 +271,60 @@ input[type=checkbox] {
     </table>
   </div>
 
+</div>
+
+<!-- ===== 顧客登録モーダル ===== -->
+<div class="rg-overlay" id="regOverlay" onclick="if(event.target===this)closeRegModal()">
+  <div class="rg-modal">
+    <div class="rg-hdr"><span class="rg-title">👤 顧客登録</span><button class="rg-close" onclick="closeRegModal()">✕</button></div>
+    <div class="rg-body">
+      <div class="rg-card">
+        <div class="rg-card-title">👤 お客様No. <span style="color:#e53;font-size:12px">*</span></div>
+        <div class="rg-no-area">
+          <div class="rg-no-label">番号の種類を選択</div>
+          <div class="rg-no-tabs">
+            <div class="rg-no-tab" onclick="regSetRange('200s',this)">200番台<br><span style="font-size:10px;font-weight:400">企業直接・裁量低め</span></div>
+            <div class="rg-no-tab active" onclick="regSetRange('300s',this)">300番台<br><span style="font-size:10px;font-weight:400">直営業・重要/決裁権窓口</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('referral',this)">紹介<br><span style="font-size:10px;font-weight:400">350〜・つながり案件</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('3000s',this)">3000番台<br><span style="font-size:10px;font-weight:400">新規ch・裁量高</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('regular',this)">通常<br><span style="font-size:10px;font-weight:400">01, 02…</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('temp',this)">仮番<br><span style="font-size:10px;font-weight:400">T01/0A… (再利用可)</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('custom',this)">カスタム</div>
+          </div>
+          <div class="rg-no-display"><div class="rg-no-big" id="regNoBig">---</div><div class="rg-no-hint" id="regNoHint">読み込み中...</div></div>
+          <div class="rg-no-custom" id="regCustomRow" style="display:none">
+            <input type="text" id="regCustomNo" placeholder="例: 317, T02, 3001" oninput="regOnCustomNo()">
+            <button class="rg-apply" onclick="regOnCustomNo()">適用</button>
+          </div>
+        </div>
+      </div>
+      <div class="rg-card">
+        <div class="rg-card-title">📋 基本情報</div>
+        <div class="rg-group"><label class="rg-label">クライアント名 <span class="req">*</span></label><input type="text" id="regName" placeholder="例: 加藤 大樹、株式会社〇〇" oninput="regUpdatePreview()"></div>
+        <div class="rg-group"><label class="rg-label">請求書宛名</label><input type="text" id="regInvoiceName" placeholder="空欄ならクライアント名で発行されます">
+          <div style="font-size:12px;color:#6b7280;margin-top:4px">請求書だけ法人名や屋号で出したい場合に入力（例: 株式会社〇〇 御中）</div></div>
+        <div class="rg-group"><label class="rg-label">種別</label><div class="rg-chips">
+          <div class="rg-chip" onclick="regPick('type',this,'個人')">個人</div><div class="rg-chip" onclick="regPick('type',this,'法人')">法人</div><div class="rg-chip" onclick="regPick('type',this,'組織')">組織</div></div></div>
+        <div class="rg-group"><label class="rg-label">取引状況</label><div class="rg-chips" id="regStatusChips">
+          <div class="rg-chip on" onclick="regPick('status',this,'取引中')">取引中</div><div class="rg-chip" onclick="regPick('status',this,'取引開始準備中')">取引開始準備中</div><div class="rg-chip" onclick="regPick('status',this,'頻度低め')">頻度低め</div><div class="rg-chip" onclick="regPick('status',this,'受注一次停止中')">受注一次停止中</div><div class="rg-chip status-end" onclick="regPick('status',this,'取引終了')">取引終了</div></div></div>
+        <div class="rg-group"><label class="rg-label">優先連絡方法</label><div class="rg-chips">
+          <div class="rg-chip" onclick="regPick('contact',this,'LINE')">LINE</div><div class="rg-chip" onclick="regPick('contact',this,'chat work')">chat work</div><div class="rg-chip" onclick="regPick('contact',this,'slack')">slack</div><div class="rg-chip" onclick="regPick('contact',this,'クラウドワークス')">クラウドワークス</div><div class="rg-chip" onclick="regPick('contact',this,'Google chat')">Google chat</div><div class="rg-chip" onclick="regPick('contact',this,'e-mail')">e-mail</div><div class="rg-chip" onclick="regPick('contact',this,'TEL')">TEL</div><div class="rg-chip" onclick="regPick('contact',this,'その他')">その他</div></div></div>
+      </div>
+      <div class="rg-card">
+        <div class="rg-card-title">📺 チャンネル / 案件情報 <span style="font-size:10px;color:#aaa;text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px">（重要備考に登録されます）</span></div>
+        <div class="rg-ch-list" id="regChannelList"></div>
+        <button class="rg-add-ch" onclick="regAddChannel()">＋ チャンネルを追加</button>
+        <div class="rg-divider"></div>
+        <div class="rg-group" style="margin-bottom:0"><label class="rg-label">その他の重要備考 <span class="sub">（外注可否・実績公開可否など）</span></label><textarea id="regExtraNotes" placeholder="例: 外注自由・実績公開NG&#10;提出先: Googleドライブ"></textarea></div>
+      </div>
+      <div class="rg-card" style="background:#f8f8ff;border:1.5px solid #e0e4ff">
+        <div class="rg-card-title" style="color:#4f6ef7">✨ 自動作成されるもの</div>
+        <div style="font-size:13px;color:#444;line-height:1.8">✅ お客様データベースに <strong id="regPreviewEntry">（番号）_（名前）様</strong> を登録<br>✅ <strong id="regPreviewSub">（番号）_（名前）様_補足資料</strong> ページを自動作成</div>
+      </div>
+      <button class="rg-register" id="regBtn" onclick="regDoRegister()">👤 Notionに顧客を登録する</button>
+      <div class="rg-msg" id="regMsg"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -475,6 +581,88 @@ async function bulkArchive() {
 
 // 起動
 loadCustomers();
+// ========== 顧客登録（モーダル。旧・顧客登録ツールを統合） ==========
+let regRange = '300s', regSuggested = {}, regCustomVal = null;
+const regPicked = { type: null, status: '取引中', contact: null };
+const REG_LABELS = ['A','B','C','D','E','F','G','H','I','J'];
+function openRegModal() {
+  document.getElementById('regOverlay').classList.add('open'); document.body.style.overflow = 'hidden';
+  regLoadNextNos(); regUpdatePreview();
+}
+function closeRegModal() { document.getElementById('regOverlay').classList.remove('open'); document.body.style.overflow = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRegModal(); });
+async function regLoadNextNos() {
+  try {
+    const r = await fetch(SERVER + '/api/next-customer-no', { signal: AbortSignal.timeout(5000) });
+    if (r.ok) { const d = await r.json();
+      regSuggested = { '200s': d.next_200s, '300s': d.next_300s, referral: d.next_referral, '3000s': d.next_3000s, regular: d.next_regular ? String(d.next_regular).padStart(2, '0') : null };
+      regRenderNo(); }
+  } catch (e) { document.getElementById('regNoHint').textContent = 'サーバーに接続できません'; }
+}
+function regSetRange(range, el) {
+  regRange = range; regCustomVal = null;
+  document.querySelectorAll('.rg-no-tab').forEach(t => t.classList.remove('active')); el.classList.add('active');
+  const showInput = (range === 'custom' || range === 'temp');
+  document.getElementById('regCustomRow').style.display = showInput ? 'flex' : 'none';
+  const ci = document.getElementById('regCustomNo');
+  if (range === 'temp') { ci.placeholder = '例: T01, T02, 0A, 0B（再利用可・重要顧客は不可）'; ci.value = ''; }
+  else if (range === 'custom') ci.placeholder = '例: 217, 355, T02, 0A, 3001';
+  regRenderNo();
+}
+function regRenderNo() {
+  const big = document.getElementById('regNoBig'), hint = document.getElementById('regNoHint');
+  if (regRange === 'custom') { big.textContent = regCustomVal || '---'; hint.textContent = '任意の番号を入力してください'; regUpdatePreview(); return; }
+  if (regRange === 'temp') { const v = document.getElementById('regCustomNo').value.trim(); big.textContent = v || 'T01'; hint.textContent = '仮番号（T01… または 0A など非Tの英字）\n固有値ではなく再利用可能。重要クライアントには不可'; regUpdatePreview(); return; }
+  const no = regSuggested[regRange];
+  const hints = { '200s': '企業直接だが裁量低め／担当者経由\n（200〜299の空き番号を自動提案）', '300s': '直営業で重要／決裁権者が窓口\n（300〜349の空き番号を自動提案）', referral: '紹介・つながり案件\n（350〜399の空き番号を自動提案）', '3000s': '新規チャンネル・裁量高\n（代行会社が絡む場合は対象外）', regular: '通常番号（01, 02…）固有値・再利用不可\n（空き番号を自動提案）' };
+  if (no) { big.textContent = no; hint.textContent = hints[regRange] || ''; } else { big.textContent = '---'; hint.textContent = 'サーバーに接続してください'; }
+  regUpdatePreview();
+}
+function regOnCustomNo() { regCustomVal = document.getElementById('regCustomNo').value.trim(); document.getElementById('regNoBig').textContent = regCustomVal || (regRange === 'temp' ? 'T01' : '---'); regUpdatePreview(); }
+function regGetNo() { if (regRange === 'custom') return regCustomVal; if (regRange === 'temp') return document.getElementById('regCustomNo').value.trim() || 'T01'; return regSuggested[regRange] || null; }
+function regPick(key, el, val) { el.parentElement.querySelectorAll('.rg-chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); regPicked[key] = val; }
+function regAddChannel() {
+  const list = document.getElementById('regChannelList'); const lbl = REG_LABELS[list.children.length] || String(list.children.length + 1);
+  const row = document.createElement('div'); row.className = 'rg-ch-row';
+  row.innerHTML = `<span class="rg-ch-lbl">${lbl}案件</span><input type="text" placeholder="例: スタディアスリート公式チャンネル"><button class="rg-del" onclick="regRemoveChannel(this)">×</button>`;
+  list.appendChild(row);
+}
+function regRemoveChannel(btn) { btn.closest('.rg-ch-row').remove(); document.querySelectorAll('.rg-ch-row').forEach((row, i) => { row.querySelector('.rg-ch-lbl').textContent = (REG_LABELS[i] || String(i + 1)) + '案件'; }); }
+function regChannelNotes() {
+  const lines = [];
+  document.querySelectorAll('.rg-ch-row').forEach((row, i) => { const v = row.querySelector('input').value.trim(); if (v) lines.push(`${REG_LABELS[i] || String(i + 1)}案件：${v}`); });
+  const extra = document.getElementById('regExtraNotes').value.trim(); if (extra) lines.push(extra);
+  return lines.join('\n');
+}
+function regUpdatePreview() {
+  const no = regGetNo() || '（番号）', name = document.getElementById('regName').value.trim() || '（名前）';
+  document.getElementById('regPreviewEntry').textContent = `${no}_${name}様`; document.getElementById('regPreviewSub').textContent = `${no}_${name}様_補足資料`;
+}
+function regShowMsg(type, html) { const el = document.getElementById('regMsg'); el.className = 'rg-msg show ' + type; el.innerHTML = html; el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+async function regDoRegister() {
+  const no = regGetNo(), name = document.getElementById('regName').value.trim();
+  if (!no) { regShowMsg('error', '⚠️ お客様No.を確認してください。'); return; }
+  if (!name) { regShowMsg('error', '⚠️ クライアント名を入力してください。'); return; }
+  const btn = document.getElementById('regBtn'); btn.disabled = true; btn.textContent = '⏳ 登録中...';
+  try {
+    const res = await fetch(SERVER + '/api/register-customer', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerNo: no, name, invoiceName: document.getElementById('regInvoiceName').value.trim(), type: regPicked.type, status: regPicked.status, contact: regPicked.contact, notes: regChannelNotes() }) });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error || '登録失敗');
+    regShowMsg('success', `<strong>✅ 顧客登録が完了しました</strong><br>お客様No. <code style="font-size:14px;background:#dcfce7">${esc(no)}</code>　${esc(name)}様<br><br>` +
+      (result.customerUrl ? `<a href="${result.customerUrl}" target="_blank" style="color:#0ea5e9">📎 お客様ページを開く →</a><br>` : '') +
+      (result.subPageUrl ? `<a href="${result.subPageUrl}" target="_blank" style="color:#0ea5e9">📄 補足資料ページを開く →</a>` : ''));
+    regResetForm(); regSuggested[regRange] = null; regLoadNextNos();
+    loadCustomers();   // 後ろの一覧も更新
+  } catch (e) { regShowMsg('error', `⚠️ エラー: ${esc(e.message)}`); }
+  finally { btn.disabled = false; btn.textContent = '👤 Notionに顧客を登録する'; }
+}
+function regResetForm() {
+  document.getElementById('regName').value = ''; document.getElementById('regInvoiceName').value = ''; document.getElementById('regExtraNotes').value = ''; document.getElementById('regChannelList').innerHTML = '';
+  document.querySelectorAll('.rg-chip').forEach(c => c.classList.remove('on')); document.querySelector('#regStatusChips .rg-chip').classList.add('on');
+  regPicked.type = null; regPicked.status = '取引中'; regPicked.contact = null; regUpdatePreview();
+}
+
 </script>
 <script src="/mail_template.js"></script>
 <script src="/customer_link.js" defer></script>

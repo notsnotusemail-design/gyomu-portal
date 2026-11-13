@@ -110,6 +110,45 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
 .summary-bar .lbl { color: #999; font-size: 11px; }
 .summary-bar .val { font-weight: 700; font-size: 16px; color: #1a1a1a; }
 
+
+.btn-store {
+  margin-top: 4px; padding: 5px 10px; background: #fff; color: #1d4ed8;
+  border: 1.5px solid #bfdbfe; border-radius: 7px; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.btn-store:hover { background: #eff6ff; }
+
+/* ===== 請求書格納モーダル（周りを暗くして開く） ===== */
+.st-overlay { display: none; position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+  align-items: flex-start; justify-content: center; padding: 20px 12px 40px; overflow-y: auto; }
+.st-overlay.open { display: flex; }
+.st-modal { background: #f2f2ef; border-radius: 16px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: st-in 0.18s ease; }
+@keyframes st-in { from { opacity:0; transform: scale(0.96) translateY(-8px); } to { opacity:1; transform: none; } }
+.st-hdr { display: flex; align-items: center; padding: 16px 20px 14px; border-bottom: 1px solid #e0e0e0; }
+.st-title { font-size: 16px; font-weight: 800; flex: 1; }
+.st-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: #e5e7eb; cursor: pointer; font-size: 16px; color: #374151; }
+.st-close:hover { background: #d1d5db; }
+.st-body { padding: 16px 20px 22px; }
+.st-body .lbl { display: block; font-size: 12px; color: #666; margin-bottom: 6px; }
+.st-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+.st-body select { padding: 9px 12px; border: 1.5px solid #e2e2e2; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa; min-width: 240px; }
+.st-body select:focus { outline: none; border-color: #4f6ef7; background: white; }
+.st-drop { border: 2px dashed #d1d5db; border-radius: 12px; padding: 24px 16px; text-align: center; color: #6b7280; font-size: 14px; cursor: pointer; background: #fafafa; display: block; }
+.st-drop.over { border-color: #4f6ef7; background: #eef2ff; color: #3730a3; }
+.st-drop input { display: none; }
+.st-files { margin-top: 10px; font-size: 13px; list-style: none; }
+.st-files li { padding: 6px 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+.st-files .st { color: #6b7280; white-space: nowrap; } .st-files .ok { color: #15803d; font-weight: 600; } .st-files .ng { color: #b91c1c; font-weight: 600; }
+.st-btn { padding: 10px 20px; background: #1a1a1a; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.st-btn:disabled { background: #aaa; cursor: default; }
+.st-btn.sub { background: white; color: #1a1a1a; border: 1.5px solid #e2e2e2; }
+.st-months { font-size: 13px; background: #fff; border-radius: 10px; padding: 6px 4px; margin-top: 14px; }
+.st-months .m { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; } .st-months .m:last-child { border-bottom: none; }
+.st-months .m b { display: inline-block; min-width: 96px; } .st-months .m .f { color: #555; } .st-months .m.cur { background: #fffbeb; }
+.st-hint { font-size: 12px; color: #888; line-height: 1.6; margin-top: 6px; }
+.st-msg { display: none; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-top: 12px; line-height: 1.6; white-space: pre-wrap; }
+.st-msg.show { display: block; }
+
 /* 請求日 */
 .btn-date-reset { margin-left:8px; padding:5px 10px; font-size:12px; border:1.5px solid #e2e2e2; background:#fff; border-radius:7px; cursor:pointer; font-family:inherit; color:#555; }
 .btn-date-reset:hover { border-color:#bbb; color:#111; }
@@ -193,6 +232,15 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
     </div>
     <span id="fetchState" class="fetch-state"></span>
   </div>
+  <div class="card-title" style="margin-top:4px">請求日・振込期日</div>
+  <div class="inv-date-wrap">
+    <label>請求日</label>
+    <input type="date" id="invoiceDate">
+    <label style="margin-left:10px">振込期日</label>
+    <input type="date" id="dueDate">
+    <button type="button" class="btn-date-reset" onclick="resetDates()" title="請求日＝今日、振込期日＝翌月末に戻す">今日・翌月末に戻す</button>
+  </div>
+  <div style="font-size:12px;color:#888;margin:-6px 0 0">はじめは「請求日＝今日」「振込期日＝翌月末」。どちらも自由に変えられ、請求書（xlsx）とNotionの記録にそのまま使われます。</div>
 </div>
 
 <!-- 結果エリア -->
@@ -221,14 +269,6 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
   <!-- 請求日 + アクション -->
   <div class="card">
     <div class="card-title">出力・記録</div>
-    <div class="inv-date-wrap">
-      <label>請求日</label>
-      <input type="date" id="invoiceDate">
-      <label style="margin-left:10px">振込期日</label>
-      <input type="date" id="dueDate">
-      <button type="button" class="btn-date-reset" onclick="resetDates()" title="請求日＝今日、振込期日＝翌月末に戻す">今日・翌月末に戻す</button>
-    </div>
-    <div style="font-size:12px;color:#888;margin:-6px 0 10px">はじめは「請求日＝今日」「振込期日＝翌月末」が入っています。どちらも自由に変えられ、請求書（xlsx）とNotionの記録にそのまま使われます。</div>
     <div class="action-row">
       <button class="btn-copy" id="btnCopy" onclick="copyForSheets()">
         📋 Googleスプレッドシート用にコピー
@@ -236,7 +276,7 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
       <button class="btn-notion" id="btnNotion" onclick="recordToNotion()">
         ✅ Notionの顧客情報に記録
       </button>
-      <a class="btn-copy" href="/請求書格納ツール.html" style="text-decoration:none;display:inline-block">📁 作った請求書を格納庫に入れる</a>
+      <button class="btn-copy" type="button" onclick="openStoreModal('')">📁 作った請求書を格納庫に入れる</button>
     </div>
     <div class="msg-box" id="msgBox"></div>
   </div>
@@ -254,6 +294,34 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
   　|
   <a href="http://localhost:8765/顧客登録ツール.html" style="color:#bbb">顧客登録ツール</a>
 </div>
+</div>
+
+<!-- ===== 請求書格納モーダル ===== -->
+<div class="st-overlay" id="stOverlay" onclick="if(event.target===this)closeStoreModal()">
+  <div class="st-modal">
+    <div class="st-hdr"><span class="st-title">📁 請求書を格納庫に入れる</span><button class="st-close" onclick="closeStoreModal()">✕</button></div>
+    <div class="st-body">
+      <div class="st-hint" style="margin:0 0 12px">Notionの顧客情報 → 補足資料ページの「請求書格納庫」に、その月のトグルを作って中に入れます。同じ月のトグルがあればその中に追加します。</div>
+      <div class="st-row">
+        <div><label class="lbl">お客様</label><select id="stCustomer" onchange="stLoadOverview()"><option value="">読み込み中...</option></select></div>
+        <div><label class="lbl">何年何月分</label>
+          <div class="month-picker">
+            <input class="month-picker-num" id="stY" type="number" min="2020" max="2035" step="1" style="width:58px" onchange="stNormMonth();stLoadOverview()">
+            <span class="month-picker-sep">年</span>
+            <input class="month-picker-num" id="stM" type="number" min="0" max="13" step="1" style="width:42px" onchange="stNormMonth();stLoadOverview()">
+            <span class="month-picker-sep">月分</span>
+          </div>
+        </div>
+      </div>
+      <label class="lbl">請求書ファイル（PDF / Excel / Word。複数まとめても可・1つ20MBまで）</label>
+      <label class="st-drop" id="stDrop">ここにファイルを置くか、クリックして選ぶ<input type="file" id="stFile" multiple accept=".pdf,.xlsx,.xls,.docx,.doc" onchange="stPick(this.files)"></label>
+      <ul class="st-files" id="stFiles"></ul>
+      <div class="st-row" style="margin:14px 0 0"><button class="st-btn" id="stUp" onclick="stUpload()" disabled>📁 格納庫に入れる</button><button class="st-btn sub" onclick="stClear()">選び直す</button></div>
+      <div class="st-msg" id="stMsg"></div>
+      <div class="st-hint" id="stOvState" style="margin-top:14px"></div>
+      <div class="st-months" id="stOverview"><div class="st-hint" style="margin:4px 6px">お客様を選ぶと、今ある月ごとの中身が出ます。</div></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -491,6 +559,10 @@ function renderTable(d) {
             onclick="generateInvoice('${escHtml(cust.customer)}','${escHtml(cust.name||'')}')">
             📄 作成
           </button>
+          <button class="btn-store" title="この月の請求書をNotionの格納庫に入れる"
+            onclick="openStoreModal('${escHtml(cust.customer)}')">
+            📁 格納
+          </button>
         </td>
         <td style="text-align:center">
           <label class="cf-wrap" title="請求書を送って問題なければチェック。戻しがあれば外す">
@@ -669,6 +741,105 @@ function hideMsg() {
   const el = document.getElementById('msgBox');
   el.className = 'msg-box';
 }
+// ========== 請求書の格納（モーダル） ==========
+let stPicked = [], stCustomers = [];
+function stNormMonth() {
+  const yEl = document.getElementById('stY'), mEl = document.getElementById('stM');
+  let y = parseInt(yEl.value) || new Date().getFullYear(), m = parseInt(mEl.value) || (new Date().getMonth() + 1);
+  if (m > 12) { m = 1; y = Math.min(2035, y + 1); } if (m < 1) { m = 12; y = Math.max(2020, y - 1); }
+  yEl.value = y; mEl.value = m;
+}
+function stYM() { stNormMonth(); return { y: parseInt(document.getElementById('stY').value), m: parseInt(document.getElementById('stM').value) }; }
+async function stLoadCustomers() {
+  const sel = document.getElementById('stCustomer');
+  try {
+    const r = await fetch(SERVER + '/api/customers'); const d = await r.json();
+    stCustomers = Array.isArray(d) ? d : (d.customers || []);
+    stCustomers.sort((a, b) => String(a.no).localeCompare(String(b.no), 'ja', { numeric: true }));
+    sel.innerHTML = '<option value="">お客様を選ぶ</option>' + stCustomers.map(c => `<option value="${escHtml(c.no)}">${escHtml(c.no)}　${escHtml(c.name)}</option>`).join('');
+  } catch (e) { sel.innerHTML = '<option value="">お客様一覧を取得できません</option>'; }
+}
+async function openStoreModal(customerNo) {
+  document.getElementById('stOverlay').classList.add('open'); document.body.style.overflow = 'hidden';
+  // 何年何月分 ＝ いま選んでいる対象月（請求月）。変えられる
+  const [y, m] = getDialMonth().split('-').map(Number);
+  document.getElementById('stY').value = y; document.getElementById('stM').value = m;
+  if (!stCustomers.length) await stLoadCustomers();
+  const sel = document.getElementById('stCustomer');
+  if (customerNo) {
+    if (!stCustomers.some(c => c.no === customerNo)) { const c = (invoiceData?.customers || []).find(x => x.customer === customerNo); sel.insertAdjacentHTML('beforeend', `<option value="${escHtml(customerNo)}">${escHtml(customerNo)}　${escHtml(c?.name || '')}</option>`); }
+    sel.value = customerNo;
+  }
+  stLoadOverview();
+}
+function closeStoreModal() { document.getElementById('stOverlay').classList.remove('open'); document.body.style.overflow = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeStoreModal(); });
+function stPick(fl) {
+  for (const f of fl) {
+    if (!/\.(pdf|xlsx|xls|docx|doc)$/i.test(f.name)) { stMsgShow('⚠️ ' + f.name + ' は PDF / Excel / Word ではないので外しました', 'info'); continue; }
+    if (f.size > 20 * 1024 * 1024) { stMsgShow('⚠️ ' + f.name + ' は20MBを超えるので外しました', 'info'); continue; }
+    if (!stPicked.some(p => p.name === f.name && p.size === f.size)) stPicked.push(f);
+  }
+  stRender();
+}
+function stClear() { stPicked = []; document.getElementById('stFile').value = ''; stRender(); document.getElementById('stMsg').className = 'st-msg'; }
+function stRender(status) {
+  document.getElementById('stFiles').innerHTML = stPicked.map((f, i) => {
+    const st = status && status[i] ? status[i] : { cls: 'st', text: (f.size / 1024).toFixed(0) + ' KB' };
+    return `<li><span>${escHtml(f.name)}</span><span class="${st.cls}">${st.text}</span></li>`; }).join('');
+  document.getElementById('stUp').disabled = stPicked.length === 0;
+}
+function stMsgShow(t, cls) { const b = document.getElementById('stMsg'); b.textContent = t; b.className = 'st-msg show msg-' + cls; }
+async function stUpload() {
+  const cno = document.getElementById('stCustomer').value;
+  if (!cno) { stMsgShow('お客様を選んでください', 'error'); return; }
+  if (!stPicked.length) return;
+  const { y, m } = stYM();
+  const cust = stCustomers.find(c => c.no === cno) || {};
+  const btn = document.getElementById('stUp'); btn.disabled = true; btn.textContent = '⏳ 格納中...';
+  const status = stPicked.map(() => ({ cls: 'st', text: '待機' }));
+  let okN = 0, pageUrl = '', pageCreated = false, toggleCreated = false;
+  for (let i = 0; i < stPicked.length; i++) {
+    status[i] = { cls: 'st', text: '⏳ 送信中' }; stRender(status);
+    const fd = new FormData();
+    fd.append('customerNo', cno); fd.append('customerName', cust.name || ''); fd.append('year', y); fd.append('month', m); fd.append('file', stPicked[i], stPicked[i].name);
+    try {
+      const r = await fetch(SERVER + '/api/invoice-store', { method: 'POST', body: fd }); const d = await r.json();
+      if (d.ok) { okN++; status[i] = { cls: 'ok', text: '✅ ' + d.toggle + ' に格納' }; pageUrl = d.pageUrl || pageUrl; pageCreated = pageCreated || d.pageCreated; toggleCreated = toggleCreated || d.toggleCreated; }
+      else status[i] = { cls: 'ng', text: '❌ ' + (d.error || '失敗') };
+    } catch (e) { status[i] = { cls: 'ng', text: '❌ ' + e.message }; }
+    stRender(status);
+  }
+  btn.textContent = '📁 格納庫に入れる'; btn.disabled = stPicked.length === 0;
+  let msg = `${okN} / ${stPicked.length} 件を ${cno} ${cust.name || ''} の ${y}年${m}月 に格納しました。`;
+  if (pageCreated) msg += '\n（請求書格納庫ページが無かったので新しく作りました）'; else if (toggleCreated) msg += '\n（この月のトグルを新しく作りました）';
+  if (pageUrl) msg += `\nNotionで開く: ${pageUrl}`;
+  stMsgShow(msg, okN === stPicked.length ? 'success' : 'error');
+  if (okN) { stPicked = stPicked.filter((_, i) => status[i].cls !== 'ok'); setTimeout(() => stRender(), 2500); }
+  stLoadOverview();
+}
+async function stLoadOverview() {
+  const cno = document.getElementById('stCustomer').value, box = document.getElementById('stOverview'), st = document.getElementById('stOvState');
+  if (!cno) { box.innerHTML = '<div class="st-hint" style="margin:4px 6px">お客様を選ぶと、今ある月ごとの中身が出ます。</div>'; st.textContent = ''; return; }
+  st.textContent = 'この人の格納庫を読み込み中...';
+  try {
+    const r = await fetch(SERVER + '/api/invoice-store/list?customerNo=' + encodeURIComponent(cno)); const d = await r.json();
+    if (!d.ok) throw new Error(d.error || '取得失敗');
+    if (!d.found) { st.textContent = 'この人の格納庫'; box.innerHTML = '<div class="st-hint" style="margin:4px 6px">まだ請求書格納庫ページがありません。最初の格納のときに自動で作ります。</div>'; return; }
+    st.innerHTML = 'この人の格納庫　' + (d.pageUrl ? `<a href="${d.pageUrl}" target="_blank" style="color:#4f46e5;text-decoration:none">Notionで開く ↗</a>` : '');
+    const { y, m } = stYM();
+    const rows = d.months.slice().sort((a, b) => ((b.ym ? b.ym[0]*100+b.ym[1] : 0) - (a.ym ? a.ym[0]*100+a.ym[1] : 0)));
+    box.innerHTML = rows.length ? rows.map(r => `<div class="m ${r.ym && r.ym[0]===y && r.ym[1]===m ? 'cur' : ''}"><b>${escHtml(r.title)}</b> <span class="f">${r.files.length ? r.files.map(escHtml).join('　/　') : '（空）'}</span></div>`).join('')
+                                : '<div class="st-hint" style="margin:4px 6px">まだ月のトグルがありません。</div>';
+  } catch (e) { st.textContent = ''; box.innerHTML = '<div class="st-hint" style="margin:4px 6px">取得できませんでした: ' + escHtml(e.message) + '</div>'; }
+}
+(function stInitDrop() {
+  const d = document.getElementById('stDrop');
+  ['dragenter', 'dragover'].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => d.addEventListener(ev, e => { e.preventDefault(); d.classList.remove('over'); }));
+  d.addEventListener('drop', e => stPick(e.dataTransfer.files));
+})();
+
 </script>
 <script src="/customer_link.js" defer></script>
 </body>

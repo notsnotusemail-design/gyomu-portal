@@ -1349,8 +1349,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("案件履歴ツール.html")
         elif path == "/請求書管理ツール.html":
             self.send_html("請求書管理ツール.html")
-        elif path == "/請求書格納ツール.html":
-            self.send_html("請求書格納ツール.html")
         elif path == "/ワーカー請求書.html":
             self.send_html("ワーカー請求書.html")
         elif path == "/メール定型文ツール.html":
