@@ -6,6 +6,7 @@ NotionのAPIへ直接登録します。
 起動: python3 notion_server.py
 """
 
+import unicodedata
 import sys, json, os, re, tempfile, datetime, uuid, hashlib, io
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
@@ -1261,6 +1262,11 @@ def get_all_customer_nos():
         cursor = result.get("next_cursor")
     return nos
 
+def customer_no_key(no):
+    """番号の比較用キー。前後の空白・全角英数・大小文字・数字だけの番号の0埋め（1 と 01）をそろえる"""
+    t = unicodedata.normalize("NFKC", str(no or "")).strip().upper()
+    return t.zfill(2) if t.isdigit() else t
+
 def next_in_range(nos, lo, hi):
     used = set()
     for no in nos:
@@ -1400,6 +1406,8 @@ class Handler(BaseHTTPRequestHandler):
                 "next_referral": next_in_range(nos, 350, 399),   # 紹介・つながり案件
                 "next_3000s":    next_in_range(nos, 3000, 3999), # 新規チャンネル・裁量高
                 "next_regular":  next_in_range(nos, 1, 99),      # 通常（固有値・再利用不可）
+                # 2026/11/19〜 枝番（例 315B）の空き確認と重複チェック用に全番号を返す
+                "nos":           sorted(set(nos)),
             })
         elif path == "/mail_template.js":
             self.send_static("mail_template.js", "application/javascript; charset=utf-8")
@@ -3467,9 +3475,20 @@ end timeout
             self.send_json(400, {"ok": False, "error": err})
 
     def handle_register_customer(self, data):
-        no      = data.get("customerNo", "")
+        no      = (data.get("customerNo", "") or "").strip()
         name    = data.get("name", "")
         print(f"\n👤 顧客登録: {no}番 {name}様")
+
+        # お客様No.は固有値で再利用できない（2026/11/19〜 仮番は廃止。テスト・単発は既存の「00」へ案件として登録）
+        if not no:
+            self.send_json(400, {"ok": False, "error": "お客様No.が空です"})
+            return
+        existing = {customer_no_key(x) for x in get_all_customer_nos()}
+        if customer_no_key(no) in existing:
+            msg = (f"お客様No.「{no}」はすでに使われています。番号は固有値なので再利用できません。"
+                   + ("テスト・単発は新しい顧客を作らず、00の案件として登録してください。" if customer_no_key(no) == "00" else ""))
+            self.send_json(409, {"ok": False, "error": msg})
+            return
 
         props = {
             "備考": {"title": [{"text": {"content": f"{no}_{name}様_補足資料"}}]},

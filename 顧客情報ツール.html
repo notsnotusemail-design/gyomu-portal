@@ -288,12 +288,13 @@ input[type=checkbox] {
             <div class="rg-no-tab" onclick="regSetRange('referral',this)">紹介<br><span style="font-size:10px;font-weight:400">350〜・つながり案件</span></div>
             <div class="rg-no-tab" onclick="regSetRange('3000s',this)">3000番台<br><span style="font-size:10px;font-weight:400">新規ch・裁量高</span></div>
             <div class="rg-no-tab" onclick="regSetRange('regular',this)">通常<br><span style="font-size:10px;font-weight:400">01, 02…</span></div>
-            <div class="rg-no-tab" onclick="regSetRange('temp',this)">仮番<br><span style="font-size:10px;font-weight:400">T01/0A… (再利用可)</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('branch',this)">枝番<br><span style="font-size:10px;font-weight:400">案件の分離 315B など</span></div>
+            <div class="rg-no-tab" onclick="regSetRange('test',this)">テスト・単発<br><span style="font-size:10px;font-weight:400">00に案件で登録</span></div>
             <div class="rg-no-tab" onclick="regSetRange('custom',this)">カスタム</div>
           </div>
           <div class="rg-no-display"><div class="rg-no-big" id="regNoBig">---</div><div class="rg-no-hint" id="regNoHint">読み込み中...</div></div>
           <div class="rg-no-custom" id="regCustomRow" style="display:none">
-            <input type="text" id="regCustomNo" placeholder="例: 317, T02, 3001" oninput="regOnCustomNo()">
+            <input type="text" id="regCustomNo" placeholder="例: 317, 3001" oninput="regOnCustomNo()">
             <button class="rg-apply" onclick="regOnCustomNo()">適用</button>
           </div>
         </div>
@@ -581,8 +582,20 @@ async function bulkArchive() {
 
 // 起動
 loadCustomers();
+// 旧・顧客登録ツールからの移動（?reg=1）は登録モーダルを開く
+if (new URLSearchParams(location.search).get('reg')) setTimeout(() => openRegModal(), 0);
 // ========== 顧客登録（モーダル。旧・顧客登録ツールを統合） ==========
-let regRange = '300s', regSuggested = {}, regCustomVal = null;
+let regRange = '300s', regSuggested = {}, regCustomVal = null, regNos = [];
+// 番号の比較用（全角→半角・大文字・数字だけなら0埋め）。サーバーの customer_no_key と同じ
+function regNoKey(v) { const t = String(v || '').normalize('NFKC').trim().toUpperCase(); return /^\d+$/.test(t) ? t.padStart(2, '0') : t; }
+function regUsed(v) { const k = regNoKey(v); return regNos.some(n => regNoKey(n) === k); }
+// 枝番：元の番号に、まだ使われていない英字を付ける（A案件が元の番号なので B から）
+function regNextBranch(base) {
+  const b = regNoKey(base).replace(/[A-Z]+$/, '');
+  if (!/^\d+$/.test(b)) return null;
+  for (const ch of 'BCDEFGHIJKLMNOPQRSUVWXYZA') { if (!regUsed(b + ch)) return b + ch; }
+  return null;
+}
 const regPicked = { type: null, status: '取引中', contact: null };
 const REG_LABELS = ['A','B','C','D','E','F','G','H','I','J'];
 function openRegModal() {
@@ -596,30 +609,53 @@ async function regLoadNextNos() {
     const r = await fetch(SERVER + '/api/next-customer-no', { signal: AbortSignal.timeout(5000) });
     if (r.ok) { const d = await r.json();
       regSuggested = { '200s': d.next_200s, '300s': d.next_300s, referral: d.next_referral, '3000s': d.next_3000s, regular: d.next_regular ? String(d.next_regular).padStart(2, '0') : null };
+      regNos = d.nos || [];
       regRenderNo(); }
   } catch (e) { document.getElementById('regNoHint').textContent = 'サーバーに接続できません'; }
 }
 function regSetRange(range, el) {
   regRange = range; regCustomVal = null;
   document.querySelectorAll('.rg-no-tab').forEach(t => t.classList.remove('active')); el.classList.add('active');
-  const showInput = (range === 'custom' || range === 'temp');
+  const showInput = (range === 'custom' || range === 'branch');
   document.getElementById('regCustomRow').style.display = showInput ? 'flex' : 'none';
   const ci = document.getElementById('regCustomNo');
-  if (range === 'temp') { ci.placeholder = '例: T01, T02, 0A, 0B（再利用可・重要顧客は不可）'; ci.value = ''; }
-  else if (range === 'custom') ci.placeholder = '例: 217, 355, T02, 0A, 3001';
+  if (range === 'branch') { ci.placeholder = '元の番号（例: 315）。315C のように英字まで書いても可'; ci.value = ''; }
+  else if (range === 'custom') { ci.placeholder = '例: 217, 355, 3001'; ci.value = ''; }
   regRenderNo();
 }
 function regRenderNo() {
   const big = document.getElementById('regNoBig'), hint = document.getElementById('regNoHint');
-  if (regRange === 'custom') { big.textContent = regCustomVal || '---'; hint.textContent = '任意の番号を入力してください'; regUpdatePreview(); return; }
-  if (regRange === 'temp') { const v = document.getElementById('regCustomNo').value.trim(); big.textContent = v || 'T01'; hint.textContent = '仮番号（T01… または 0A など非Tの英字）\n固有値ではなく再利用可能。重要クライアントには不可'; regUpdatePreview(); return; }
+  if (regRange === 'custom') { big.textContent = regCustomVal ? regNoKey(regCustomVal) : '---'; hint.textContent = regCustomVal && regUsed(regCustomVal) ? '⚠️ この番号はすでに使われています（固有値のため再利用不可）' : '実態に合わせて番号を決めて入力\n（自動提案の番号から変えてよい）'; regUpdatePreview(); return; }
+  if (regRange === 'branch') {
+    const v = (document.getElementById('regCustomNo').value || '').trim();
+    const no = regGetNo();
+    big.textContent = no || '---';
+    if (!v) hint.textContent = '案件を分けて切り離すときの番号\n元の番号を入れると、空いている英字を付けて提案します';
+    else if (!no) hint.textContent = '⚠️ 元の番号を数字で入れてください（例: 315）';
+    else if (regUsed(no)) hint.textContent = '⚠️ ' + no + ' はすでに使われています';
+    else if (!regUsed(regNoKey(v).replace(/[A-Z]+$/, ''))) hint.textContent = '⚠️ 元の番号 ' + regNoKey(v).replace(/[A-Z]+$/, '') + ' が見つかりません（番号を確認）';
+    else hint.textContent = '枝番（固有値・再利用不可）\n元の番号の案件から切り離して登録します';
+    regUpdatePreview(); return;
+  }
+  if (regRange === 'test') { big.textContent = '00'; hint.textContent = 'テスト・単発は新しい顧客を作りません\n「00」の案件として案件登録してください'; regUpdatePreview(); return; }
   const no = regSuggested[regRange];
   const hints = { '200s': '企業直接だが裁量低め／担当者経由\n（200〜299の空き番号を自動提案）', '300s': '直営業で重要／決裁権者が窓口\n（300〜349の空き番号を自動提案）', referral: '紹介・つながり案件\n（350〜399の空き番号を自動提案）', '3000s': '新規チャンネル・裁量高\n（代行会社が絡む場合は対象外）', regular: '通常番号（01, 02…）固有値・再利用不可\n（空き番号を自動提案）' };
-  if (no) { big.textContent = no; hint.textContent = hints[regRange] || ''; } else { big.textContent = '---'; hint.textContent = 'サーバーに接続してください'; }
+  const tail = '\n※実態に合わない時は「カスタム」で番号を変える';
+  if (no) { big.textContent = no; hint.textContent = (hints[regRange] || '') + tail; } else { big.textContent = '---'; hint.textContent = 'サーバーに接続してください'; }
   regUpdatePreview();
 }
-function regOnCustomNo() { regCustomVal = document.getElementById('regCustomNo').value.trim(); document.getElementById('regNoBig').textContent = regCustomVal || (regRange === 'temp' ? 'T01' : '---'); regUpdatePreview(); }
-function regGetNo() { if (regRange === 'custom') return regCustomVal; if (regRange === 'temp') return document.getElementById('regCustomNo').value.trim() || 'T01'; return regSuggested[regRange] || null; }
+function regOnCustomNo() { regCustomVal = document.getElementById('regCustomNo').value.trim(); regRenderNo(); }
+function regGetNo() {
+  if (regRange === 'custom') return regCustomVal ? regNoKey(regCustomVal) : null;
+  if (regRange === 'branch') {
+    const v = regNoKey(document.getElementById('regCustomNo').value);
+    if (!v) return null;
+    if (/^\d+[A-Z]$/.test(v)) return v;          // 英字まで指定されたらそのまま
+    return regNextBranch(v);
+  }
+  if (regRange === 'test') return '00';
+  return regSuggested[regRange] || null;
+}
 function regPick(key, el, val) { el.parentElement.querySelectorAll('.rg-chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); regPicked[key] = val; }
 function regAddChannel() {
   const list = document.getElementById('regChannelList'); const lbl = REG_LABELS[list.children.length] || String(list.children.length + 1);
@@ -641,7 +677,12 @@ function regUpdatePreview() {
 function regShowMsg(type, html) { const el = document.getElementById('regMsg'); el.className = 'rg-msg show ' + type; el.innerHTML = html; el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 async function regDoRegister() {
   const no = regGetNo(), name = document.getElementById('regName').value.trim();
+  if (regRange === 'test') {
+    regShowMsg('error', '⚠️ テスト・単発案件は新しい顧客を作らず、<strong>00</strong> の案件として登録します。<br><a href="/案件履歴ツール.html" style="color:#0ea5e9">📁 案件履歴ツールの「案件登録」を開く →</a>');
+    return;
+  }
   if (!no) { regShowMsg('error', '⚠️ お客様No.を確認してください。'); return; }
+  if (regUsed(no)) { regShowMsg('error', `⚠️ お客様No. ${esc(no)} はすでに使われています。番号は固有値なので再利用できません。`); return; }
   if (!name) { regShowMsg('error', '⚠️ クライアント名を入力してください。'); return; }
   const btn = document.getElementById('regBtn'); btn.disabled = true; btn.textContent = '⏳ 登録中...';
   try {
