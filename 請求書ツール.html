@@ -99,6 +99,7 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
 /* ステータスバッジ */
 .s-done  { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #dcfce7; color: #166534; }
 .s-wip   { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #dbeafe; color: #1e3a8a; }
+.s-check { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #fef3c7; color: #92400e; }
 .s-todo  { font-size: 10px; padding: 1px 6px; border-radius: 20px; background: #f3f4f6; color: #666; }
 
 /* サマリーバー */
@@ -515,6 +516,7 @@ function renderTable(d) {
       const caseHtml = cust.cases.map(c => {
         const badge = c.status === '完了'  ? `<span class="s-done">完了</span>` :
                       c.status === '進行中' ? `<span class="s-wip">進行中</span>` :
+                      c.status === '先方確認/修正中' ? `<span class="s-check">先方確認/修正中</span>` :
                                              `<span class="s-todo">未着手</span>`;
         // 請求書の「詳細」に出る文字列＝案件名。空なら備考、それも空なら案件番号。
         const label = (c.projectName || c.note || '').trim();

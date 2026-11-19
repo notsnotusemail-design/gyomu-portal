@@ -76,6 +76,7 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
 .s-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .s-未着手  { background: #f3f4f6; color: #6b7280; }
 .s-進行中  { background: #dbeafe; color: #1d4ed8; }
+.s-先方確認 { background: #fef3c7; color: #92400e; }
 .s-完了    { background: #dcfce7; color: #15803d; }
 .s-請求済み { background: #fef9c3; color: #92400e; }
 .s-default { background: #f3f4f6; color: #6b7280; }
@@ -391,6 +392,7 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
     <option value="">全ステータス</option>
     <option value="未着手">未着手</option>
     <option value="進行中">進行中</option>
+    <option value="先方確認/修正中">先方確認/修正中</option>
     <option value="完了">完了</option>
   </select>
   <button class="search-btn" onclick="doSearch()">🔍 検索</button>
@@ -494,6 +496,7 @@ body { font-family: -apple-system, 'Hiragino Sans', sans-serif; background: #f5f
           <div class="crm-prog-row">
             <div class="crm-prog-chip on" onclick="crmSelProg(this,'未着手')">未着手</div>
             <div class="crm-prog-chip"    onclick="crmSelProg(this,'進行中')">進行中</div>
+            <div class="crm-prog-chip"    onclick="crmSelProg(this,'先方確認/修正中')">先方確認/修正中</div>
             <div class="crm-prog-chip"    onclick="crmSelProg(this,'完了')">完了</div>
           </div>
         </div>
@@ -618,6 +621,7 @@ function fmtDate(d) { return d ? d.replace(/-/g, '/') : '―'; }
 function sClass(s) {
   if (!s) return 's-default';
   if (s.includes('未着手')) return 's-未着手';
+  if (s.includes('先方確認')) return 's-先方確認';
   if (s.includes('進行'))   return 's-進行中';
   if (s.includes('完了'))   return 's-完了';
   if (s.includes('請求'))   return 's-請求済み';
@@ -764,7 +768,7 @@ function buildEP(c) {
   // Notionの進捗ステータスにある選択肢だけを出す。
   // 以前あった「請求済み」はNotion側に選択肢がなく、保存時にAPIエラーになっていた。
   // 請求後の状態は「最終確認完了」のチェックで管理する。
-  const statuses = ['未着手','進行中','完了'];
+  const statuses = ['未着手','進行中','先方確認/修正中','完了'];
   const opts = statuses.map(s => `<option value="${s}"${c.status===s?' selected':''}>${s}</option>`).join('');
   // 外注費を粗利テキストから逆算（例: "10,000 - 3,000 = 7,000" → 3,000）
   // 未記録の場合はデフォルト0（外注なしは0で粗利=単価として扱う）
