@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>引き継ぎ完了済み</title>
+<title>完了したTODO</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -97,7 +97,7 @@ body {
 <div class="container">
   <div class="page-header">
     <a class="back-btn" href="/引き継ぎ一覧.html">← 一覧へ戻る</a>
-    <div class="page-title">✅ 完了済み引き継ぎ</div>
+    <div class="page-title">✅ 完了したTODO</div>
     <div class="page-count" id="countLabel"></div>
   </div>
 
@@ -146,7 +146,7 @@ function render() {
   document.getElementById('countLabel').textContent = `${items.length}件`;
   const content = document.getElementById('content');
   if (!items.length) {
-    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty">完了済みの引き継ぎはありません</div></div></div>';
+    content.innerHTML = '<div class="card"><div class="card-body"><div class="empty">完了したTODOはありません</div></div></div>';
     return;
   }
 

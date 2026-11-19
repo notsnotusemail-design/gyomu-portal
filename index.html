@@ -311,22 +311,6 @@ body {
 .ha-btn.btn-edit-content { color: #888; }
 .ha-btn.btn-edit-content:hover { background: #f5f5f5; color: #333; }
 
-/* 引き継ぎ追加モーダル */
-.type-selector { display: flex; gap: 6px; }
-.type-btn {
-  flex: 1; padding: 7px 4px; border: 1.5px solid #e0e0e0;
-  border-radius: 8px; background: white; cursor: pointer;
-  font-size: 12px; font-weight: 600; font-family: inherit;
-  text-align: center; transition: all 0.15s;
-}
-.type-btn:hover { background: #f5f5f5; }
-.type-btn.t-todo   { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
-.type-btn.t-memo   { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
-.type-btn.t-medium { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
-.date-pair { display: flex; gap: 8px; }
-.date-pair > div { flex: 1; }
-.date-pair label { font-size: 10px; color: #aaa; display: block; margin-bottom: 3px; }
-
 /* ステータスバー */
 .status-bar {
   display: flex; align-items: center; gap: 6px;
@@ -440,13 +424,13 @@ body {
   <!-- ===== 納期アラート ===== -->
   <div class="alert-wrap" id="alertWrap"></div>
 
-  <!-- ===== 引き継ぎ ===== -->
+  <!-- ===== TODO（旧：引き継ぎ） ===== -->
   <div class="handover-card">
     <div class="handover-header">
-      <div class="handover-title">📝 引き継ぎ</div>
+      <div class="handover-title">✅ TODO</div>
       <div style="display:flex;gap:6px;align-items:center;">
-        <a href="/引き継ぎ一覧.html" style="font-size:11px;color:#aaa;text-decoration:none;padding:4px 9px;border:1.5px solid #ebebeb;border-radius:7px;transition:all 0.15s;" onmouseover="this.style.color='#555';this.style.borderColor='#bbb'" onmouseout="this.style.color='#aaa';this.style.borderColor='#ebebeb'">翌日以降はこちらへ →</a>
-        <button class="handover-add-btn" onclick="openHandoverModal()">＋ 追加</button>
+        <a href="/引き継ぎ一覧.html" style="font-size:11px;color:#aaa;text-decoration:none;padding:4px 9px;border:1.5px solid #ebebeb;border-radius:7px;transition:all 0.15s;" onmouseover="this.style.color='#555';this.style.borderColor='#bbb'" onmouseout="this.style.color='#aaa';this.style.borderColor='#ebebeb'">明日以降・一覧 →</a>
+        <button class="handover-add-btn" onclick="openTodoAdd({onAdded: fetchHandover})">＋ 追加</button>
       </div>
     </div>
     <div class="handover-body" id="handoverBody">
@@ -559,49 +543,6 @@ body {
     <div class="modal-btns">
       <button type="button" class="btn-cancel" onclick="closeDetailModal()">閉じる</button>
     </div>
-  </div>
-</div>
-
-<!-- ===== 引き継ぎ追加モーダル ===== -->
-<div class="modal-overlay" id="handoverModal" onclick="closeHandoverModal(event)">
-  <div class="modal">
-    <div class="modal-title">📝 引き継ぎを追加</div>
-    <form id="handoverForm" onsubmit="submitHandover(event)">
-      <div>
-        <label>種別</label>
-        <div class="type-selector">
-          <button type="button" id="typeBtn-todo"   onclick="setHType('todo')">☐ TODO</button>
-          <button type="button" id="typeBtn-memo"   onclick="setHType('memo')">📋 メモ</button>
-          <button type="button" id="typeBtn-medium" onclick="setHType('medium')">📅 中期</button>
-        </div>
-      </div>
-      <div>
-        <label>内容</label>
-        <textarea id="handoverText" rows="2" placeholder="引き継ぎ内容を入力…" required></textarea>
-      </div>
-      <div id="hDateRow">
-        <label>日付</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <select id="hDateSel" onchange="onHDateSel()" style="padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;cursor:pointer;">
-            <option value="tomorrow">明日</option>
-            <option value="today">今日</option>
-            <option value="custom">日付指定…</option>
-          </select>
-          <input type="date" id="hDateCustom" style="display:none;flex:1;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;">
-        </div>
-      </div>
-      <div id="hMediumRow" style="display:none;">
-        <label>表示期間</label>
-        <div class="date-pair">
-          <div><label>開始日</label><input type="date" id="hStartDate" style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;"></div>
-          <div><label>終了日</label><input type="date" id="hEndDate"   style="width:100%;padding:8px 10px;border:1.5px solid #e2e2e2;border-radius:8px;font-size:13px;font-family:inherit;background:#fafafa;"></div>
-        </div>
-      </div>
-      <div class="modal-btns">
-        <button type="button" class="btn-cancel" onclick="closeHandoverModal()">キャンセル</button>
-        <button type="submit" class="btn-submit">追加</button>
-      </div>
-    </form>
   </div>
 </div>
 
@@ -857,7 +798,6 @@ async function fetchCalendar() {
 
 // ===== 引き継ぎ =====
 let handoverItems = [];
-let hType = 'todo';
 let extendTargetId = null;
 
 function localDateStr(date) {
@@ -887,7 +827,7 @@ async function fetchHandover() {
 function renderHandover() {
   const body = document.getElementById('handoverBody');
   if (!handoverItems.length) {
-    body.innerHTML = '<div class="handover-empty">引き継ぎはありません</div>';
+    body.innerHTML = '<div class="handover-empty">今日のTODOはありません</div>';
     return;
   }
   body.innerHTML = '';
@@ -989,62 +929,6 @@ async function carryHandover(id, asType) {
   } catch(e) {}
 }
 
-// ===== 引き継ぎ追加モーダル =====
-function openHandoverModal() {
-  hType = 'todo';
-  document.getElementById('handoverText').value = '';
-  document.getElementById('hDateSel').value = 'tomorrow';
-  document.getElementById('hDateCustom').style.display = 'none';
-  document.getElementById('hDateCustom').value = localTomorrow();
-  document.getElementById('hStartDate').value = localToday();
-  document.getElementById('hEndDate').value   = localTomorrow();
-  setHType('todo');
-  document.getElementById('handoverModal').classList.add('open');
-  setTimeout(() => document.getElementById('handoverText').focus(), 60);
-}
-function closeHandoverModal(e) {
-  if (e && e.target !== document.getElementById('handoverModal')) return;
-  document.getElementById('handoverModal').classList.remove('open');
-}
-function setHType(t) {
-  hType = t;
-  ['todo','memo','medium'].forEach(k => {
-    const btn = document.getElementById(`typeBtn-${k}`);
-    btn.className = 'type-btn' + (k === t ? ` t-${k}` : '');
-  });
-  document.getElementById('hDateRow').style.display   = t === 'medium' ? 'none' : '';
-  document.getElementById('hMediumRow').style.display = t === 'medium' ? '' : 'none';
-}
-function onHDateSel() {
-  const v = document.getElementById('hDateSel').value;
-  document.getElementById('hDateCustom').style.display = v === 'custom' ? '' : 'none';
-}
-async function submitHandover(e) {
-  e.preventDefault();
-  const text = document.getElementById('handoverText').value.trim();
-  if (!text) return;
-  const payload = {type: hType, text};
-  if (hType === 'medium') {
-    payload.start_date = document.getElementById('hStartDate').value;
-    payload.end_date   = document.getElementById('hEndDate').value;
-  } else {
-    const sel = document.getElementById('hDateSel').value;
-    payload.date = sel === 'today'  ? localToday()
-                 : sel === 'custom' ? document.getElementById('hDateCustom').value
-                 : localTomorrow();
-  }
-  try {
-    const r = await fetch(`${SERVER}/api/handover/add`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload), signal: AbortSignal.timeout(5000)
-    });
-    if (r.ok) {
-      document.getElementById('handoverModal').classList.remove('open');
-      await fetchHandover();
-    }
-  } catch(e) {}
-}
-
 // ===== 中期延長モーダル =====
 function openExtendModal(id, currentEnd, text) {
   extendTargetId = id;
@@ -1116,6 +1000,7 @@ document.addEventListener('keydown', e => {
   }
 });
 </script>
+<script src="/todo_add.js"></script>
 <script src="/customer_link.js" defer></script>
 </body>
 </html>

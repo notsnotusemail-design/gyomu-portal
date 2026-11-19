@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>引き継ぎ一覧</title>
+<title>TODO一覧</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -27,6 +27,18 @@ body {
   transition: all 0.15s; white-space: nowrap;
 }
 .back-btn:hover { background: #f5f5f5; color: #333; border-color: #bbb; }
+.add-btn {
+  margin-left: auto; font-size: 13px; font-weight: 600; padding: 7px 14px;
+  border: none; border-radius: 9px; background: #1a1a1a; color: white;
+  cursor: pointer; font-family: inherit; display: block;
+}
+.add-btn:hover { background: #333; }
+.day-add-btn {
+  margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 9px;
+  border: 1.5px solid #ddd; border-radius: 7px; background: white; color: #666;
+  cursor: pointer; font-family: inherit;
+}
+.day-add-btn:hover { background: #f5f5f5; color: #333; border-color: #bbb; }
 .page-title { font-size: 18px; font-weight: 700; }
 
 /* セクション */
@@ -151,12 +163,13 @@ body {
 
   <div class="page-header">
     <a class="back-btn" href="/">← ポータルへ戻る</a>
-    <div class="page-title">📝 引き継ぎ一覧</div>
+    <div class="page-title">✅ TODO一覧</div>
+    <button class="add-btn" onclick="openTodoAdd({date: TOMORROW, onAdded: load})">＋ 追加</button>
   </div>
   <a href="/引き継ぎ完了済み.html" style="display:flex;align-items:center;gap:8px;text-decoration:none;background:white;border:1.5px solid #e2e2e2;border-radius:12px;padding:12px 18px;margin-bottom:16px;color:#555;font-size:14px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,0.05);transition:all 0.15s;" onmouseover="this.style.background='#f5f5f5';this.style.borderColor='#bbb'" onmouseout="this.style.background='white';this.style.borderColor='#e2e2e2'">
     <span style="font-size:20px;">✅</span>
     <div>
-      <div>完了済みの引き継ぎを見る</div>
+      <div>完了したTODOを見る</div>
       <div style="font-size:11px;color:#aaa;margin-top:2px;">間違えて完了した項目はここから復元できます</div>
     </div>
     <span style="margin-left:auto;color:#bbb;font-size:16px;">›</span>
@@ -284,7 +297,7 @@ function showError(msg) {
 function render() {
   const root = document.getElementById('listRoot');
   if (!allItems.length) {
-    root.innerHTML = '<div class="empty-state">引き継ぎはありません 🎉</div>';
+    root.innerHTML = '<div class="empty-state">TODOはありません 🎉<br><button class="add-btn" style="margin:14px auto 0" onclick="openTodoAdd({date: TOMORROW, onAdded: load})">＋ 追加</button></div>';
     return;
   }
   root.innerHTML = '';
@@ -297,7 +310,7 @@ function render() {
   if (dailies.length) {
     const secLabel = document.createElement('div');
     secLabel.className = 'section-label';
-    secLabel.textContent = 'Daily — TODO / メモ';
+    secLabel.textContent = '日付ごと — TODO / メモ';
     root.appendChild(secLabel);
 
     const groups = {};
@@ -314,7 +327,8 @@ function render() {
       const tag = dayLabel(date);
       const hdr = document.createElement('div');
       hdr.className = 'date-header';
-      hdr.innerHTML = `${fmtDate(date)}${tag ? `<span class="date-tag ${tag.cls}">${tag.text}</span>` : ''}`;
+      hdr.innerHTML = `${fmtDate(date)}${tag ? `<span class="date-tag ${tag.cls}">${tag.text}</span>` : ''}`
+        + (date >= TODAY && date !== '9999-12-31' ? `<button class="day-add-btn" onclick="openTodoAdd({date:'${date}', onAdded: load})">＋ この日に追加</button>` : '');
       group.appendChild(hdr);
 
       groups[date].forEach(item => group.appendChild(makeCard(item)));
@@ -327,7 +341,7 @@ function render() {
     const secLabel = document.createElement('div');
     secLabel.className = 'section-label';
     secLabel.style.marginTop = '12px';
-    secLabel.textContent = 'Medium — 中期メモ';
+    secLabel.textContent = '中期 — 期間中は毎日出るもの';
     root.appendChild(secLabel);
 
     mediums.forEach(item => root.appendChild(makeCard(item)));
@@ -517,6 +531,7 @@ async function confirmExtend() {
 load();
 setInterval(load, 30000); // 30秒ごとに自動更新
 </script>
+<script src="/todo_add.js"></script>
 <script src="/customer_link.js" defer></script>
 </body>
 </html>

@@ -364,6 +364,8 @@ body {
 .clip-badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; background: rgba(0,0,0,0.08); flex-shrink: 0; }
 .clip-text  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .clips-empty { font-size: 11px; color: #ccc; text-align: center; padding: 16px 0; }
+.clips-add-btn { font-size: 11px; font-weight: 600; padding: 3px 9px; border: 1.5px solid #ddd; border-radius: 7px; background: white; color: #555; cursor: pointer; font-family: inherit; }
+.clips-add-btn:hover { background: #f5f5f5; border-color: #bbb; color: #222; }
 
 /* カスタム入力 */
 .custom-input-group {
@@ -516,7 +518,7 @@ body {
 <div class="clips-panel">
   <div class="clips-row">
     <div class="clips-group">
-      <div class="clips-title"><span>📎 引き継ぎ</span><span id="clipsCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></div>
+      <div class="clips-title"><span>📎 TODO <span id="clipsCount" style="font-weight:400;color:#bbb;font-size:10px;"></span></span><button class="clips-add-btn" onclick="openTodoAdd({date: currentDate, onAdded: async () => { await loadHandover(); renderClips(); }})">＋ この日に追加</button></div>
       <div class="clips-list" id="clipsBody"><div class="clips-empty">読み込み中…</div></div>
     </div>
     <div class="clips-group">
@@ -1643,7 +1645,7 @@ function renderClips() {
   const LABEL = { todo:'TODO', memo:'メモ', medium:'中期' };
   const CC    = { todo:'cc-todo', memo:'cc-memo', medium:'cc-medium' };
   if (!handoverItems.length) {
-    body.innerHTML = '<div class="clips-empty">今日の引き継ぎはありません</div>';
+    body.innerHTML = '<div class="clips-empty">この日のTODOはありません</div>';
     return;
   }
   body.innerHTML = handoverItems.map(item => `
@@ -1920,5 +1922,6 @@ init();
 setInterval(updateNowLine, 60000);
 </script>
 <script src="/customer_link.js" defer></script>
+<script src="/todo_add.js"></script>
 </body>
 </html>

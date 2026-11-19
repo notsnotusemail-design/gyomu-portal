@@ -864,7 +864,7 @@ def eigyo_auto_check_low(remaining):
     r, _ = notion_request("POST", "/pages", {"parent": {"database_id": HANDOVER_DB_ID}, "properties": props})
     if r:
         EIGYO_AUTO["low_notified"] = today
-        _eigyo_auto_log("補充", f"残り {remaining} 件。引き継ぎに「営業リストの補充」を書きました")
+        _eigyo_auto_log("補充", f"残り {remaining} 件。TODOに「営業リストの補充」を書きました")
 
 def eigyo_auto_status():
     d1, d2 = _eigyo_parse_range(EIGYO_AUTO_DAYS, 1, 7); h1, h2 = _eigyo_parse_range(EIGYO_AUTO_HOURS, 0, 24)
@@ -1413,6 +1413,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_static("mail_template.js", "application/javascript; charset=utf-8")
         elif path == "/customer_link.js":
             self.send_static("customer_link.js", "application/javascript; charset=utf-8")
+        elif path == "/todo_add.js":
+            self.send_static("todo_add.js", "application/javascript; charset=utf-8")
         elif path == "/api/customer-links":
             # 全ページ共通：お客様No→Notion顧客ページURL（?refresh=1 で再構築）
             links = get_customer_link_map(force=("refresh=" in self.path))
