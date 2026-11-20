@@ -58,6 +58,9 @@ h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .cf-mark { font-size:11px; color:#6b7280; white-space:nowrap; }
 tr.confirmed { background:#f0fdf4; }
 tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
+/* 入金済み（2026-11-19追加）：最終確認の次の段階。行の色も一段濃くする */
+tr.paid { background:#dcfce7; }
+tr.paid .pd-mark { color:#1d4ed8; font-weight:700; }
 
 /* テーブル */
 .inv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -261,6 +264,7 @@ tr.confirmed .cf-mark { color:#15803d; font-weight:700; }
           <th style="width:130px;text-align:right">請求金額</th>
           <th style="width:88px;text-align:center;white-space:nowrap">請求書</th>
           <th style="width:96px;text-align:center;white-space:nowrap">最終確認</th>
+          <th style="width:96px;text-align:center;white-space:nowrap">入金済み</th>
         </tr>
       </thead>
       <tbody id="invBody"></tbody>
@@ -489,6 +493,40 @@ async function setConfirmed(customerNo, el) {
   }
 }
 
+// ========== 入金済み（2026-11-19追加） ==========
+// 最終確認（提出）の次の段階。入金を確かめたらチェックする。
+// 最終確認と同じく案件ごとにNotionの「入金済み」へ保存し、その請求分をまとめて切り替える。
+async function setPaid(customerNo, el) {
+  const cust = invoiceData?.customers.find(c => c.customer === customerNo);
+  if (!cust) return;
+  const on   = el.checked;
+  const mark = el.parentElement.querySelector('.pd-mark');
+  el.disabled = true;
+  mark.textContent = '保存中…';
+  try {
+    for (const c of cust.cases) {
+      const r = await fetch(SERVER + '/api/cases/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, paid: on }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'サーバーエラー');
+      c.paid = on;
+    }
+    mark.textContent = on ? '入金済' : '未入金';
+    el.closest('tr').classList.toggle('paid', on);
+  } catch (e) {
+    const done = cust.cases.filter(c => c.paid).length;
+    const tot  = cust.cases.length;
+    el.checked = done === tot;
+    mark.textContent = done === 0 ? '未入金' : done === tot ? '入金済' : `一部 ${done}/${tot}`;
+    el.closest('tr').classList.toggle('paid', done === tot);
+    showMsg('入金済みの保存に失敗しました: ' + e.message, 'error');
+  } finally {
+    el.disabled = false;
+  }
+}
+
 // ========== テーブル描画 ==========
 function renderTable(d) {
   const body     = document.getElementById('invBody');
@@ -508,7 +546,7 @@ function renderTable(d) {
   `;
 
   if (d.customers.length === 0) {
-    body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:#aaa">
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#aaa">
       この月の案件が見つかりませんでした</td></tr>`;
   } else {
     d.customers.forEach(cust => {
@@ -537,6 +575,12 @@ function renderTable(d) {
       const tr = document.createElement('tr');
       tr.dataset.customer = cust.customer;
       if (done === total) tr.classList.add('confirmed');
+      // 入金済み：最終確認（提出）の次に、入金を確かめたらチェック
+      const paidN   = cust.cases.filter(c => c.paid).length;
+      const pdLabel = paidN === 0 ? '未入金'
+                    : paidN === total ? '入金済'
+                    : `一部 ${paidN}/${total}`;
+      if (paidN === total) tr.classList.add('paid');
       tr.innerHTML = `
         <td style="vertical-align:top">
           <div class="cust-no"><span data-cust-no="${escHtml(cust.customer)}">${escHtml(cust.customer)}</span></div>
@@ -571,6 +615,13 @@ function renderTable(d) {
             <input type="checkbox" ${done === total ? 'checked' : ''}
                    onchange="setConfirmed('${escHtml(cust.customer)}', this)">
             <span class="cf-mark">${cfLabel}</span>
+          </label>
+        </td>
+        <td style="text-align:center">
+          <label class="cf-wrap" title="入金を確認したらチェック。取り違えたら外す">
+            <input type="checkbox" ${paidN === total ? 'checked' : ''}
+                   onchange="setPaid('${escHtml(cust.customer)}', this)">
+            <span class="pd-mark cf-mark">${pdLabel}</span>
           </label>
         </td>
       `;

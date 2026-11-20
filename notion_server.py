@@ -2663,6 +2663,8 @@ class Handler(BaseHTTPRequestHandler):
                     # 進捗に「請求済み」を足すとNotionの選択肢にないためエラーになるので、
                     # チェックボックスの独立項目にしている（2026-09-01）
                     confirmed = bool(props.get("最終確認完了",{}).get("checkbox") or False)
+                    # 入金済み（2026-11-19追加）。最終確認（提出）の次に、入金を確かめたらチェック
+                    paid = bool(props.get("入金済み",{}).get("checkbox") or False)
                     # 粗利テキストから利益額を抽出（例: "10,000 - 3,000 = 7,000" → 7000）
                     # grossが空の場合は外注費ゼロとみなし粗利=単価として扱う
                     import re as _re
@@ -2680,7 +2682,7 @@ class Handler(BaseHTTPRequestHandler):
                         "id": page["id"], "number": number, "customer": customer,
                         "price": price, "note": note, "filename": filename,
                         "memo": memo, "gross": gross, "profit": profit,
-                        "confirmed": confirmed,
+                        "confirmed": confirmed, "paid": paid,
                         "date": dl[:10] if dl else "", "status": status,
                         "url": page.get("url",""),
                     })
@@ -2713,6 +2715,8 @@ class Handler(BaseHTTPRequestHandler):
         if "filename" in data: props["指定案件ファイル名"]  = {"rich_text": [{"text": {"content": data["filename"]}}]}
         # 最終確認完了。クライアントから戻しがあればチェックを外して差し戻せる。
         if "confirmed" in data: props["最終確認完了"] = {"checkbox": bool(data["confirmed"])}
+        # 入金済み（2026-11-19追加）。入金を確かめたらチェック、取り違えたら外せる。
+        if "paid" in data: props["入金済み"] = {"checkbox": bool(data["paid"])}
         if "status"   in data: props["進捗"]                = {"status": {"name": data["status"]}}
         if "date"     in data:
             props["案件締切日・進行"] = {"date": {"start": data["date"]}} if data["date"] else {"date": None}
@@ -3622,11 +3626,13 @@ end timeout
                     status  = (props["進捗"]["status"] or {}).get("name","")
                     # 最終確認は請求書ツールでチェックするので、案件IDと状態も返す
                     confirmed = bool(props.get("最終確認完了",{}).get("checkbox") or False)
+                    paid      = bool(props.get("入金済み",{}).get("checkbox") or False)
                     if number and customer:
                         cases.append({"id": page["id"],
                                       "number": number, "customer": customer,
                                       "price": price, "note": note,
                                       "projectName": pname, "confirmed": confirmed,
+                                      "paid": paid,
                                       "date": dl, "status": status})
                 except Exception as e:
                     pass
